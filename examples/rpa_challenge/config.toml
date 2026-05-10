@@ -1,0 +1,19 @@
+# Retry and logging
+max_retries = 2
+log_level = "INFO"
+
+# Database for transaction persistence
+db_path = "oref.db"
+
+# Screenshots for debugging
+# Set to a directory path or leave empty to disable
+screenshot_dir = ""
+
+# XLSX file URL - can be overridden for testing
+xlsx_url = "https://www.rpachallenge.com/assets/downloadFiles/challenge.xlsx"
+
+# Page load retry settings (also used in OpenChallengePage)
+max_page_load_retries = 3
+
+# Credential provider for headless mode (if needed)
+credential_provider = "env"

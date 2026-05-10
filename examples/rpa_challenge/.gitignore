@@ -1,0 +1,61 @@
+# Test artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# pytest cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Coverage reports
+coverage*.html
+
+# Screenshots from failed tests
+screenshots/
+*.png
+*.jpg
+*.jpeg
+
+# Transaction database (contains sensitive data)
+*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Test data
+sample_data/
+test_data/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Coverage HTML report
+coverage_html/

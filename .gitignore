@@ -1,0 +1,266 @@
+# =============================================================================
+# O REF Examples Repository - .gitignore
+# =============================================================================
+
+# =============================================================================
+# Python
+# =============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+*.pyd
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+.coverage.historical
+*.log
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# =============================================================================
+# Database / Data Files
+# =============================================================================
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# =============================================================================
+# Logs
+# =============================================================================
+
+# General logs
+*.log
+logs/
+
+# Application logs
+nohup.out
+
+# =============================================================================
+# Screenshot / Image Artifacts
+# =============================================================================
+
+# Screenshots from tests
+screenshots/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.bmp
+
+# Playwright cache
+.playwright/
+
+# Playwright CLI tool session artifacts
+.playwright-cli/
+
+# =============================================================================
+# Transaction / Cache Files
+# =============================================================================
+
+# OREF transaction databases
+oref.db
+*.db
+*.sqlite3
+
+# Pytest cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Coverage reports
+coverage*.html
+
+# =============================================================================
+# Configuration Files
+# =============================================================================
+
+# Local configuration
+config.local.toml
+.config/
+.local/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# =============================================================================
+# Documentation / Build Artifacts
+# =============================================================================
+
+# Documentation builds
+docs/_build/
+*.mdown
+*.markdown
+*.man
+
+# API documentation
+apidocs/
+
+# =============================================================================
+# OS / Platform
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.msu
+
+# Linux
+*.orig
+
+# =============================================================================
+# Temporary / Build
+# =============================================================================
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# Virtual environments (general)
+venv/
+env/
+.venv/
+ENV/
+
+# =============================================================================
+# O REF Specific
+# =============================================================================
+
+# Greeting files (SHOULD BE TRACKED)
+# greeting.txt is part of the project and should be committed
+
+# Challenge solutions (if tracked separately)
+.challenge-solutions/
+
+# Claude agent workspace
+.claude/
+
+# Developer-only planning documents (working docs, not committed)
+plans/
+
+# Example outputs
+output/
+results/
+generated/
+
+# Sub-project test data
+sample_data/
+test_data/
+coverage_html/
+
+# =============================================================================
+# PROJECT FILES - SHOULD BE TRACKED (NOT IGNORED)
+# =============================================================================
+# These are essential project files that should be committed:
+# - README.md
+# - automation-challenges.md
+# - config.toml (root)
+# - requirements.txt
+# - main.py
+# - plans/ directory (gitignored — developer working docs)
+# - skills/ directory
+# - examples/rpa_challenge/README.md
+# - examples/rpa_challenge/config.toml
+# - examples/rpa_challenge/requirements-test.txt
+
+# =============================================================================
+# Miscellaneous
+# =============================================================================
+
+# Editor backup files
+*~
+*.bak
+
+# Lock files
+*.lock
+
+# Docker
+docker-compose.override.yml
+.docker/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
