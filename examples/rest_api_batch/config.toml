@@ -1,0 +1,4 @@
+max_retries = 2
+log_level = "INFO"
+db_path = "oref.db"
+output_file = "output.jsonl"
