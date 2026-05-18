@@ -1,0 +1,30 @@
+# Force consistent line endings for text files
+# Prevents CRLF/LF warnings on Windows
+
+# Default: treat all text files as text, normalize to LF
+* text=auto
+
+# Force LF for these common text file types
+*.py text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.ini text eol=lf
+*.txt text eol=lf
+
+# Force CRLF for Windows-specific files
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files - no normalization
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+# Playwright coverage HTML
+coverage_html/** binary
+
+# SQLite databases - no normalization
+*.db binary

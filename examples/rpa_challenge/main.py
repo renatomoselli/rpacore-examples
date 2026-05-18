@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import sqlite3
 import sys
+from pathlib import Path
 
 from oref import (
     Engine,
@@ -46,9 +48,14 @@ def main() -> None:
     
     configure_logger(level=str(config["log_level"]))
 
+    # Ensure screenshot directory exists if configured
+    screenshot_dir = str(config.get("screenshot_dir", ""))
+    if screenshot_dir:
+        Path(screenshot_dir).mkdir(parents=True, exist_ok=True)
+
     engine = Engine(
         max_retries=int(config["max_retries"]),
-        screenshot_dir=str(config["screenshot_dir"]),
+        screenshot_dir=screenshot_dir,
     )
     db_path = str(config["db_path"])
     shared_data: dict = {}
@@ -77,11 +84,29 @@ def main() -> None:
     # Print summary of configuration for debugging
     print(f"Configuration: max_retries={config['max_retries']}, db_path={db_path}")
 
+    # --- resume: find already-successful rows from previous runs ---
+    # Resume: skip rows that already succeeded (failed rows are retried)
+    successful_refs: set[str] = set()
+    if Path(db_path).exists():
+        try:
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.execute(
+                    "SELECT reference FROM transactions WHERE status = 'successful' AND reference LIKE 'rpa-row-%'",
+                )
+                successful_refs = {row[0] for row in cursor.fetchall()}
+        except sqlite3.Error as exc:
+            print(f"Warning: could not read transaction DB for resume: {exc}")
+
     # --- one transaction per row ---
     for row in shared_data["rows"]:
         email = str(row.get("Email", "")).strip() or f"row-{shared_data['rows'].index(row)}"
+        ref = f"rpa-row-{email}"
+
+        if ref in successful_refs:
+            print(f"[SKIP] {ref} — already successful")
+            continue
         row_tx = Transaction(
-            reference=f"rpa-row-{email}",
+            reference=ref,
             skills=[
                 FillRow(name="fill_row", execution_order=1, arguments={"row": row}),
                 SubmitRow(name="submit_row", execution_order=2),

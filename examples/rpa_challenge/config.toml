@@ -5,9 +5,8 @@ log_level = "INFO"
 # Database for transaction persistence
 db_path = "oref.db"
 
-# Screenshots for debugging
-# Set to a directory path or leave empty to disable
-screenshot_dir = ""
+# Screenshots for debugging (empty string disables)
+screenshot_dir = "screenshots"
 
 # XLSX file URL - can be overridden for testing
 xlsx_url = "https://www.rpachallenge.com/assets/downloadFiles/challenge.xlsx"
@@ -17,3 +16,6 @@ max_page_load_retries = 3
 
 # Credential provider for headless mode (if needed)
 credential_provider = "env"
+
+# Headless mode - set to false to see the browser
+headless = false

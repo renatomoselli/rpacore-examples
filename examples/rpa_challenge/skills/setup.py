@@ -22,35 +22,40 @@ class OpenChallengePage(Skill):
         max_page_load_retries = int(str(ctx.config.get("max_page_load_retries", 3)))
         
         for attempt in range(1, max_page_load_retries + 1):
+            pw = None
             page = None
             try:
                 pw = sync_playwright().start()
                 try:
-                    browser = pw.chromium.launch(headless=False)
+                    headless = str(ctx.config.get("headless", "true")).lower() == "true"
+                    browser = pw.chromium.launch(headless=headless)
                 except Exception:
                     raise SystemException(
-                        "Chrome headless launch failed — this machine may lack a display. "
-                        "Install Chrome/Chromium or set credential_provider for headless mode.",
+                        "Chrome launch failed — this machine may lack a display. "
+                        "Ensure Chrome/Chromium is installed or set headless=true in config.",
                         action=self.name,
                     )
                 page = browser.new_page()
                 page.goto("https://www.rpachallenge.com/", timeout=30_000)
-                # Wait for page to fully load (important for SPA with dynamic content)
                 page.wait_for_load_state("networkidle")
-                ctx.data["_pw"] = pw  # Store Playwright instance for cleanup in RecordScore
-                ctx.data["page"] = page  # Store page for use by other skills
-                return  # Success
+                ctx.data["_pw"] = pw
+                ctx.data["page"] = page
+                return
             except Exception as exc:
+                if page is not None:
+                    page.close()
+                if pw is not None:
+                    pw.stop()
                 if attempt == max_page_load_retries:
                     raise SystemException(
                         f"Failed to load page after {max_page_load_retries} attempts: {exc}",
                         action=self.name,
                     )
-                # Log retry attempt
                 print(f"Page load attempt {attempt}/{max_page_load_retries} failed: {exc}")
-                # Brief delay before retry to allow any transient issues to resolve
                 if page is not None:
-                    page.wait_for_timeout(2_000)
+                    # Brief pause before retry (non-deprecated alternative to wait_for_timeout)
+                    import asyncio
+                    asyncio.run(asyncio.sleep(0.5))
 
 
 class DownloadInputData(Skill):
@@ -78,10 +83,13 @@ class DownloadInputData(Skill):
         except Exception:
             # Fallback: download via browser (site rate-limits direct requests)
             page = ctx.data["page"]
-            page.click("a[role=\"link\"].cloud_download", timeout=10_000)
-            page.wait_for_selector("a:has-text(\"Download Excel\")", state="detached", timeout=15_000)
-            download = page.context.downloads[-1]
-            Path(download.path).rename(tmp_path)
+            # Click the download button using text selector
+            page.click('a:has-text("Download Excel")', timeout=10_000)
+            # Wait for the download to complete using the context manager
+            with page.expect_download() as dl_info:
+                pass
+            download = dl_info.value
+            download.save_as(tmp_path)
         
         try:
             wb = openpyxl.load_workbook(tmp_path)
@@ -95,10 +103,10 @@ class DownloadInputData(Skill):
         
         if not rows:
             raise BusinessException("Input Excel file contains no data rows.", action=self.name)
-        
+
         # Cleanup temporary file
         _cleanup()
-        
+
         # Validate schema matches expected headers
         EXPECTED_HEADERS = {
             "first name", "last name", "company name", "role in company",
@@ -106,21 +114,45 @@ class DownloadInputData(Skill):
         }
         actual_headers = {str(h).strip().lower() for h in headers}
         missing_headers = EXPECTED_HEADERS - actual_headers
-        
+
         if missing_headers:
             raise SystemException(
                 f"Excel missing expected headers: {missing_headers}",
                 action=self.name,
             )
 
+        # Store parsed rows for downstream skills
+        ctx.data["rows"] = rows
+
 
 class StartChallenge(Skill):
     def execute(self, ctx: ProcessContext) -> None:
         page = ctx.data["page"]
         try:
-            page.get_by_role("button", name="Start").click(timeout=10_000)
-            # Wait for the download button to appear (it appears after Start)
-            page.wait_for_selector("a[role=\"link\"].cloud_download", timeout=10_000)
+            # Wait for the page to be fully loaded
+            page.wait_for_load_state('networkidle')
+
+            # Check if the START button is still on the page.
+            # If the START button exists, we haven't started the challenge yet.
+            # If it doesn't exist, the form is already visible — nothing to do.
+            start_btn = page.query_selector('button:has-text("START")')
+            if start_btn is None:
+                # Form is already visible — nothing to do
+                return
+
+            # Click the START button — use a robust selector that survives DOM changes
+            # The button text is "START" (case-insensitive in text, but exact in DOM)
+            page.click('button:has-text("START")', timeout=10_000)
+
+            # Wait for the form to appear by checking for rpa1-field components
+            # After clicking START, the form fields are re-rendered with new IDs.
+            page.wait_for_function(
+                """() => {
+                    const containers = document.querySelectorAll('rpa1-field');
+                    return containers.length >= 5;
+                }""",
+                timeout=10_000,
+            )
         except Exception as exc:
             raise SystemException(
                 f"Failed to start the challenge: {exc}",
