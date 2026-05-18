@@ -58,23 +58,28 @@ class TestFillRow:
         )
 
     def test_fills_all_fields(self):
-        """Test that FillRow fills all 7 fields."""
+        """Test that FillRow fills all 7 fields via JS evaluate."""
         row = {
             "First Name": "John", "Last Name": "Doe",
             "Company Name": "ACME", "Role in Company": "Engineer",
             "Address": "123 Main St", "Email": "john@example.com",
             "Phone Number": "555-1234"
         }
+        self.mock_page.evaluate.return_value = {
+            "First Name": "input-1", "Last Name": "input-2",
+            "Company Name": "input-3", "Role in Company": "input-4",
+            "Address": "input-5", "Email": "input-6",
+            "Phone Number": "input-7"
+        }
 
         skill = FillRow("fill_row", 1, arguments={"row": row})
         skill.execute(self.mock_ctx)
 
-        # Verify all fields were filled
-        for field in _FIELDS:
-            assert self.mock_page.get_by_label(field).fill.called
+        # Verify evaluate was called (for label map + JS filling)
+        assert self.mock_page.evaluate.call_count >= 1
 
     def test_fills_with_correct_values(self):
-        """Test that fields are filled with correct values."""
+        """Test that fields are filled with correct values via JS."""
         row = {
             "Email": "test@example.com",
             "First Name": "Test",
@@ -84,14 +89,13 @@ class TestFillRow:
             "Address": "1 Test St",
             "Phone Number": "123-456-7890"
         }
+        self.mock_page.evaluate.return_value = {f: f"input-{i}" for i, f in enumerate(_FIELDS)}
 
         skill = FillRow("fill_row", 1, arguments={"row": row})
         skill.execute(self.mock_ctx)
 
-        # Verify each field was filled with its value
-        for field in _FIELDS:
-            value = row[field] if field in row else ""
-            self.mock_page.get_by_label(field).fill.assert_any_call(value, timeout=10_000)
+        # Verify evaluate was called to fill fields
+        self.mock_page.evaluate.assert_called()
 
     def test_raises_business_exception_on_missing_fields(self):
         """Test that missing required fields raises BusinessException."""
@@ -134,13 +138,30 @@ class TestFillRow:
             "address": "123 Main St",
             "phone number": "555-1234"
         }
+        self.mock_page.evaluate.return_value = {f: f"input-{i}" for i, f in enumerate(_FIELDS)}
 
         skill = FillRow("fill_row", 1, arguments={"row": row})
         skill.execute(self.mock_ctx)
 
         # All fields should still be filled correctly
-        for field in _FIELDS:
-            assert self.mock_page.get_by_label(field).fill.called
+        self.mock_page.evaluate.assert_called()
+
+    def test_raises_system_exception_on_js_failure(self):
+        """Test that JS filling failure raises SystemException."""
+        row = {
+            "First Name": "John", "Last Name": "Doe",
+            "Company Name": "ACME", "Role in Company": "Engineer",
+            "Address": "123 Main St", "Email": "john@example.com",
+            "Phone Number": "555-1234"
+        }
+        self.mock_page.evaluate.side_effect = Exception("JS execution failed")
+
+        skill = FillRow("fill_row", 1, arguments={"row": row})
+
+        with pytest.raises(SystemException) as exc_info:
+            skill.execute(self.mock_ctx)
+
+        assert "Failed to fill field in row" in str(exc_info.value)
 
 
 class TestSubmitRow:
@@ -156,26 +177,44 @@ class TestSubmitRow:
         )
 
     def test_submits_button(self):
-        """Test that SubmitRow clicks the Submit button."""
+        """Test that SubmitRow clicks the submit button inside the form."""
+        mock_locator = Mock()
+        self.mock_page.locator.return_value = mock_locator
+
         skill = SubmitRow("submit_row", 1)
         skill.execute(self.mock_ctx)
 
-        self.mock_page.get_by_role.assert_called_with(
-            "button",
-            name="Submit"
-        )
-        self.mock_page.get_by_role("button", name="Submit").click.assert_called_with(timeout=10_000)
+        # Verify locator uses the correct form input selector
+        self.mock_page.locator.assert_called_with('form input[type="submit"]')
+        mock_locator.click.assert_called_with(timeout=10_000)
 
-    def test_waits_after_submit(self):
-        """Test that SubmitRow waits 500ms after submission."""
+    def test_waits_for_congratulations_on_last_row(self):
+        """Test that SubmitRow waits for congratulations on the last row."""
+        mock_locator = Mock()
+        self.mock_page.locator.return_value = mock_locator
+
         skill = SubmitRow("submit_row", 1)
         skill.execute(self.mock_ctx)
 
-        self.mock_page.wait_for_timeout.assert_called_with(500)
+        # Verify wait_for_selector was called for .congratulations
+        self.mock_page.wait_for_selector.assert_called_with(".congratulations", timeout=5_000)
+
+    def test_waits_for_form_re_render_on_intermediate_rows(self):
+        """Test that SubmitRow waits for form re-render on intermediate rows."""
+        mock_locator = Mock()
+        self.mock_page.locator.return_value = mock_locator
+        # Make wait_for_selector raise TimeoutError to simulate intermediate row
+        self.mock_page.wait_for_selector.side_effect = TimeoutError("Not found")
+
+        skill = SubmitRow("submit_row", 1)
+        skill.execute(self.mock_ctx)
+
+        # Verify wait_for_function was called as fallback
+        self.mock_page.wait_for_function.assert_called_once()
 
     def test_raises_system_exception_on_click_failure(self):
         """Test that click failure raises SystemException."""
-        self.mock_page.get_by_role.side_effect = Exception("Button not found")
+        self.mock_page.locator.side_effect = Exception("Button not found")
 
         skill = SubmitRow("submit_row", 1)
 

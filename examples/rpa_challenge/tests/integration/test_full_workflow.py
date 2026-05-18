@@ -104,12 +104,20 @@ class TestFullWorkflow:
         mock_pw = Mock()
 
         with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve, \
-             patch("pathlib.Path.rename"), \
+             patch("pathlib.Path.unlink"), \
+             patch("tempfile.mkstemp", return_value=(123, "/tmp/test.xlsx")), \
              patch("skills.setup.openpyxl.load_workbook") as mock_load_wb:
             mock_urlretrieve.side_effect = Exception("Network error")
+            # Mock the browser download fallback via expect_download context manager
             mock_download = Mock()
-            mock_download.path = "/tmp/test.xlsx"
-            mock_page.context.downloads = [mock_download]
+            mock_download.save_as = Mock()
+            mock_context_mgr = Mock()
+            mock_context_mgr.value = mock_download  # dl_info.value is the download object
+            mock_context_mgr.__enter__ = Mock(return_value=mock_context_mgr)
+            mock_context_mgr.__exit__ = Mock(return_value=None)
+            mock_page.expect_download = Mock(return_value=mock_context_mgr)
+            mock_page.wait_for_selector = Mock()
+            mock_page.click = Mock()
             mock_wb = Mock()
             mock_wb.active = Mock()
             mock_wb.active.iter_rows.return_value = iter([
@@ -132,6 +140,10 @@ class TestFullWorkflow:
 
             # Verify urlretrieve was called (it fails, then fallback happens)
             assert mock_urlretrieve.call_count >= 1
+            # Verify browser download fallback was used
+            mock_page.expect_download.assert_called_once()
+            mock_page.click.assert_called_once()
+            mock_download.save_as.assert_called_once()
 
     def test_workflow_handles_parse_errors(self):
         """Test that workflow handles Excel parse errors."""

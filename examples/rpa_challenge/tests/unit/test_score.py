@@ -26,55 +26,51 @@ class TestRecordScore:
 
     def test_reads_score_text(self):
         """Test that RecordScore reads the final score."""
-        mock_locator = Mock()
-        mock_locator.inner_text.return_value = "Your Score: 85%"
-        self.mock_page.locator.return_value = mock_locator
+        self.mock_page.text_content.return_value = "success rate is 85%. Congratulations!"
 
         skill = RecordScore("record_score", 1)
         skill.execute(self.mock_ctx)
 
-        # Verify locator was used
-        self.mock_page.locator.assert_called_with(".message2")
-        mock_locator.wait_for.assert_called_with(timeout=10_000)
-        mock_locator.inner_text.assert_called_once()
+        # Verify the correct API calls were made
+        self.mock_page.wait_for_selector.assert_called_with(".congratulations", timeout=15_000)
+        self.mock_page.text_content.assert_called_with("body")
+        assert self.mock_ctx.data["score"] == "85%"
 
     def test_stores_score_in_ctx_data(self):
         """Test that score is stored in ctx.data."""
-        mock_locator = Mock()
-        mock_locator.inner_text.return_value = "Your Score: 92%"
-        self.mock_page.locator.return_value = mock_locator
+        self.mock_page.text_content.return_value = "success rate is 92%. Congratulations!"
 
         skill = RecordScore("record_score", 1)
         skill.execute(self.mock_ctx)
 
-        assert self.mock_ctx.data["score"] == "Your Score: 92%"
+        assert self.mock_ctx.data["score"] == "92%"
 
     def test_strips_whitespace_from_score(self):
-        """Test that leading/trailing whitespace is stripped."""
-        mock_locator = Mock()
-        mock_locator.inner_text.return_value = "   Your Score: 85%   "
-        self.mock_page.locator.return_value = mock_locator
+        """Test that the regex extracts just the numeric score."""
+        self.mock_page.text_content.return_value = "  success rate is 85%.  Congratulations!  "
 
         skill = RecordScore("record_score", 1)
         skill.execute(self.mock_ctx)
 
-        assert self.mock_ctx.data["score"] == "Your Score: 85%"
+        # re.search extracts the group, so whitespace around the match is irrelevant
+        assert self.mock_ctx.data["score"] == "85%"
 
     def test_stops_browser_in_finally_block(self):
         """Test that browser is stopped even if error occurs."""
-        self.mock_page.locator.side_effect = Exception("Locator failed")
+        self.mock_page.text_content.side_effect = Exception("Content read failed")
 
         skill = RecordScore("record_score", 1)
 
-        with pytest.raises(Exception):
+        with pytest.raises(SystemException) as exc_info:
             skill.execute(self.mock_ctx)
 
+        assert "Failed to read final score" in str(exc_info.value)
         # Verify browser was stopped in finally block
         self.mock_pw.stop.assert_called_once()
 
-    def test_handles_locator_wait_timeout(self):
-        """Test timeout when score element not found."""
-        self.mock_page.locator.return_value.wait_for.side_effect = Exception("Timeout")
+    def test_handles_wait_for_selector_timeout(self):
+        """Test timeout when congratulations element not found."""
+        self.mock_page.wait_for_selector.side_effect = Exception("Timeout")
 
         skill = RecordScore("record_score", 1)
 
@@ -83,39 +79,59 @@ class TestRecordScore:
 
         assert "Failed to read final score" in str(exc_info.value)
 
-    def test_handles_locator_not_found(self):
-        """Test when score element cannot be found."""
-        self.mock_page.locator.side_effect = Exception("Element not found")
+    def test_handles_text_content_failure(self):
+        """Test when body text cannot be read."""
+        self.mock_page.wait_for_selector.return_value = None
+        self.mock_page.text_content.side_effect = Exception("Body not found")
 
         skill = RecordScore("record_score", 1)
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(SystemException) as exc_info:
             skill.execute(self.mock_ctx)
 
         assert "Failed to read final score" in str(exc_info.value)
 
-    def test_stops_browser_even_on_locator_error(self):
-        """Test browser is stopped even when locator fails."""
-        self.mock_page.locator.side_effect = Exception("Locator failed")
+    def test_stops_browser_even_on_text_content_error(self):
+        """Test browser is stopped even when text_content fails."""
+        self.mock_page.text_content.side_effect = Exception("Content failed")
 
         skill = RecordScore("record_score", 1)
 
-        with pytest.raises(Exception):
+        with pytest.raises(SystemException) as exc_info:
             skill.execute(self.mock_ctx)
 
+        assert "Failed to read final score" in str(exc_info.value)
         # Verify browser was still stopped
         self.mock_pw.stop.assert_called_once()
 
-    def test_uses_correct_locator_selector(self):
-        """Test that the correct CSS selector is used."""
-        mock_locator = Mock()
-        mock_locator.inner_text.return_value = "   Your Score: 85%   "
-        self.mock_page.locator.return_value = mock_locator
+    def test_uses_correct_selector_and_api(self):
+        """Test that the correct CSS selector and API are used."""
+        self.mock_page.text_content.return_value = "success rate is 77%. Congratulations!"
 
         skill = RecordScore("record_score", 1)
         skill.execute(self.mock_ctx)
 
-        # Verify locator uses .message2 selector
-        self.mock_page.locator.assert_called_with(".message2")
-        # Verify score was stored correctly (stripped)
-        assert self.mock_ctx.data["score"] == "Your Score: 85%"
+        # Verify wait_for_selector uses .congratulations
+        self.mock_page.wait_for_selector.assert_called_with(".congratulations", timeout=15_000)
+        # Verify text_content is called with "body"
+        self.mock_page.text_content.assert_called_with("body")
+        # Verify score was extracted correctly
+        assert self.mock_ctx.data["score"] == "77%"
+
+    def test_fallback_congratulations_message(self):
+        """Test fallback when success rate regex doesn't match."""
+        self.mock_page.text_content.return_value = "Congratulations! You have completed the challenge."
+
+        skill = RecordScore("record_score", 1)
+        skill.execute(self.mock_ctx)
+
+        assert self.mock_ctx.data["score"] == "Congratulations! You have completed the challenge."
+
+    def test_fallback_returns_unknown_when_no_match(self):
+        """Test fallback returns 'unknown' when neither regex matches."""
+        self.mock_page.text_content.return_value = "Some random page text with no score."
+
+        skill = RecordScore("record_score", 1)
+        skill.execute(self.mock_ctx)
+
+        assert self.mock_ctx.data["score"] == "unknown"

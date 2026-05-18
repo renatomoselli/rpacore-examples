@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 import openpyxl
 import pytest
-from oref import ProcessContext, Transaction, SystemException
+from oref import ProcessContext, Transaction, SystemException, BusinessException
 
 from skills.setup import (
     OpenChallengePage,
@@ -43,11 +43,29 @@ class TestOpenChallengePage:
         ctx = ProcessContext(transaction=self.mock_tx, data={})
         skill.execute(ctx)
 
-        self.mock_pw.chromium.launch.assert_called_once()
+        # Verify launch was called with headless=True by default
+        self.mock_pw.chromium.launch.assert_called_once_with(headless=True)
         self.mock_browser.new_page.assert_called_once()
         self.mock_page.goto.assert_called_with("https://www.rpachallenge.com/", timeout=30_000)
         assert ctx.data["page"] == self.mock_page
         assert ctx.data["_pw"] == self.mock_pw
+
+    @patch("skills.setup.sync_playwright")
+    def test_opens_challenge_page_headed(self, mock_sync_pw):
+        """Test that OpenChallengePage opens with headed=False when config says so."""
+        mock_sync_pw_instance = Mock()
+        mock_sync_pw.return_value = mock_sync_pw_instance
+        mock_sync_pw_instance.start.return_value = self.mock_pw
+        self.mock_pw.chromium.launch.return_value = self.mock_browser
+        self.mock_browser.new_page.return_value = self.mock_page
+
+        skill = OpenChallengePage("open_challenge_page", 1)
+        ctx = ProcessContext(transaction=self.mock_tx, data={})
+        ctx.config = {"headless": "false"}
+        skill.execute(ctx)
+
+        # Verify launch was called with headless=False
+        self.mock_pw.chromium.launch.assert_called_once_with(headless=False)
 
     @patch("skills.setup.sync_playwright")
     def test_raises_system_exception_on_launch_failure(self, mock_sync_pw):
@@ -63,6 +81,8 @@ class TestOpenChallengePage:
         with pytest.raises(SystemException) as exc_info:
             skill.execute(ctx)
         assert "launch" in str(exc_info.value).lower()
+        # pw.stop may be called multiple times in cleanup, just verify it was called
+        self.mock_pw.stop.assert_called()
 
     @patch("skills.setup.sync_playwright")
     def test_raises_system_exception_on_navigation_failure(self, mock_sync_pw):
@@ -153,10 +173,12 @@ class TestDownloadInputData:
 
     def test_falls_back_to_browser_download_on_direct_failure(self):
         """Test that DownloadInputData falls back to browser download."""
+        from unittest.mock import MagicMock
         with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve:
             mock_urlretrieve.side_effect = Exception("Download failed")
             with patch("skills.setup.openpyxl.load_workbook") as mock_load_wb, \
-                 patch("pathlib.Path.rename"):
+                 patch("pathlib.Path.unlink"), \
+                 patch("tempfile.mkstemp", return_value=(123, "/tmp/test.xlsx")):
                 mock_wb = Mock()
                 mock_wb.active = Mock()
                 mock_wb.active.iter_rows.return_value = iter([
@@ -168,14 +190,25 @@ class TestDownloadInputData:
                 mock_load_wb.return_value = mock_wb
 
                 mock_download = Mock()
-                mock_download.path = "/tmp/test.xlsx"
-                self.mock_page.context.downloads = [mock_download]
+                mock_download.save_as = Mock()
+                # Build a proper context manager for expect_download
+                mock_context_mgr = MagicMock()
+                mock_context_mgr.__enter__ = Mock(return_value=mock_download)
+                mock_context_mgr.__exit__ = Mock(return_value=None)
+                # Set expect_download as a method on the page mock
+                self.mock_page.expect_download = Mock(return_value=mock_context_mgr)
+
+                self.mock_ctx.config = {"xlsx_url": "http://example.com/file.xlsx"}
 
                 skill = DownloadInputData("download_input_data", 1)
                 skill.execute(self.mock_ctx)
 
                 # Should have tried urlretrieve first, then browser download
                 assert mock_urlretrieve.call_count >= 1
+                # Should have clicked download button
+                self.mock_page.click.assert_called()
+                # Should have called expect_download
+                self.mock_page.expect_download.assert_called_once()
 
     def test_raises_system_exception_on_parse_failure(self):
         """Test that parse failure raises SystemException."""
@@ -189,11 +222,10 @@ class TestDownloadInputData:
 
                 skill = DownloadInputData("download_input_data", 1)
 
-                with pytest.raises(Exception) as exc_info:
+                with pytest.raises(SystemException) as exc_info:
                     skill.execute(self.mock_ctx)
 
                 assert "Failed to parse Excel file" in str(exc_info.value)
-                assert isinstance(exc_info.value, Exception)
 
     def test_raises_business_exception_on_empty_data(self):
         """Test that empty Excel data raises BusinessException."""
@@ -202,15 +234,19 @@ class TestDownloadInputData:
             with patch("skills.setup.openpyxl.load_workbook") as mock_load_wb:
                 mock_wb = Mock()
                 mock_wb.active = Mock()
-                mock_wb.active.iter_rows.return_value = iter([])
+                # Return headers but no data rows — triggers the "no data rows" path
+                mock_wb.active.iter_rows.return_value = iter([
+                    ("First Name", "Last Name", "Company Name",
+                     "Role in Company", "Address", "Email", "Phone Number"),
+                ])
                 mock_load_wb.return_value = mock_wb
 
                 skill = DownloadInputData("download_input_data", 1)
 
-                with pytest.raises(Exception) as exc_info:
+                with pytest.raises(BusinessException) as exc_info:
                     skill.execute(self.mock_ctx)
 
-                assert "parse" in str(exc_info.value).lower()
+                assert "no data rows" in str(exc_info.value).lower()
 
 
 class TestStartChallenge:
@@ -227,27 +263,40 @@ class TestStartChallenge:
 
     def test_clicks_start_button(self):
         """Test that StartChallenge clicks the start button."""
+        # query_selector returns None → button exists, needs clicking
+        self.mock_page.query_selector.return_value = Mock()
+
         skill = StartChallenge("start_challenge", 1)
         skill.execute(self.mock_ctx)
 
-        self.mock_page.get_by_role.assert_called_with(
-            "button",
-            name="Start"
-        )
-        self.mock_page.get_by_role("button", name="Start").click.assert_called_with(timeout=10_000)
+        # Verify click uses the has-text selector
+        self.mock_page.click.assert_called_with('button:has-text("START")', timeout=10_000)
 
-    def test_waits_for_download_button(self):
-        """Test that StartChallenge waits for download button."""
+    def test_waits_for_form_appearance(self):
+        """Test that StartChallenge waits for form fields to appear."""
+        self.mock_page.query_selector.return_value = Mock()
+
         skill = StartChallenge("start_challenge", 1)
         skill.execute(self.mock_ctx)
 
-        self.mock_page.wait_for_selector.assert_called_with(
-            'a[role="link"].cloud_download', timeout=10_000
-        )
+        # Verify wait_for_function was called with the rpa1-field check
+        self.mock_page.wait_for_function.assert_called_once()
+
+    def test_skips_when_form_already_visible(self):
+        """Test that StartChallenge returns early if form is already visible."""
+        # query_selector returns None → START button not on page
+        self.mock_page.query_selector.return_value = None
+
+        skill = StartChallenge("start_challenge", 1)
+        skill.execute(self.mock_ctx)
+
+        # Should not click or wait for anything
+        self.mock_page.click.assert_not_called()
+        self.mock_page.wait_for_function.assert_not_called()
 
     def test_raises_system_exception_on_start_failure(self):
         """Test that start failure raises SystemException."""
-        self.mock_page.get_by_role.side_effect = Exception("Start failed")
+        self.mock_page.query_selector.side_effect = Exception("Start failed")
 
         skill = StartChallenge("start_challenge", 1)
 
