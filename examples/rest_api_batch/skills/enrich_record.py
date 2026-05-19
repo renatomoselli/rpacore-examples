@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from oref import ProcessContext, Skill
+from oref import BusinessException, ProcessContext, Skill
 
 
 class EnrichRecord(Skill):
@@ -11,13 +11,23 @@ class EnrichRecord(Skill):
         user = ctx.data.get("current_user")
 
         if post is None:
-            raise RuntimeError(
-                "No current_post in context — fetch_posts must run first"
+            raise BusinessException(
+                "No current_post in context — fetch_posts must run first",
+                action=self.name,
             )
         if user is None:
-            raise RuntimeError(
-                "No current_user in context — fetch_user must run first"
+            raise BusinessException(
+                "No current_user in context — fetch_user must run first",
+                action=self.name,
             )
+
+        # Validate required user fields
+        for field in ("id", "name", "email"):
+            if not user.get(field):
+                raise BusinessException(
+                    f"User {user.get('id', 'unknown')} missing required field: {field}",
+                    action=self.name,
+                )
 
         enriched = {
             "postId": post.get("id"),

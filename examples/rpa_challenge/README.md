@@ -4,7 +4,7 @@ Public benchmark challenge demonstrating robust label-based browser automation.
 
 ## What It Does
 
-Downloads employee data from Excel (10 rows), then fills a web form with randomized field positions.
+Downloads employee data from Excel (10 rows), then fills a web form with randomized field positions using label-based selectors.
 
 **Key learning:** Uses `get_by_label()` selectors to handle randomized field positions that would break position-based automation.
 
@@ -22,11 +22,26 @@ python main.py
 
 Expected output:
 ```
-Setup successful
-fill_row: success
-submit_row: success
+INFO | transaction_started | Transaction started | transaction_reference=rpa-challenge-setup
+INFO | skill_started | Skill started | skill_name=open_challenge_page
+INFO | skill_completed | Skill completed | skill_name=open_challenge_page skill_status=successful
+INFO | skill_started | Skill started | skill_name=download_input_data
+INFO | skill_completed | Skill completed | skill_name=download_input_data skill_status=successful
+INFO | skill_started | Skill started | skill_name=start_challenge
+INFO | skill_completed | Skill completed | skill_name=start_challenge skill_status=successful
+INFO | transaction_completed | Transaction completed | transaction_reference=rpa-challenge-setup transaction_status=successful
+INFO | transaction_started | Transaction started | transaction_reference=rpa-row-...
+INFO | skill_started | Skill started | skill_name=fill_row
+INFO | skill_completed | Skill completed | skill_name=fill_row skill_status=successful
+INFO | skill_started | Skill started | skill_name=submit_row
+INFO | skill_completed | Skill completed | skill_name=submit_row skill_status=successful
+INFO | transaction_completed | Transaction completed | transaction_reference=rpa-row-... transaction_status=successful
 ... (10 rows)
-Final score: XX
+INFO | transaction_started | Transaction started | transaction_reference=rpa-challenge-score
+INFO | skill_started | Skill started | skill_name=record_score
+INFO | skill_completed | Skill completed | skill_name=record_score skill_status=successful
+INFO | transaction_completed | Transaction completed | transaction_reference=rpa-challenge-score transaction_status=successful
+Final score: 100%
 ```
 
 ## Verify Setup
@@ -79,7 +94,7 @@ score:    [RecordScore]
 |-------|---------|
 | `OpenChallengePage` | Launch browser, navigate to challenge site |
 | `DownloadInputData` | Download & parse challenge.xlsx |
-| `StartChallenge` | Click Start button to begin |
+| `StartChallenge` | Click Start button to begin (checks for button presence first) |
 | `FillRow` | Fill 7 form fields (label-based) |
 | `SubmitRow` | Submit each row |
 | `RecordScore` | Read final score and close browser |
@@ -152,11 +167,4 @@ See `tests/README.md` for full documentation.
 - [O REF framework](https://github.com/oref-org/oref)
 - [RPACHallenge](https://www.rpachallenge.com/)
 
-## Improvements Implemented
 
-- ✅ Config validation in `main.py`
-- ✅ Retry logic for page navigation failures
-- ✅ Input data schema validation
-- ✅ Configurable XLSX URL
-- ✅ Screenshot on failure enabled
-- ✅ Comprehensive test suite (unit + integration)

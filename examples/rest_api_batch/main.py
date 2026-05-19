@@ -10,6 +10,7 @@ from oref import (
     Transaction,
     SystemException,
     configure_logger,
+    get_logger,
     load_config,
     save_transaction,
 )
@@ -20,9 +21,11 @@ from skills.validate_post import ValidatePost
 from skills.enrich_record import EnrichRecord
 from skills.write_output import WriteOutput
 
+logger = get_logger(__name__)
+
 
 def _validate_config(config: dict) -> None:
-    """Validate config has required keys with correct types."""
+    """Validate config has required keys with correct types and ranges."""
     for key, expected_type in (
         ("max_retries", int),
         ("log_level", str),
@@ -30,11 +33,18 @@ def _validate_config(config: dict) -> None:
         ("output_file", str),
     ):
         if key not in config:
-            raise ValueError(f"Missing required config key: {key}")
+            raise SystemException(f"Missing required config key: {key}", action="main")
         if not isinstance(config[key], expected_type):
-            raise ValueError(
-                f"Config key '{key}' must be {expected_type.__name__}, got {type(config[key]).__name__}"
+            raise SystemException(
+                f"Config key '{key}' must be {expected_type.__name__}, got {type(config[key]).__name__}",
+                action="main",
             )
+    # Range validation (G2)
+    if config["max_retries"] < 0:
+        raise SystemException(
+            f"Config key 'max_retries' must be >= 0, got {config['max_retries']}",
+            action="main",
+        )
 
 
 def main() -> None:
@@ -44,7 +54,11 @@ def main() -> None:
 
     engine = Engine(max_retries=int(config["max_retries"]))
     db_path = str(config["db_path"])
+    output_file = str(config["output_file"])
     shared_data: dict = {}
+
+    # Truncate output file for idempotent runs (Q4)
+    Path(output_file).write_text("", encoding="utf-8")
 
     # --- setup transaction: fetch all posts ---
     setup_tx = Transaction(
@@ -60,17 +74,21 @@ def main() -> None:
         failed = setup_tx.failed_skills()
         if failed:
             details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed)
-            print(f"Setup failed ({setup_tx.status}). Failed skill(s): {details}")
+            logger.error("Setup failed (%s). Failed skill(s): %s", setup_tx.status, details)
         else:
-            print(f"Setup failed ({setup_tx.status}). Aborting.")
+            logger.error("Setup failed (%s). Aborting.", setup_tx.status)
         sys.exit(1)
 
     posts = shared_data.get("posts", [])
-    print(f"Fetched {len(posts)} posts.")
+    logger.info("Fetched %d posts.", len(posts))
 
     # --- one transaction per post ---
     for post in posts:
         shared_data["current_post"] = post
+
+        # Clear stale shared state from previous transaction (Q2)
+        shared_data.pop("current_user", None)
+        shared_data.pop("enriched_record", None)
 
         post_tx = Transaction(
             reference=f"post-{post.get('id')}",
@@ -85,16 +103,20 @@ def main() -> None:
         save_transaction(post_tx, db_path=db_path)
 
         if post_tx.status == Status.SUCCESSFUL:
-            print(f"  ✓ Post {post.get('id')}: {post.get('title', '')[:50]}...")
+            logger.info(
+                "Post %s: %s...",
+                post.get("id"),
+                post.get("title", "")[:50],
+            )
         else:
             failed = post_tx.failed_skills()
             if failed:
                 details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed)
-                print(f"  ✗ Post {post.get('id')}: {details}")
+                logger.warning("Post %s failed: %s", post.get("id"), details)
             else:
-                print(f"  ✗ Post {post.get('id')}: {post_tx.status}")
+                logger.warning("Post %s: %s", post.get("id"), post_tx.status)
 
-    print(f"Batch complete. Output written to {config.get('output_file', 'output.jsonl')}")
+    logger.info("Batch complete. Output written to %s", output_file)
 
 
 if __name__ == "__main__":

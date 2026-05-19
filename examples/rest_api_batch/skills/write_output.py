@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import json
-import logging
 
-from oref import ProcessContext, Skill, SystemException
+from oref import ProcessContext, Skill, SystemException, get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WriteOutput(Skill):

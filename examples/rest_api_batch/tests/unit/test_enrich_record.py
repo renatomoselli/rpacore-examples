@@ -2,6 +2,10 @@
 
 from unittest.mock import Mock
 
+import pytest
+
+from oref import BusinessException
+
 from skills.enrich_record import EnrichRecord
 
 
@@ -62,7 +66,7 @@ class TestEnrichRecord:
 
         skill = EnrichRecord("enrich_record", 3)
 
-        with pytest.raises(RuntimeError) as exc_info:
+        with pytest.raises(BusinessException) as exc_info:
             skill.execute(self.mock_ctx)
 
         assert "No current_post" in str(exc_info.value)
@@ -73,7 +77,46 @@ class TestEnrichRecord:
 
         skill = EnrichRecord("enrich_record", 3)
 
-        with pytest.raises(RuntimeError) as exc_info:
+        with pytest.raises(BusinessException) as exc_info:
             skill.execute(self.mock_ctx)
 
         assert "No current_user" in str(exc_info.value)
+
+    def test_raises_on_missing_user_id(self):
+        """Test that EnrichRecord raises when user id is missing."""
+        post = {"id": 1, "title": "Test", "body": "Test"}
+        user = {"name": "Test", "email": "test@test.com"}
+        self.mock_ctx.data = {"current_post": post, "current_user": user}
+
+        skill = EnrichRecord("enrich_record", 3)
+
+        with pytest.raises(BusinessException) as exc_info:
+            skill.execute(self.mock_ctx)
+
+        assert "missing required field: id" in str(exc_info.value)
+
+    def test_raises_on_empty_user_name(self):
+        """Test that EnrichRecord raises when user name is empty."""
+        post = {"id": 1, "title": "Test", "body": "Test"}
+        user = {"id": 1, "name": "", "email": "test@test.com"}
+        self.mock_ctx.data = {"current_post": post, "current_user": user}
+
+        skill = EnrichRecord("enrich_record", 3)
+
+        with pytest.raises(BusinessException) as exc_info:
+            skill.execute(self.mock_ctx)
+
+        assert "missing required field: name" in str(exc_info.value)
+
+    def test_raises_on_missing_user_email(self):
+        """Test that EnrichRecord raises when user email is missing."""
+        post = {"id": 1, "title": "Test", "body": "Test"}
+        user = {"id": 1, "name": "Test"}
+        self.mock_ctx.data = {"current_post": post, "current_user": user}
+
+        skill = EnrichRecord("enrich_record", 3)
+
+        with pytest.raises(BusinessException) as exc_info:
+            skill.execute(self.mock_ctx)
+
+        assert "missing required field: email" in str(exc_info.value)
