@@ -1,0 +1,23 @@
+[
+  {
+    "event_id": "evt-201",
+    "event_type": "info",
+    "timestamp": "2024-01-15T10:00:00Z",
+    "source": "test-service"
+  },
+  {
+    "event_type": "error",
+    "timestamp": "2024-01-15T10:01:00Z",
+    "source": "test-service"
+  },
+  {
+    "event_id": "evt-203",
+    "timestamp": "2024-01-15T10:02:00Z",
+    "source": "test-service"
+  },
+  {
+    "event_id": "evt-204",
+    "event_type": "info",
+    "source": "test-service"
+  }
+]

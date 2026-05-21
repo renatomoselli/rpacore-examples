@@ -1,0 +1,20 @@
+[
+  {
+    "event_id": "evt-301",
+    "event_type": "critical",
+    "timestamp": "2024-01-15T11:00:00Z",
+    "source": "monitoring-service",
+    "payload": {
+      "message": "System health check failed"
+    }
+  },
+  {
+    "event_id": "evt-302",
+    "event_type": "debug",
+    "timestamp": "2024-01-15T11:01:00Z",
+    "source": "monitoring-service",
+    "payload": {
+      "message": "Verbose debug output"
+    }
+  }
+]

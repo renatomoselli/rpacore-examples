@@ -1,0 +1,36 @@
+[
+  {
+    "event_id": "evt-101",
+    "event_type": "info",
+    "timestamp": "2024-01-15T09:00:00Z",
+    "source": "inventory-service",
+    "payload": {
+      "message": "Stock level updated",
+      "product_id": "prod-001",
+      "quantity": 150
+    }
+  },
+  {
+    "event_id": "evt-102",
+    "event_type": "warning",
+    "timestamp": "2024-01-15T09:05:30Z",
+    "source": "inventory-service",
+    "payload": {
+      "message": "Low stock alert",
+      "product_id": "prod-042",
+      "quantity": 5,
+      "reorder_threshold": 10
+    }
+  },
+  {
+    "event_id": "evt-103",
+    "event_type": "error",
+    "timestamp": "2024-01-15T09:10:00Z",
+    "source": "inventory-service",
+    "payload": {
+      "message": "Failed to sync with warehouse API",
+      "error_code": "CONNECTION_TIMEOUT",
+      "retry_count": 3
+    }
+  }
+]

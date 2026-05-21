@@ -1,0 +1,5 @@
+max_retries = 2
+log_level = "INFO"
+db_path = "oref.db"
+inbox_dir = "inbox"
+results_dir = "results"

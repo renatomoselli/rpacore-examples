@@ -1,0 +1,60 @@
+[
+  {
+    "event_id": "evt-001",
+    "event_type": "info",
+    "timestamp": "2024-01-15T08:30:00Z",
+    "source": "auth-service",
+    "payload": {
+      "message": "User login successful",
+      "user_id": "usr-12345",
+      "ip_address": "192.168.1.100"
+    }
+  },
+  {
+    "event_id": "evt-002",
+    "event_type": "info",
+    "timestamp": "2024-01-15T08:31:15Z",
+    "source": "auth-service",
+    "payload": {
+      "message": "Token refreshed",
+      "user_id": "usr-12345",
+      "token_type": "access"
+    }
+  },
+  {
+    "event_id": "evt-003",
+    "event_type": "warning",
+    "timestamp": "2024-01-15T08:35:00Z",
+    "source": "api-gateway",
+    "payload": {
+      "message": "Rate limit approaching threshold",
+      "endpoint": "/api/v1/users",
+      "current_rate": 95,
+      "max_rate": 100
+    }
+  },
+  {
+    "event_id": "evt-004",
+    "event_type": "error",
+    "timestamp": "2024-01-15T08:40:22Z",
+    "source": "payment-service",
+    "payload": {
+      "message": "Payment processing failed",
+      "transaction_id": "txn-67890",
+      "error_code": "INSUFFICIENT_FUNDS",
+      "amount": 150.00,
+      "currency": "USD"
+    }
+  },
+  {
+    "event_id": "evt-005",
+    "event_type": "info",
+    "timestamp": "2024-01-15T08:45:00Z",
+    "source": "notification-service",
+    "payload": {
+      "message": "Email notification sent",
+      "recipient": "user@example.com",
+      "template": "payment_failed"
+    }
+  }
+]
