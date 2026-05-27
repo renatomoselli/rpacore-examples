@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 import openpyxl
 import pytest
-from oref import ProcessContext, Transaction, SystemException, BusinessException
+from oref import ProcessContext, Transaction, SystemException
 
 from skills.setup import (
     OpenChallengePage,
@@ -191,12 +191,27 @@ class TestDownloadInputData:
 
                 mock_download = Mock()
                 mock_download.save_as = Mock()
+                state = {"expecting_download": False}
+
+                def enter_download_context():
+                    state["expecting_download"] = True
+                    return mock_context_mgr
+
+                def exit_download_context(*_args):
+                    state["expecting_download"] = False
+                    return None
+
+                def click_download(*_args, **_kwargs):
+                    assert state["expecting_download"] is True
+
                 # Build a proper context manager for expect_download
                 mock_context_mgr = MagicMock()
-                mock_context_mgr.__enter__ = Mock(return_value=mock_download)
-                mock_context_mgr.__exit__ = Mock(return_value=None)
+                mock_context_mgr.__enter__ = Mock(side_effect=enter_download_context)
+                mock_context_mgr.__exit__ = Mock(side_effect=exit_download_context)
+                mock_context_mgr.value = mock_download
                 # Set expect_download as a method on the page mock
                 self.mock_page.expect_download = Mock(return_value=mock_context_mgr)
+                self.mock_page.click.side_effect = click_download
 
                 self.mock_ctx.config = {"xlsx_url": "http://example.com/file.xlsx"}
 
@@ -227,8 +242,8 @@ class TestDownloadInputData:
 
                 assert "Failed to parse Excel file" in str(exc_info.value)
 
-    def test_raises_business_exception_on_empty_data(self):
-        """Test that empty Excel data raises BusinessException."""
+    def test_raises_system_exception_on_empty_data(self):
+        """Test that empty Excel data fails setup before the browser is driven."""
         with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve:
             mock_urlretrieve.return_value = ("/tmp/test.xlsx", Mock())
             with patch("skills.setup.openpyxl.load_workbook") as mock_load_wb:
@@ -243,10 +258,32 @@ class TestDownloadInputData:
 
                 skill = DownloadInputData("download_input_data", 1)
 
-                with pytest.raises(BusinessException) as exc_info:
+                with pytest.raises(SystemException) as exc_info:
                     skill.execute(self.mock_ctx)
 
                 assert "no data rows" in str(exc_info.value).lower()
+
+    def test_raises_system_exception_on_missing_row_values(self):
+        """Test invalid row data fails during setup before browser submission."""
+        with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve:
+            mock_urlretrieve.return_value = ("/tmp/test.xlsx", Mock())
+            with patch("skills.setup.openpyxl.load_workbook") as mock_load_wb:
+                mock_wb = Mock()
+                mock_wb.active = Mock()
+                mock_wb.active.iter_rows.return_value = iter([
+                    ("First Name", "Last Name", "Company Name",
+                     "Role in Company", "Address", "Email", "Phone Number"),
+                    ("John", "", "ACME", "Engineer",
+                     "123 Main St", "john@example.com", "555-1234"),
+                ])
+                mock_load_wb.return_value = mock_wb
+
+                skill = DownloadInputData("download_input_data", 1)
+
+                with pytest.raises(SystemException) as exc_info:
+                    skill.execute(self.mock_ctx)
+
+                assert "missing required value" in str(exc_info.value)
 
 
 class TestStartChallenge:

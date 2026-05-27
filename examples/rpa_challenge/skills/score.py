@@ -43,7 +43,9 @@ class RecordScore(Skill):
                 action=self.name,
             ) from exc
         finally:
+            pw = ctx.data.pop("_pw", None)
             try:
-                ctx.data["_pw"].stop()
+                if pw is not None:
+                    pw.stop()
             except Exception:
                 pass

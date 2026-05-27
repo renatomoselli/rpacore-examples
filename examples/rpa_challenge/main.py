@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -8,9 +7,8 @@ from oref import (
     Engine,
     ProcessContext,
     Status,
-    Transaction,
-    BusinessException,
     SystemException,
+    Transaction,
     configure_logger,
     load_config,
     save_transaction,
@@ -35,20 +33,26 @@ def _validate_config(config: dict) -> None:
                 f"Config key '{key}' must be {expected_type.__name__}, got {type(config[key]).__name__}",
                 action="main",
             )
-    
+
     if config["max_retries"] < 0:
-        raise SystemException(f"max_retries must be non-negative", action="main")
+        raise SystemException("max_retries must be non-negative", action="main")
+
+
+def _stop_playwright(shared_data: dict) -> None:
+    pw = shared_data.pop("_pw", None)
+    if pw is None:
+        return
+    try:
+        pw.stop()
+    except Exception:
+        pass
 
 
 def main() -> None:
     config = load_config("config.toml")
-    
-    # Validate configuration before proceeding
     _validate_config(config)
-    
     configure_logger(level=str(config["log_level"]))
 
-    # Ensure screenshot directory exists if configured
     screenshot_dir = str(config.get("screenshot_dir", ""))
     if screenshot_dir:
         Path(screenshot_dir).mkdir(parents=True, exist_ok=True)
@@ -60,72 +64,58 @@ def main() -> None:
     db_path = str(config["db_path"])
     shared_data: dict = {}
 
-    # --- setup transaction ---
-    setup_tx = Transaction(
-        reference="rpa-challenge-setup",
-        skills=[
-            OpenChallengePage(name="open_challenge_page", execution_order=1),
-            DownloadInputData(name="download_input_data", execution_order=2),
-            StartChallenge(name="start_challenge", execution_order=3),
-        ],
-    )
-    engine.run(ProcessContext(transaction=setup_tx, config=config, data=shared_data))
-    save_transaction(setup_tx, db_path=db_path)
-
-    if setup_tx.status is not Status.SUCCESSFUL:
-        failed = setup_tx.failed_skills()
-        if failed:
-            details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed)
-            print(f"Setup failed ({setup_tx.status}). Failed skill(s): {details}")
-        else:
-            print(f"Setup failed ({setup_tx.status}). Aborting.")
-        sys.exit(1)
-
-    # Print summary of configuration for debugging
-    print(f"Configuration: max_retries={config['max_retries']}, db_path={db_path}")
-
-    # --- resume: find already-successful rows from previous runs ---
-    # Resume: skip rows that already succeeded (failed rows are retried)
-    successful_refs: set[str] = set()
-    if Path(db_path).exists():
-        try:
-            with sqlite3.connect(db_path) as conn:
-                cursor = conn.execute(
-                    "SELECT reference FROM transactions WHERE status = 'successful' AND reference LIKE 'rpa-row-%'",
-                )
-                successful_refs = {row[0] for row in cursor.fetchall()}
-        except sqlite3.Error as exc:
-            print(f"Warning: could not read transaction DB for resume: {exc}")
-
-    # --- one transaction per row ---
-    for row in shared_data["rows"]:
-        email = str(row.get("Email", "")).strip() or f"row-{shared_data['rows'].index(row)}"
-        ref = f"rpa-row-{email}"
-
-        if ref in successful_refs:
-            print(f"[SKIP] {ref} — already successful")
-            continue
-        row_tx = Transaction(
-            reference=ref,
+    try:
+        setup_tx = Transaction(
+            reference="rpa-challenge-setup",
             skills=[
-                FillRow(name="fill_row", execution_order=1, arguments={"row": row}),
-                SubmitRow(name="submit_row", execution_order=2),
+                OpenChallengePage(name="open_challenge_page", execution_order=1),
+                DownloadInputData(name="download_input_data", execution_order=2),
+                StartChallenge(name="start_challenge", execution_order=3),
             ],
         )
-        engine.run(ProcessContext(transaction=row_tx, config=config, data=shared_data))
-        save_transaction(row_tx, db_path=db_path)
+        engine.run(ProcessContext(transaction=setup_tx, config=config, data=shared_data))
+        save_transaction(setup_tx, db_path=db_path)
 
-    # --- score transaction ---
-    score_tx = Transaction(
-        reference="rpa-challenge-score",
-        skills=[
-            RecordScore(name="record_score", execution_order=1),
-        ],
-    )
-    engine.run(ProcessContext(transaction=score_tx, config=config, data=shared_data))
-    save_transaction(score_tx, db_path=db_path)
+        if setup_tx.status is not Status.SUCCESSFUL:
+            failed = setup_tx.failed_skills()
+            if failed:
+                details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed)
+                print(f"Setup failed ({setup_tx.status}). Failed skill(s): {details}")
+            else:
+                print(f"Setup failed ({setup_tx.status}). Aborting.")
+            sys.exit(1)
 
-    print(f"Final score: {shared_data.get('score', 'unknown')}")
+        print(f"Configuration: max_retries={config['max_retries']}, db_path={db_path}")
+
+        # The website keeps progress only inside the active browser session.
+        # Persisted row transactions are useful for traceability, but a fresh
+        # run must submit every row to reach the final score page.
+        for row_index, row in enumerate(shared_data["rows"], start=1):
+            email = str(row.get("Email", "")).strip() or f"row-{row_index}"
+            ref = f"rpa-row-{email}"
+
+            row_tx = Transaction(
+                reference=ref,
+                skills=[
+                    FillRow(name="fill_row", execution_order=1, arguments={"row": row}),
+                    SubmitRow(name="submit_row", execution_order=2),
+                ],
+            )
+            engine.run(ProcessContext(transaction=row_tx, config=config, data=shared_data))
+            save_transaction(row_tx, db_path=db_path)
+
+        score_tx = Transaction(
+            reference="rpa-challenge-score",
+            skills=[
+                RecordScore(name="record_score", execution_order=1),
+            ],
+        )
+        engine.run(ProcessContext(transaction=score_tx, config=config, data=shared_data))
+        save_transaction(score_tx, db_path=db_path)
+
+        print(f"Final score: {shared_data.get('score', 'unknown')}")
+    finally:
+        _stop_playwright(shared_data)
 
 
 if __name__ == "__main__":

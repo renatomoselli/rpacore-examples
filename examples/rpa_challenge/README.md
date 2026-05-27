@@ -88,6 +88,10 @@ row×10:   [FillRow] → [SubmitRow]
 score:    [RecordScore]
 ```
 
+Each run submits all rows in the active browser session. Row transactions are
+persisted for traceability, but row-level resume is intentionally disabled
+because the challenge site's progress is not restored across fresh sessions.
+
 ### Skills
 
 | Skill | Purpose |
@@ -166,5 +170,4 @@ See `tests/README.md` for full documentation.
 
 - [O REF framework](https://github.com/oref-org/oref)
 - [RPACHallenge](https://www.rpachallenge.com/)
-
 

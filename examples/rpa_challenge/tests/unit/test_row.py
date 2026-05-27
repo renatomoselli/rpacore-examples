@@ -6,6 +6,7 @@ These tests use mocked browser objects to avoid requiring actual Playwright.
 
 import pytest
 from unittest.mock import Mock, call, patch
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from oref import ProcessContext, Transaction, SystemException, BusinessException
 
 from skills.row import FillRow, SubmitRow, _FIELDS, _find_row_value
@@ -204,13 +205,25 @@ class TestSubmitRow:
         mock_locator = Mock()
         self.mock_page.locator.return_value = mock_locator
         # Make wait_for_selector raise TimeoutError to simulate intermediate row
-        self.mock_page.wait_for_selector.side_effect = TimeoutError("Not found")
+        self.mock_page.wait_for_selector.side_effect = PlaywrightTimeoutError("Not found")
 
         skill = SubmitRow("submit_row", 1)
         skill.execute(self.mock_ctx)
 
         # Verify wait_for_function was called as fallback
         self.mock_page.wait_for_function.assert_called_once()
+
+    def test_skips_submission_after_row_validation_failure(self):
+        """Test that SubmitRow stops when FillRow already marked validation failure."""
+        self.mock_ctx.data["row_validation_failed"] = True
+
+        skill = SubmitRow("submit_row", 1)
+
+        with pytest.raises(SystemException) as exc_info:
+            skill.execute(self.mock_ctx)
+
+        assert "Row validation failed" in str(exc_info.value)
+        self.mock_page.locator.assert_not_called()
 
     def test_raises_system_exception_on_click_failure(self):
         """Test that click failure raises SystemException."""

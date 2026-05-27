@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
 from oref import BusinessException, ProcessContext, Skill, SystemException
 
 _FIELDS = [
@@ -81,6 +83,7 @@ class FillRow(Skill):
 
         missing = [f for f in _FIELDS if not _find_row_value(row, f).strip()]
         if missing:
+            ctx.data["row_validation_failed"] = True
             raise BusinessException(
                 f"Row is missing required fields: {missing}",
                 action=self.name,
@@ -96,11 +99,18 @@ class FillRow(Skill):
                 f"Failed to fill field in row: {exc}",
                 action=self.name,
             ) from exc
+        ctx.data["row_validation_failed"] = False
 
 
 class SubmitRow(Skill):
     def execute(self, ctx: ProcessContext) -> None:
         page = ctx.data["page"]
+        if ctx.data.get("row_validation_failed"):
+            raise SystemException(
+                "Row validation failed; skipping browser submission",
+                action=self.name,
+            )
+
         try:
             # Click the submit INPUT inside the form (the button outside the form
             # does not trigger form submission in Angular).
@@ -113,7 +123,7 @@ class SubmitRow(Skill):
             try:
                 # Check if the congratulations message is on the page (last row)
                 page.wait_for_selector(".congratulations", timeout=5_000)
-            except TimeoutError:
+            except PlaywrightTimeoutError:
                 # Not the last row — wait for the form to re-render with new labels
                 # After each submission, the form fields are re-rendered with new IDs.
                 page.wait_for_function(

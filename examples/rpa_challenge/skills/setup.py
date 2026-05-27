@@ -5,10 +5,19 @@ import urllib.request
 from pathlib import Path
 import openpyxl
 from playwright.sync_api import sync_playwright
-from oref import BusinessException, ProcessContext, Skill, SystemException
+from oref import ProcessContext, Skill, SystemException
 
 # Default URL - can be overridden via config
 DEFAULT_XLSX_URL = "https://www.rpachallenge.com/assets/downloadFiles/challenge.xlsx"
+EXPECTED_HEADERS = {
+    "first name",
+    "last name",
+    "company name",
+    "role in company",
+    "address",
+    "email",
+    "phone number",
+}
 
 # Selectors verified via: playwright-cli snapshot
 #   open https://www.rpachallenge.com --headed
@@ -83,11 +92,8 @@ class DownloadInputData(Skill):
         except Exception:
             # Fallback: download via browser (site rate-limits direct requests)
             page = ctx.data["page"]
-            # Click the download button using text selector
-            page.click('a:has-text("Download Excel")', timeout=10_000)
-            # Wait for the download to complete using the context manager
             with page.expect_download() as dl_info:
-                pass
+                page.click('a:has-text("Download Excel")', timeout=10_000)
             download = dl_info.value
             download.save_as(tmp_path)
         
@@ -101,25 +107,36 @@ class DownloadInputData(Skill):
             _cleanup()
             raise SystemException(f"Failed to parse Excel file: {exc}", action=self.name) from exc
         
-        if not rows:
-            raise BusinessException("Input Excel file contains no data rows.", action=self.name)
-
-        # Cleanup temporary file
-        _cleanup()
-
         # Validate schema matches expected headers
-        EXPECTED_HEADERS = {
-            "first name", "last name", "company name", "role in company",
-            "address", "email", "phone number"
-        }
         actual_headers = {str(h).strip().lower() for h in headers}
         missing_headers = EXPECTED_HEADERS - actual_headers
 
         if missing_headers:
+            _cleanup()
             raise SystemException(
                 f"Excel missing expected headers: {missing_headers}",
                 action=self.name,
             )
+
+        if not rows:
+            _cleanup()
+            raise SystemException("Input Excel file contains no data rows.", action=self.name)
+
+        for row_index, row in enumerate(rows, start=2):
+            missing_values = [
+                header
+                for header in EXPECTED_HEADERS
+                if not _find_row_value(row, header).strip()
+            ]
+            if missing_values:
+                _cleanup()
+                raise SystemException(
+                    f"Excel row {row_index} missing required value(s): {sorted(missing_values)}",
+                    action=self.name,
+                )
+
+        # Cleanup temporary file
+        _cleanup()
 
         # Store parsed rows for downstream skills
         ctx.data["rows"] = rows
@@ -158,3 +175,11 @@ class StartChallenge(Skill):
                 f"Failed to start the challenge: {exc}",
                 action=self.name,
             ) from exc
+
+
+def _find_row_value(row: dict, field: str) -> str:
+    lower = field.lower()
+    for key, val in row.items():
+        if str(key).strip().lower() == lower:
+            return str(val) if val else ""
+    return ""
