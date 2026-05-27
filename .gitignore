@@ -225,8 +225,7 @@ output/
 results/
 generated/
 
-# Sub-project test data
-sample_data/
+# Sub-project temporary test data
 test_data/
 coverage_html/
 
