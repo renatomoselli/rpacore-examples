@@ -1,0 +1,7 @@
+max_retries = 1
+log_level = "INFO"
+db_path = "oref.db"
+
+internal_records_csv = "sample_data/internal_payments.csv"
+bank_statement_csv = "sample_data/bank_statement.csv"
+report_file = "output/reconciliation_report.csv"
