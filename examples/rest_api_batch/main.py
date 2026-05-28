@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 from oref import (
     Engine,
@@ -15,6 +14,7 @@ from oref import (
     save_transaction,
 )
 
+from skills import KEY_POSTS, KEY_CURRENT_POST, KEY_CURRENT_USER, KEY_ENRICHED_RECORD
 from skills.fetch_posts import FetchPosts
 from skills.fetch_user import FetchUser
 from skills.validate_post import ValidatePost
@@ -57,9 +57,6 @@ def main() -> None:
     output_file = str(config["output_file"])
     shared_data: dict = {}
 
-    # Truncate output file for idempotent runs (Q4)
-    Path(output_file).write_text("", encoding="utf-8")
-
     # --- setup transaction: fetch all posts ---
     setup_tx = Transaction(
         reference="fetch-posts",
@@ -68,7 +65,10 @@ def main() -> None:
         ],
     )
     engine.run(ProcessContext(transaction=setup_tx, config=config, data=shared_data))
-    save_transaction(setup_tx, db_path=db_path)
+    try:
+        save_transaction(setup_tx, db_path=db_path)
+    except OSError as exc:
+        logger.warning("Could not persist setup transaction: %s", exc)
 
     if setup_tx.status is not Status.SUCCESSFUL:
         failed = setup_tx.failed_skills()
@@ -79,19 +79,20 @@ def main() -> None:
             logger.error("Setup failed (%s). Aborting.", setup_tx.status)
         sys.exit(1)
 
-    posts = shared_data.get("posts", [])
+    posts = shared_data.get(KEY_POSTS, [])
     logger.info("Fetched %d posts.", len(posts))
 
     # --- one transaction per post ---
     for post in posts:
-        shared_data["current_post"] = post
+        shared_data[KEY_CURRENT_POST] = post
 
-        # Clear stale shared state from previous transaction (Q2)
-        shared_data.pop("current_user", None)
-        shared_data.pop("enriched_record", None)
+        # Clear stale shared state from previous transaction
+        shared_data.pop(KEY_CURRENT_USER, None)
+        shared_data.pop(KEY_ENRICHED_RECORD, None)
 
+        post_id = post.get("id", "unknown")
         post_tx = Transaction(
-            reference=f"post-{post.get('id')}",
+            reference=f"post-{post_id}",
             skills=[
                 FetchUser(name="fetch_user", execution_order=1),
                 ValidatePost(name="validate_post", execution_order=2),
@@ -100,21 +101,24 @@ def main() -> None:
             ],
         )
         engine.run(ProcessContext(transaction=post_tx, config=config, data=shared_data))
-        save_transaction(post_tx, db_path=db_path)
+        try:
+            save_transaction(post_tx, db_path=db_path)
+        except OSError as exc:
+            logger.warning("Could not persist transaction for post %s: %s", post_id, exc)
 
         if post_tx.status == Status.SUCCESSFUL:
             logger.info(
                 "Post %s: %s...",
-                post.get("id"),
+                post_id,
                 post.get("title", "")[:50],
             )
         else:
             failed = post_tx.failed_skills()
             if failed:
                 details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed)
-                logger.warning("Post %s failed: %s", post.get("id"), details)
+                logger.warning("Post %s failed: %s", post_id, details)
             else:
-                logger.warning("Post %s: %s", post.get("id"), post_tx.status)
+                logger.warning("Post %s: %s", post_id, post_tx.status)
 
     logger.info("Batch complete. Output written to %s", output_file)
 

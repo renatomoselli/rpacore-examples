@@ -79,3 +79,17 @@ class TestWriteOutput:
             skill.execute(self.mock_ctx)
 
         assert "No enriched_record" in str(exc_info.value)
+
+    def test_raises_on_os_error(self):
+        """Test that WriteOutput raises SystemException on OSError."""
+        self.mock_ctx.data = {
+            "enriched_record": {"postId": 1, "title": "Test"}
+        }
+        self.mock_ctx.config = {"output_file": "/nonexistent/dir/output.jsonl"}
+
+        skill = WriteOutput("write_output", 4)
+
+        with pytest.raises(SystemException) as exc_info:
+            skill.execute(self.mock_ctx)
+
+        assert "Failed to write" in str(exc_info.value)

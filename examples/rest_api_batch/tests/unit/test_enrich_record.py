@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from oref import BusinessException
+from oref import BusinessException, SystemException
 
 from skills.enrich_record import EnrichRecord
 
@@ -61,23 +61,23 @@ class TestEnrichRecord:
         assert self.mock_ctx.data["enriched_record"]["userCity"] == ""
 
     def test_raises_on_missing_post(self):
-        """Test that EnrichRecord raises when no current_post exists."""
+        """Test that EnrichRecord raises SystemException when no current_post exists."""
         self.mock_ctx.data = {"current_user": {"id": 1}}
 
         skill = EnrichRecord("enrich_record", 3)
 
-        with pytest.raises(BusinessException) as exc_info:
+        with pytest.raises(SystemException) as exc_info:
             skill.execute(self.mock_ctx)
 
         assert "No current_post" in str(exc_info.value)
 
     def test_raises_on_missing_user(self):
-        """Test that EnrichRecord raises when no current_user exists."""
+        """Test that EnrichRecord raises SystemException when no current_user exists."""
         self.mock_ctx.data = {"current_post": {"id": 1}}
 
         skill = EnrichRecord("enrich_record", 3)
 
-        with pytest.raises(BusinessException) as exc_info:
+        with pytest.raises(SystemException) as exc_info:
             skill.execute(self.mock_ctx)
 
         assert "No current_user" in str(exc_info.value)

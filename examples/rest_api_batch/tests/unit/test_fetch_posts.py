@@ -69,3 +69,46 @@ class TestFetchPosts:
             skill.execute(self.mock_ctx)
 
         assert "Connection error" in str(exc_info.value)
+
+    @patch("skills.fetch_posts.requests.get")
+    def test_raises_system_exception_on_timeout(self, mock_get):
+        """Test that FetchPosts raises SystemException on timeout."""
+        import requests as requests_lib
+
+        mock_get.side_effect = requests_lib.exceptions.Timeout("Read timed out")
+
+        skill = FetchPosts("fetch_posts", 1)
+
+        with pytest.raises(SystemException) as exc_info:
+            skill.execute(self.mock_ctx)
+
+        assert "Timeout" in str(exc_info.value)
+
+    @patch("skills.fetch_posts.requests.get")
+    def test_raises_system_exception_on_generic_request_error(self, mock_get):
+        """Test that FetchPosts raises SystemException on generic RequestException."""
+        import requests as requests_lib
+
+        mock_get.side_effect = requests_lib.exceptions.RequestException("Something went wrong")
+
+        skill = FetchPosts("fetch_posts", 1)
+
+        with pytest.raises(SystemException) as exc_info:
+            skill.execute(self.mock_ctx)
+
+        assert "Error fetching posts" in str(exc_info.value)
+
+    @patch("skills.fetch_posts.requests.get")
+    def test_raises_system_exception_on_invalid_json(self, mock_get):
+        """Test that FetchPosts raises SystemException when response is not valid JSON."""
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.side_effect = ValueError("No JSON object could be decoded")
+        mock_get.return_value = mock_response
+
+        skill = FetchPosts("fetch_posts", 1)
+
+        with pytest.raises(SystemException) as exc_info:
+            skill.execute(self.mock_ctx)
+
+        assert "Invalid JSON" in str(exc_info.value)

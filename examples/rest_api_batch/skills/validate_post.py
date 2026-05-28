@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from oref import BusinessException, ProcessContext, Skill
+from oref import BusinessException, ProcessContext, Skill, SystemException
+from skills import KEY_CURRENT_POST
 
 
 class ValidatePost(Skill):
     """Validate that a post has non-empty title and body."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        post = ctx.data.get("current_post")
+        post = ctx.data.get(KEY_CURRENT_POST)
         if post is None:
-            raise BusinessException(
+            raise SystemException(
                 "No current_post in context — fetch_posts must run first",
                 action=self.name,
             )

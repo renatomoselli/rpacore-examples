@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from oref import BusinessException
+from oref import BusinessException, SystemException
 from skills.validate_post import ValidatePost
 
 
@@ -65,12 +65,12 @@ class TestValidatePost:
         assert "empty or missing title" in str(exc_info.value)
 
     def test_raises_on_missing_context(self):
-        """Test that ValidatePost raises when no current_post exists."""
+        """Test that ValidatePost raises SystemException when no current_post exists."""
         self.mock_ctx.data = {}
 
         skill = ValidatePost("validate_post", 2)
 
-        with pytest.raises(BusinessException) as exc_info:
+        with pytest.raises(SystemException) as exc_info:
             skill.execute(self.mock_ctx)
 
         assert "No current_post" in str(exc_info.value)
