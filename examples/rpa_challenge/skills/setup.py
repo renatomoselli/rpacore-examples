@@ -1,11 +1,15 @@
 from __future__ import annotations
 import os
 import tempfile
+import time
 import urllib.request
 from pathlib import Path
 import openpyxl
 from playwright.sync_api import sync_playwright
 from oref import ProcessContext, Skill, SystemException
+
+from skills._utils import find_row_value as _find_row_value
+from skills._utils import get_timeout
 
 # Default URL - can be overridden via config
 DEFAULT_XLSX_URL = "https://www.rpachallenge.com/assets/downloadFiles/challenge.xlsx"
@@ -45,7 +49,7 @@ class OpenChallengePage(Skill):
                         action=self.name,
                     )
                 page = browser.new_page()
-                page.goto("https://www.rpachallenge.com/", timeout=30_000)
+                page.goto("https://www.rpachallenge.com/", timeout=get_timeout(ctx.config, "page_load"))
                 page.wait_for_load_state("networkidle")
                 ctx.data["_pw"] = pw
                 ctx.data["page"] = page
@@ -61,10 +65,8 @@ class OpenChallengePage(Skill):
                         action=self.name,
                     )
                 print(f"Page load attempt {attempt}/{max_page_load_retries} failed: {exc}")
-                if page is not None:
-                    # Brief pause before retry (non-deprecated alternative to wait_for_timeout)
-                    import asyncio
-                    asyncio.run(asyncio.sleep(0.5))
+                # Brief pause before retry
+                time.sleep(0.5)
 
 
 class DownloadInputData(Skill):
@@ -73,17 +75,15 @@ class DownloadInputData(Skill):
         xlsx_url = str(ctx.config.get("xlsx_url", DEFAULT_XLSX_URL))
         
         tmp_fd, tmp_path = tempfile.mkstemp(suffix=".xlsx")
-        _closed = False
+        # Close the fd immediately — urlretrieve writes to the path directly,
+        # and leaving the fd open causes file-locking issues on Windows.
+        try:
+            os.close(tmp_fd)
+        except OSError:
+            pass
+        tmp_fd = None
 
         def _cleanup():
-            nonlocal _closed, tmp_fd
-            if not _closed and tmp_fd is not None:
-                try:
-                    os.close(tmp_fd)
-                except OSError:
-                    pass
-                tmp_fd = None
-                _closed = True
             Path(tmp_path).unlink(missing_ok=True)
 
         # Try direct download first
@@ -93,7 +93,7 @@ class DownloadInputData(Skill):
             # Fallback: download via browser (site rate-limits direct requests)
             page = ctx.data["page"]
             with page.expect_download() as dl_info:
-                page.click('a:has-text("Download Excel")', timeout=10_000)
+                page.click('a:has-text("Download Excel")', timeout=get_timeout(ctx.config, "click"))
             download = dl_info.value
             download.save_as(tmp_path)
         
@@ -159,7 +159,7 @@ class StartChallenge(Skill):
 
             # Click the START button — use a robust selector that survives DOM changes
             # The button text is "START" (case-insensitive in text, but exact in DOM)
-            page.click('button:has-text("START")', timeout=10_000)
+            page.click('button:has-text("START")', timeout=get_timeout(ctx.config, "click"))
 
             # Wait for the form to appear by checking for rpa1-field components
             # After clicking START, the form fields are re-rendered with new IDs.
@@ -168,7 +168,7 @@ class StartChallenge(Skill):
                     const containers = document.querySelectorAll('rpa1-field');
                     return containers.length >= 5;
                 }""",
-                timeout=10_000,
+                timeout=get_timeout(ctx.config, "form_transition"),
             )
         except Exception as exc:
             raise SystemException(
@@ -176,10 +176,3 @@ class StartChallenge(Skill):
                 action=self.name,
             ) from exc
 
-
-def _find_row_value(row: dict, field: str) -> str:
-    lower = field.lower()
-    for key, val in row.items():
-        if str(key).strip().lower() == lower:
-            return str(val) if val else ""
-    return ""

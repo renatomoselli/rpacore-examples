@@ -55,18 +55,16 @@ class TestRecordScore:
         # re.search extracts the group, so whitespace around the match is irrelevant
         assert self.mock_ctx.data["score"] == "85%"
 
-    def test_stops_browser_in_finally_block(self):
-        """Test that browser is stopped even if error occurs."""
-        self.mock_page.text_content.side_effect = Exception("Content read failed")
+    def test_does_not_stop_browser(self):
+        """Test that RecordScore no longer stops the browser (main.py owns lifecycle)."""
+        self.mock_page.text_content.return_value = "success rate is 85%. Congratulations!"
 
         skill = RecordScore("record_score", 1)
+        skill.execute(self.mock_ctx)
 
-        with pytest.raises(SystemException) as exc_info:
-            skill.execute(self.mock_ctx)
-
-        assert "Failed to read final score" in str(exc_info.value)
-        # Verify browser was stopped in finally block
-        self.mock_pw.stop.assert_called_once()
+        # Browser cleanup is owned by main.py — RecordScore should not pop/stop _pw
+        self.mock_pw.stop.assert_not_called()
+        assert "_pw" in self.mock_ctx.data
 
     def test_handles_wait_for_selector_timeout(self):
         """Test timeout when congratulations element not found."""
@@ -91,8 +89,8 @@ class TestRecordScore:
 
         assert "Failed to read final score" in str(exc_info.value)
 
-    def test_stops_browser_even_on_text_content_error(self):
-        """Test browser is stopped even when text_content fails."""
+    def test_does_not_stop_browser_on_error(self):
+        """Test that RecordScore does not stop browser even on error."""
         self.mock_page.text_content.side_effect = Exception("Content failed")
 
         skill = RecordScore("record_score", 1)
@@ -101,8 +99,8 @@ class TestRecordScore:
             skill.execute(self.mock_ctx)
 
         assert "Failed to read final score" in str(exc_info.value)
-        # Verify browser was still stopped
-        self.mock_pw.stop.assert_called_once()
+        # Browser cleanup is owned by main.py
+        self.mock_pw.stop.assert_not_called()
 
     def test_uses_correct_selector_and_api(self):
         """Test that the correct CSS selector and API are used."""

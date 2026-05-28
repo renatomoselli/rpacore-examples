@@ -5,6 +5,8 @@ import re
 
 from oref import ProcessContext, Skill, SystemException
 
+from skills._utils import get_timeout
+
 
 class RecordScore(Skill):
     def execute(self, ctx: ProcessContext) -> None:
@@ -17,7 +19,7 @@ class RecordScore(Skill):
             # The results page shows a .congratulations div after all 10 rounds are complete.
             # Use the specific CSS class selector — more reliable than checking body text,
             # which may not be rendered yet by Angular's change detection.
-            page.wait_for_selector(".congratulations", timeout=15_000)
+            page.wait_for_selector(".congratulations", timeout=get_timeout(ctx.config, "score_extraction"))
 
             # Get the full page text directly
             body_text = page.text_content("body")
@@ -42,10 +44,3 @@ class RecordScore(Skill):
                 f"Failed to read final score: {exc}",
                 action=self.name,
             ) from exc
-        finally:
-            pw = ctx.data.pop("_pw", None)
-            try:
-                if pw is not None:
-                    pw.stop()
-            except Exception:
-                pass

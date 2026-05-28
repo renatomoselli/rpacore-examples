@@ -17,5 +17,12 @@ max_page_load_retries = 3
 # Credential provider for headless mode (if needed)
 credential_provider = "env"
 
-# Headless mode - set to false to see the browser
-headless = false
+# Headless mode — set to false to see the browser during development
+headless = true
+
+# Timeouts (milliseconds) — increase on slow networks
+timeout_page_load = 30000
+timeout_click = 10000
+timeout_form_transition = 10000
+timeout_congratulations_check = 5000
+timeout_score_extraction = 15000

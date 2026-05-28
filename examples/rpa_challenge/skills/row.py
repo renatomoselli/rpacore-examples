@@ -6,6 +6,9 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from oref import BusinessException, ProcessContext, Skill, SystemException
 
+from skills._utils import find_row_value as _find_row_value
+from skills._utils import get_timeout
+
 _FIELDS = [
     "First Name",
     "Last Name",
@@ -16,14 +19,6 @@ _FIELDS = [
     "Phone Number",
 ]
 
-
-def _find_row_value(row: dict, field: str) -> str:
-    """Look up a field value case-insensitively."""
-    lower = field.lower()
-    for key, val in row.items():
-        if str(key).strip().lower() == lower:
-            return str(val) if val else ""
-    return ""
 
 
 def _build_label_to_input_map(page) -> dict[str, str]:
@@ -114,7 +109,9 @@ class SubmitRow(Skill):
         try:
             # Click the submit INPUT inside the form (the button outside the form
             # does not trigger form submission in Angular).
-            page.locator('form input[type="submit"]').click(timeout=10_000)
+            page.locator('form input[type="submit"]').click(
+                timeout=get_timeout(ctx.config, "click")
+            )
             # Wait for the page to transition to the next round or results.
             # The page shows "Round N" after a successful submission, or
             # "Congratulations" after the last round.
@@ -122,7 +119,10 @@ class SubmitRow(Skill):
             # (last row), then fall back to waiting for labels (intermediate rows).
             try:
                 # Check if the congratulations message is on the page (last row)
-                page.wait_for_selector(".congratulations", timeout=5_000)
+                page.wait_for_selector(
+                    ".congratulations",
+                    timeout=get_timeout(ctx.config, "congratulations_check"),
+                )
             except PlaywrightTimeoutError:
                 # Not the last row — wait for the form to re-render with new labels
                 # After each submission, the form fields are re-rendered with new IDs.
@@ -132,7 +132,7 @@ class SubmitRow(Skill):
                         if (labels.length < 2) return false;
                         return labels.length >= 2;
                     }""",
-                    timeout=10_000,
+                    timeout=get_timeout(ctx.config, "form_transition"),
                 )
         except Exception as exc:
             raise SystemException(
