@@ -75,11 +75,15 @@ def main() -> None:
     engine.run(ProcessContext(transaction=setup_tx, config=config, data=shared_data))
     save_transaction(setup_tx, db_path=db_path)
 
-    if setup_tx.status is not Status.SUCCESSFUL:
+    if setup_tx.status != Status.SUCCESSFUL:
         logger.error("Setup failed (%s). Aborting.", setup_tx.status)
         sys.exit(1)
 
-    internal_records = shared_data.get("internal_records", [])
+    if "internal_records" not in shared_data:
+        raise SystemException("Setup did not produce internal_records", action="main")
+    internal_records = shared_data["internal_records"]
+    if not isinstance(internal_records, list):
+        raise SystemException("Setup produced invalid internal_records", action="main")
     logger.info("Loaded %d internal payment record(s).", len(internal_records))
 
     matched = 0
@@ -98,13 +102,13 @@ def main() -> None:
             shared_data["reconciliation_results"].append(result)
         else:
             failed = payment_tx.failed_skills()
-            details = failed[-1].exceptions[-1] if failed and failed[-1].exceptions else payment_tx.status
+            details = failed[-1].exceptions[-1] if failed and failed[-1].exceptions else str(payment_tx.status)
             raise SystemException(
                 f"Payment {payment.get('payment_id')} did not produce a reconciliation result: {details}",
                 action="main",
             )
 
-        if payment_tx.status is Status.SUCCESSFUL:
+        if payment_tx.status == Status.SUCCESSFUL:
             matched += 1
         else:
             discrepancies += 1
@@ -131,6 +135,8 @@ def main() -> None:
         discrepancies,
         config["report_file"],
     )
+    if discrepancies > 0:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -74,7 +74,9 @@ def test_full_workflow_writes_reconciliation_report(tmp_path):
         engine.run(ProcessContext(transaction=tx, config=config, data=shared_data))
         save_transaction(tx, db_path=str(db_path))
         statuses.append(tx.status)
-        shared_data["reconciliation_results"].append(shared_data["reconciliation_result"])
+        result = shared_data.get("reconciliation_result")
+        if isinstance(result, dict):
+            shared_data["reconciliation_results"].append(result)
 
     report_tx = Transaction(
         reference="write-reconciliation-report",

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import csv
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from oref import ProcessContext, Skill, SystemException
+
+from skills._csv_utils import read_csv
 
 REQUIRED_COLUMNS = ("payment_id", "date", "reference", "amount", "vendor")
 
@@ -20,7 +21,7 @@ class LoadInternalRecords(Skill):
                 action=self.name,
             )
 
-        rows = _read_csv(Path(csv_path), self.name)
+        rows = read_csv(Path(csv_path), REQUIRED_COLUMNS, self.name)
         records = []
         for index, row in enumerate(rows, start=2):
             missing = [column for column in REQUIRED_COLUMNS if not row.get(column)]
@@ -48,20 +49,3 @@ class LoadInternalRecords(Skill):
             )
 
         ctx.data["internal_records"] = records
-
-
-def _read_csv(path: Path, action: str) -> list[dict[str, str]]:
-    try:
-        with path.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle)
-            if not reader.fieldnames:
-                raise SystemException(f"CSV file has no header: {path}", action=action)
-            missing_headers = [column for column in REQUIRED_COLUMNS if column not in reader.fieldnames]
-            if missing_headers:
-                raise SystemException(
-                    f"CSV file {path} missing required header(s): {', '.join(missing_headers)}",
-                    action=action,
-                )
-            return list(reader)
-    except OSError as exc:
-        raise SystemException(f"Unable to read CSV file {path}: {exc}", action=action) from exc

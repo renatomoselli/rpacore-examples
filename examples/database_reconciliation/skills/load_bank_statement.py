@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import csv
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from oref import ProcessContext, Skill, SystemException
+
+from skills._csv_utils import read_csv
 
 REQUIRED_COLUMNS = ("posted_date", "reference", "amount", "description")
 
@@ -20,8 +21,7 @@ class LoadBankStatement(Skill):
                 action=self.name,
             )
 
-        rows = _read_csv(Path(csv_path), self.name)
-        entries = []
+        rows = read_csv(Path(csv_path), REQUIRED_COLUMNS, self.name)
         by_reference: dict[str, list[dict[str, object]]] = {}
 
         for index, row in enumerate(rows, start=2):
@@ -45,25 +45,6 @@ class LoadBankStatement(Skill):
                 "amount": amount,
                 "description": row["description"],
             }
-            entries.append(entry)
             by_reference.setdefault(row["reference"], []).append(entry)
 
-        ctx.data["bank_statement"] = entries
         ctx.data["bank_by_reference"] = by_reference
-
-
-def _read_csv(path: Path, action: str) -> list[dict[str, str]]:
-    try:
-        with path.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle)
-            if not reader.fieldnames:
-                raise SystemException(f"CSV file has no header: {path}", action=action)
-            missing_headers = [column for column in REQUIRED_COLUMNS if column not in reader.fieldnames]
-            if missing_headers:
-                raise SystemException(
-                    f"CSV file {path} missing required header(s): {', '.join(missing_headers)}",
-                    action=action,
-                )
-            return list(reader)
-    except OSError as exc:
-        raise SystemException(f"Unable to read CSV file {path}: {exc}", action=action) from exc

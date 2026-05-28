@@ -107,7 +107,8 @@ def test_load_bank_statement_indexes_entries_by_reference(tmp_path):
     )
 
     assert tx.status == Status.SUCCESSFUL
-    assert len(data["bank_statement"]) == 2
+    assert "bank_statement" not in data
+    assert len(data["bank_by_reference"]["INV-1"]) == 2
     assert [entry["amount"] for entry in data["bank_by_reference"]["INV-1"]] == [
         Decimal("100.00"),
         Decimal("125.00"),

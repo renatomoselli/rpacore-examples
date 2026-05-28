@@ -28,7 +28,10 @@ class ClassifyOutcome(Skill):
             raise SystemException("Current payment amount has unexpected type", action=self.name)
 
         for candidate in candidates:
-            if candidate.get("amount") == expected_amount:
+            candidate_amount = candidate.get("amount")
+            if not isinstance(candidate_amount, Decimal):
+                raise SystemException("Bank candidate amount has unexpected type", action=self.name)
+            if candidate_amount == expected_amount:
                 ctx.data["reconciliation_result"] = _result(payment, "matched", candidate)
                 return
 

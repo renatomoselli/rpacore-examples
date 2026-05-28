@@ -76,3 +76,25 @@ def test_classify_outcome_flags_amount_mismatch_as_business_exception():
     assert tx.status == Status.FAILED
     assert data["reconciliation_result"]["status"] == "amount_mismatch"
     assert data["reconciliation_result"]["bank_amount"] == Decimal("1570.30")
+
+
+def test_classify_outcome_rejects_unexpected_bank_amount_type():
+    payment = {
+        "payment_id": "PAY-1006",
+        "date": "2024-04-03",
+        "reference": "INV-1006",
+        "amount": Decimal("1575.30"),
+        "vendor": "Wide World Importers",
+    }
+    candidate = {
+        "posted_date": "2024-04-03",
+        "reference": "INV-1006",
+        "amount": "1575.30",
+        "description": "ACH Wide World Importers",
+    }
+
+    tx, data = _run(payment, [candidate])
+
+    assert tx.status == Status.FAILED
+    assert "Bank candidate amount has unexpected type" in str(tx.failed_skills()[0].exceptions[-1])
+    assert "reconciliation_result" not in data
