@@ -1,0 +1,8 @@
+# PDF Invoice Extraction — generated artifacts
+queue.db
+*.pyc
+__pycache__/
+.pytest_cache/
+results/
+sample_data/done/
+sample_data/failed/

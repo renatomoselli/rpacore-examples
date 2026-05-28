@@ -1,0 +1,7 @@
+max_retries = 2
+log_level = "INFO"
+db_path = "queue.db"
+sample_data_dir = "sample_data"
+results_dir = "results"
+output_csv = "results/output.csv"
+max_pages = 100
