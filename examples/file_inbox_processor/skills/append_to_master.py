@@ -5,6 +5,8 @@ from pathlib import Path
 
 from oref import ProcessContext, Skill, SystemException
 
+from skills._path_utils import validate_contained_path
+
 MASTER_COLUMNS = ("source_file", "branch_id", "date", "revenue", "headcount", "revenue_per_headcount")
 
 
@@ -26,7 +28,17 @@ class AppendToMaster(Skill):
         path = Path(master_csv)
         path.parent.mkdir(parents=True, exist_ok=True)
         write_header = not path.exists() or path.stat().st_size == 0
-        source_file = Path(str(ctx.data.get("report_file", ctx.data.get("file_path", "")))).name
+        raw_source = ctx.data.get("report_file") or ctx.data.get("file_path", "")
+        if not isinstance(raw_source, str) or not raw_source:
+            raise SystemException("No source file available", action=self.name)
+
+        # Skip validation when inbox_dir is absent (unit tests); production always provides it.
+        inbox_dir = ctx.config.get("inbox_dir")
+        if isinstance(inbox_dir, str) and inbox_dir:
+            source_path = validate_contained_path(raw_source, inbox_dir, action=self.name)
+        else:
+            source_path = Path(raw_source)
+        source_file = source_path.name
 
         if source_file and _already_appended(path, source_file):
             ctx.data["master_csv"] = str(path)

@@ -11,11 +11,12 @@ from oref import (
     QueueItem,
     QueueStatus,
     SqliteQueue,
+    Status,
     Transaction,
     run_queue_loop,
 )
 
-from main import build_transaction, scan_inbox
+from main import _move_failed_file, build_transaction, save_transaction, scan_inbox
 from skills.append_to_master import AppendToMaster
 
 
@@ -53,11 +54,12 @@ def test_queue_workflow_processes_valid_files_and_moves_invalid_file(tmp_path):
     assert scan_inbox(config, queue) == 2
 
     def after_item(item: QueueItem, transaction, error):
-        if transaction is None or transaction.status.name != "SUCCESSFUL":
-            file_path = Path(str(item.payload["file_path"]))
-            if file_path.exists():
-                failed.mkdir(parents=True, exist_ok=True)
-                file_path.rename(failed / file_path.name)
+        if transaction is not None:
+            save_transaction(transaction, db_path=str(config["db_path"]))
+            if transaction.status is not Status.SUCCESSFUL:
+                _move_failed_file(item, config)
+        elif error is not None:
+            _move_failed_file(item, config)
 
     summary = run_queue_loop(
         queue,

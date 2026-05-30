@@ -55,6 +55,27 @@ def _validate_config(config: dict) -> None:
     if not isinstance(queue_config, dict):
         raise SystemException("Missing required [queue] config section", action="main")
 
+    for key in ("db_path", "claim_timeout", "max_retries"):
+        if key not in queue_config:
+            raise SystemException(
+                f"Missing required [queue] config key: {key}", action="main"
+            )
+
+    if not isinstance(queue_config["db_path"], str) or not queue_config["db_path"]:
+        raise SystemException(
+            "Config key 'queue.db_path' must be a non-empty string", action="main"
+        )
+    if not isinstance(queue_config["claim_timeout"], int) or queue_config["claim_timeout"] <= 0:
+        raise SystemException(
+            f"Config key 'queue.claim_timeout' must be a positive int, got {queue_config['claim_timeout']!r}",
+            action="main",
+        )
+    if not isinstance(queue_config["max_retries"], int) or queue_config["max_retries"] < 0:
+        raise SystemException(
+            f"Config key 'queue.max_retries' must be a non-negative int, got {queue_config['max_retries']!r}",
+            action="main",
+        )
+
 
 def scan_inbox(config: dict, queue: SqliteQueue) -> int:
     """Add new CSV files in the inbox as queue items."""
@@ -93,14 +114,25 @@ def build_transaction(item: QueueItem) -> Transaction:
 
 def _active_queue_references(queue: SqliteQueue) -> set[str]:
     """Return queue references that are not terminal yet."""
-    conn = sqlite3.connect(queue.db_path)
-    try:
+    with sqlite3.connect(queue.db_path) as conn:
         rows = conn.execute(
             "SELECT reference FROM queue_items WHERE status IN ('pending', 'in_progress')"
         ).fetchall()
-    finally:
-        conn.close()
     return {str(row[0]) for row in rows}
+
+
+def _safe_resolve(file_path: str, allowed_base: str) -> Path | None:
+    """Resolve *file_path* and return it only if it lives under *allowed_base*.
+
+    Returns ``None`` when the path is outside the allowed directory or when
+    *allowed_base* is empty.
+    """
+    if not allowed_base:
+        return None
+    resolved = Path(file_path).resolve()
+    if resolved.is_relative_to(Path(allowed_base).resolve()):
+        return resolved
+    return None
 
 
 def _move_failed_file(item: QueueItem, config: dict) -> None:
@@ -109,7 +141,15 @@ def _move_failed_file(item: QueueItem, config: dict) -> None:
     if not isinstance(file_path, str) or not isinstance(failed_dir, str):
         return
 
-    src = Path(file_path)
+    inbox_dir = config.get("inbox_dir")
+    if isinstance(inbox_dir, str):
+        src = _safe_resolve(file_path, inbox_dir)
+        if src is None:
+            logger.warning("Invalid source file path: %s", file_path)
+            return
+    else:
+        src = Path(file_path)
+
     if not src.exists():
         return
 
@@ -121,6 +161,11 @@ def _move_failed_file(item: QueueItem, config: dict) -> None:
 def main() -> None:
     config = load_config("config.toml")
     _validate_config(config)
+    allowed_levels = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+    if config["log_level"] not in allowed_levels:
+        raise SystemException(
+            f"Invalid log_level: {config['log_level']!r}", action="main"
+        )
     configure_logger(level=str(config["log_level"]))
 
     for key in ("done_dir", "failed_dir"):

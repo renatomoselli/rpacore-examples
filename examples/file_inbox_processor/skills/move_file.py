@@ -5,6 +5,8 @@ from pathlib import Path
 
 from oref import ProcessContext, Skill, Status, SystemException
 
+from skills._path_utils import validate_contained_path
+
 
 class MoveFile(Skill):
     """Move successfully processed files to the done folder."""
@@ -21,7 +23,12 @@ class MoveFile(Skill):
         if not isinstance(done_dir, str) or not done_dir:
             raise SystemException("Config key 'done_dir' must be a non-empty string", action=self.name)
 
-        src = Path(source)
+        # Skip validation when inbox_dir is absent (unit tests); production always provides it.
+        inbox_dir = ctx.config.get("inbox_dir")
+        if isinstance(inbox_dir, str) and inbox_dir:
+            src = validate_contained_path(source, inbox_dir, action=self.name)
+        else:
+            src = Path(source)
         dst_dir = Path(done_dir)
         dst_dir.mkdir(parents=True, exist_ok=True)
         dst = dst_dir / src.name

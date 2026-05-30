@@ -21,6 +21,11 @@ class ComputeDerivedFields(Skill):
         headcount = report["headcount"]
         if not isinstance(revenue, Decimal) or not isinstance(headcount, int):
             raise SystemException("Validated report has unexpected types", action=self.name)
+        if headcount == 0:
+            raise SystemException(
+                "headcount must be greater than zero for revenue_per_headcount calculation",
+                action=self.name,
+            )
 
         revenue_per_headcount = (revenue / Decimal(headcount)).quantize(
             Decimal("0.01"),
