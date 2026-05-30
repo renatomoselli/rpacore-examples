@@ -85,7 +85,7 @@ def test_load_csv_expressions_quotes():
 def test_save_results():
     """Test save_results saves to CSV."""
     results = [
-        {'expression': '2+2', 'expected': '4', 'actual': '4', 'passed': True},
+        {'expression': '2+2', 'expected_result': '4', 'actual': '4', 'passed': True},
     ]
     
     with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
@@ -100,5 +100,27 @@ def test_save_results():
         assert 'expression' in content
         assert 'passed' in content
         assert '2+2' in content
+        assert 'expected_result' in content
+    finally:
+        os.unlink(temp_path)
+
+
+def test_load_csv_expressions_missing_file():
+    """Test load_csv_expressions raises ValueError for missing file."""
+    import pytest
+    with pytest.raises(ValueError, match="Unable to open CSV file"):
+        load_csv_expressions("/nonexistent.csv")
+
+
+def test_load_csv_expressions_missing_columns():
+    """Test load_csv_expressions raises ValueError for missing columns."""
+    import pytest
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+        f.write('wrong,columns\n1,2\n')
+        temp_path = f.name
+    
+    try:
+        with pytest.raises(ValueError, match="Missing required columns"):
+            load_csv_expressions(temp_path)
     finally:
         os.unlink(temp_path)

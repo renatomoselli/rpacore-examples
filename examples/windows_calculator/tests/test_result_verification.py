@@ -1,7 +1,7 @@
 """Tests for result verification module."""
+from calculator_utils import CalculatorResult
 from calculator_test_runner import (
     CalculatorTestRunner,
-    CalculatorResult,
 )
 import tempfile
 import os
@@ -115,6 +115,23 @@ def test_calculatortestrunner_run_tests_result_match():
     assert results[0].actual == "4"
 
 
+def test_calculatortestrunner_run_tests_type_expression_raises():
+    """Test run_tests records failure when type_expression raises."""
+    runner = CalculatorTestRunner()
+    runner.interactor.launch = lambda: True
+    def raise_error(expr):
+        raise RuntimeError("typing failed")
+    runner.interactor.type_expression = raise_error
+    runner.interactor.close = lambda: None
+    
+    expressions = [{"expression": "2+2", "expected_result": "4"}]
+    results = runner.run_tests(expressions)
+    
+    assert len(results) == 1
+    assert results[0].passed is False
+    assert results[0].actual is None
+
+
 def test_calculatortestrunner_run_tests_exception_records_failure():
     """Test run_tests records exceptions as failures."""
     runner = CalculatorTestRunner()
@@ -188,3 +205,23 @@ def test_calculatortestrunner_save_report():
         assert '2+2' in content
     finally:
         os.unlink(temp_path)
+
+
+def test_calculatortestrunner_run_tests_get_result_raises():
+    """Test run_tests records failure when get_result raises."""
+    runner = CalculatorTestRunner()
+    runner.interactor.launch = lambda: True
+    runner.interactor.type_expression = lambda expr: expr
+
+    def raise_error():
+        raise RuntimeError("reading failed")
+
+    runner.interactor.get_result = raise_error
+    runner.interactor.close = lambda: None
+
+    expressions = [{"expression": "2+2", "expected_result": "4"}]
+    results = runner.run_tests(expressions)
+
+    assert len(results) == 1
+    assert results[0].passed is False
+    assert results[0].actual is None

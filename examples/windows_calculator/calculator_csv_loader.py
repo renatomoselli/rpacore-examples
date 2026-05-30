@@ -19,35 +19,41 @@ def load_csv_expressions(csv_path: str) -> List[Dict[str, Any]]:
     
     Returns:
         List of dictionaries with 'expression' and 'expected_result' keys.
+    
+    Raises:
+        ValueError: If the file is missing or lacks required columns.
     """
-    if not validate_csv_file(csv_path):
-        raise ValueError(f"Invalid CSV file: {csv_path}")
-
+    try:
+        f = open(csv_path, 'r', newline='', encoding='utf-8')
+    except OSError as exc:
+        raise ValueError(f"Unable to open CSV file {csv_path}: {exc}") from exc
+    
     expressions = []
     
-    with open(csv_path, 'r', newline='', encoding='utf-8') as f:
+    with f:
         reader = csv.DictReader(f)
         
+        required_columns = {'expression', 'expected_result'}
+        actual_columns = set(reader.fieldnames) if reader.fieldnames else set()
+        if not required_columns.issubset(actual_columns):
+            missing = required_columns - actual_columns
+            raise ValueError(f"Missing required columns: {missing}")
+        
         for row_num, row in enumerate(reader, start=2):  # Start at 2 (header is row 1)
-            try:
-                expression = row.get('expression', '').strip()
-                expected_result = row.get('expected_result', '').strip()
-                
-                if not expression:
-                    logger.warning(f"Row {row_num}: Empty expression, skipping")
-                    continue
-                
-                expressions.append({
-                    'expression': expression,
-                    'expected_result': expected_result,
-                    'row': row_num
-                })
-                
-            except Exception as e:
-                logger.error(f"Row {row_num}: Failed to parse: {e}")
+            expression = row.get('expression', '').strip()
+            expected_result = row.get('expected_result', '').strip()
+            
+            if not expression:
+                logger.warning("Row %d: Empty expression, skipping", row_num)
                 continue
+            
+            expressions.append({
+                'expression': expression,
+                'expected_result': expected_result,
+                'row': row_num
+            })
     
-    logger.info(f"Loaded {len(expressions)} expressions from {csv_path}")
+    logger.info("Loaded %d expressions from %s", len(expressions), csv_path)
     return expressions
 
 
@@ -69,16 +75,13 @@ def validate_csv_file(csv_path: str) -> bool:
             
             if not required_columns.issubset(actual_columns):
                 missing = required_columns - actual_columns
-                logger.error(f"Missing required columns: {missing}")
+                logger.error("Missing required columns: %s", missing)
                 return False
             
             return True
             
-    except FileNotFoundError:
-        logger.error(f"CSV file not found: {csv_path}")
-        return False
-    except Exception as e:
-        logger.error(f"Failed to validate CSV: {e}")
+    except (OSError, UnicodeDecodeError, csv.Error) as e:
+        logger.error("Failed to validate CSV: %s", e)
         return False
 
 
@@ -89,7 +92,7 @@ def save_results(results: List[Dict[str, Any]], output_path: str) -> None:
         results: List of result dictionaries with 'expression', 'actual', 'expected', 'passed' keys.
         output_path: Path to the output CSV file.
     """
-    fieldnames = ['expression', 'expected', 'actual', 'passed']
+    fieldnames = ['expression', 'expected_result', 'actual', 'passed']
     
     try:
         with open(output_path, 'w', newline='', encoding='utf-8') as f:
@@ -97,7 +100,7 @@ def save_results(results: List[Dict[str, Any]], output_path: str) -> None:
             writer.writeheader()
             writer.writerows(results)
     except OSError as e:
-        logger.error(f"Failed to save results to {output_path}: {e}")
+        logger.error("Failed to save results to %s: %s", output_path, e)
         raise
 
 

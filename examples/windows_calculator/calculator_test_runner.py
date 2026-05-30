@@ -4,28 +4,14 @@ This module orchestrates the test execution, handles exceptions, and generates r
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from dataclasses import dataclass
 import logging
 import sys
 
-from calculator_csv_loader import load_csv_expressions, save_results, validate_csv_file
+from calculator_utils import CalculatorResult  # noqa: F401 — re-export for backward compat
+from calculator_csv_loader import load_csv_expressions, save_results
 from calculator_calculator import CalculatorInteractor
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class CalculatorResult:
-    """Result of a single test expression."""
-
-    expression: str
-    expected: str
-    actual: Optional[str]
-    passed: bool
-
-    def __repr__(self) -> str:
-        status = "PASS" if self.passed else "FAIL"
-        return f"CalculatorResult(expression='{self.expression}', status={status})"
 
 
 class CalculatorTestRunner:
@@ -70,8 +56,8 @@ class CalculatorTestRunner:
                     expression = expr_data['expression']
                     expected = expr_data['expected_result']
 
-                    logger.info(f"Testing expression {idx + 1}/{len(expressions)}: {expression}")
-                    logger.debug(f"Expression {idx + 1}: {expression}")
+                    logger.info("Testing expression %d/%d: %s", idx + 1, len(expressions), expression)
+                    logger.debug("Expression %d: %s", idx + 1, expression)
 
                     # Type the expression
                     self.interactor.type_expression(expression)
@@ -80,7 +66,7 @@ class CalculatorTestRunner:
                     actual = self.interactor.get_result()
 
                     if actual is None:
-                        logger.error(f"Expression {idx + 1}: Could not get result")
+                        logger.error("Expression %d: Could not get result", idx + 1)
                         result = CalculatorResult(
                             expression=expression,
                             expected=expected,
@@ -88,7 +74,7 @@ class CalculatorTestRunner:
                             passed=False
                         )
                     elif actual == expected:
-                        logger.info(f"Expression {idx + 1}: PASS")
+                        logger.info("Expression %d: PASS", idx + 1)
                         result = CalculatorResult(
                             expression=expression,
                             expected=expected,
@@ -96,7 +82,7 @@ class CalculatorTestRunner:
                             passed=True
                         )
                     else:
-                        logger.error(f"Expression {idx + 1}: FAIL - Expected '{expected}', got '{actual}'")
+                        logger.error("Expression %d: FAIL - Expected '%s', got '%s'", idx + 1, expected, actual)
                         result = CalculatorResult(
                             expression=expression,
                             expected=expected,
@@ -108,12 +94,12 @@ class CalculatorTestRunner:
 
                     # Fail-fast: stop on first failure
                     if fail_fast and not result.passed:
-                        logger.info(f"Stopping after failure on expression {idx + 1}: {expression}")
+                        logger.info("Stopping after failure on expression %d: %s", idx + 1, expression)
                         break
 
                 except Exception as e:
-                    logger.error(f"Expression {idx + 1}: Exception: {e}")
-                    logger.debug(f"Exception details: {type(e).__name__}: {str(e)}")
+                    logger.error("Expression %d: Exception: %s", idx + 1, e)
+                    logger.debug("Exception details: %s: %s", type(e).__name__, str(e))
                     # Record failure but continue
                     result = CalculatorResult(
                         expression=expressions[idx]['expression'],
@@ -123,15 +109,16 @@ class CalculatorTestRunner:
                     )
                     self.results.append(result)
                     if fail_fast:
-                        logger.info(f"Stopping after exception on expression {idx + 1}")
+                        logger.info("Stopping after exception on expression %d", idx + 1)
                         break
 
         finally:
             self.interactor.close()
 
-        logger.info(f"Test run complete. {sum(1 for r in self.results if r.passed)} passed, "
-                   f"{sum(1 for r in self.results if not r.passed)} failed")
-        logger.debug(f"Total results: {len(self.results)}, passed: {sum(1 for r in self.results if r.passed)}")
+        passed_count = sum(1 for r in self.results if r.passed)
+        failed_count = len(self.results) - passed_count
+        logger.info("Test run complete. %d passed, %d failed", passed_count, failed_count)
+        logger.debug("Total results: %d, passed: %d", len(self.results), passed_count)
 
         return self.results
 
@@ -186,15 +173,15 @@ class CalculatorTestRunner:
         results_data = [
             {
                 'expression': r.expression,
-                'expected': r.expected,
+                'expected_result': r.expected,
                 'actual': r.actual or '',
-                'passed': str(r.passed)
+                'passed': r.passed
             }
             for r in self.results
         ]
 
         save_results(results_data, output_path)
-        logger.info(f"Results saved to {output_path}")
+        logger.info("Results saved to %s", output_path)
 
 
 def main():
@@ -236,12 +223,9 @@ def main():
 
 
     # Load expressions
-    if not validate_csv_file(args.csv_file):
-        sys.exit(1)
-
     try:
         expressions = load_csv_expressions(args.csv_file)
-    except OSError as e:
+    except (ValueError, OSError) as e:
         logger.error("Failed to load CSV: %s", e)
         sys.exit(1)
 

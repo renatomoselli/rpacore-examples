@@ -181,6 +181,7 @@ ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 *.msu
+NUL
 
 # Linux
 *.orig

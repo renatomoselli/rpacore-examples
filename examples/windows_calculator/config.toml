@@ -1,0 +1,13 @@
+engine_max_retries = 1
+log_level = "INFO"
+
+input_dir = "input"
+output_dir = "output"
+done_dir = "done"
+failed_dir = "failed"
+calculator_path = "C:\\Windows\\System32\\calc.exe"
+
+[queue]
+db_path = "queue.db"
+claim_timeout = 30
+max_retries = 0
