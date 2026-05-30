@@ -1,12 +1,8 @@
 """Integration tests for the full JSON Event Log Processor workflow."""
 
 import json
-import sys
 import tempfile
 from pathlib import Path
-
-# Add parent directory to path for importing skills
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from oref import Engine, ProcessContext, Status, Transaction, save_transaction
 from skills.load_json_file import LoadJsonFile

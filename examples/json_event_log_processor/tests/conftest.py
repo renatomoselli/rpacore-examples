@@ -1,6 +1,6 @@
-"""Pytest fixtures for JSON Event Log Processor tests."""
+"""Pytest fixtures for JSON Event Log Processor tests.
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
+Skills are importable directly because the project directory is on
+sys.path when run via ``python -m pytest`` from the project root, or
+when installed in editable mode (``pip install -e .``).
+"""

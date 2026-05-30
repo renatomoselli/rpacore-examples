@@ -77,3 +77,22 @@ class TestWriteOutput:
         with pytest.raises(SystemException) as exc_info:
             skill.execute(self.mock_ctx)
         assert "Missing current_file" in str(exc_info.value)
+
+    def test_writes_empty_jsonl_on_empty_events(self, tmp_path):
+        """Test that WriteOutput produces a valid but empty JSONL file. [Q15]"""
+        results_dir = str(tmp_path / "results")
+        Path(results_dir).mkdir()
+        self.mock_ctx.data = {
+            "normalized_events": [],
+            "current_file": str(tmp_path / "inbox" / "empty.json"),
+            "results_dir": results_dir,
+        }
+        Path(tmp_path / "inbox").mkdir()
+        (tmp_path / "inbox" / "empty.json").touch()
+
+        skill = WriteOutput("write_output", 4)
+        skill.execute(self.mock_ctx)
+
+        output_file = Path(results_dir) / "empty_cleaned.jsonl"
+        assert output_file.exists()
+        assert output_file.read_text(encoding="utf-8") == ""

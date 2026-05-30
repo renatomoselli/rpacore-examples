@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 
 from oref import ProcessContext, Skill, SystemException, get_logger
 
+from skills import SEVERITY_MAP
+
 logger = get_logger(__name__)
 
 
@@ -11,7 +13,7 @@ class NormalizeEvents(Skill):
     """Normalize and enrich events: parse timestamps, map severity, add computed fields."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        # Check for validation failure from ValidateEvents
+        # Check for validation failure from ValidateEvents  [Q12]
         if ctx.data.get("validation_failed"):
             raise SystemException(
                 "Validation failed — NormalizeEvents cannot proceed",
@@ -44,7 +46,9 @@ class NormalizeEvents(Skill):
         try:
             normalized_ts_str = timestamp_str.replace("Z", "+00:00")
             parsed_ts = datetime.fromisoformat(normalized_ts_str)
-            # Ensure all timestamps are UTC-aware for consistent output
+            # Naive timestamps are assumed to already be in UTC.
+            # This is the expected format for ISO 8601 timestamps from
+            # systems that emit UTC without an explicit offset.  [Q4]
             if parsed_ts.tzinfo is None:
                 parsed_ts = parsed_ts.replace(tzinfo=timezone.utc)
             else:
@@ -57,14 +61,22 @@ class NormalizeEvents(Skill):
             ) from exc
 
         # Map event_type to severity code (ValidateEvents guarantees valid value)
+        # Uses the shared SEVERITY_MAP constant [Q9].
         event_type = event["event_type"]
-        severity = {"info": "INFO", "warning": "WARNING", "error": "ERROR"}[event_type]
+        severity = SEVERITY_MAP[event_type]
 
         # Flatten payload (copy top-level keys)
         payload = event.get("payload")
         flattened_payload = {}
         if isinstance(payload, dict):
             flattened_payload = dict(payload)
+        elif payload is not None:
+            # Log warning when payload is present but not a dict  [Q10]
+            logger.warning(
+                "Event %s has non-dict payload (%s) — treating as empty",
+                event.get("event_id", "unknown"),
+                type(payload).__name__,
+            )
 
         # Build normalized event
         normalized = {

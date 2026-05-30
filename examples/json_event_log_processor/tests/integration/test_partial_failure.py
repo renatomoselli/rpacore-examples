@@ -1,12 +1,8 @@
 """Integration tests for partial failure scenarios."""
 
 import json
-import sys
 import tempfile
 from pathlib import Path
-
-# Add parent directory to path for importing skills
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from oref import Engine, ProcessContext, Status, Transaction, save_transaction
 from skills.load_json_file import LoadJsonFile
@@ -119,7 +115,6 @@ class TestPartialFailure:
             ]
             (Path(inbox_dir) / "events_002.json").write_text(json.dumps(invalid_events), encoding="utf-8")
 
-            shared_data = {}
             config = {
                 "max_retries": 0,
                 "log_level": "WARNING",
@@ -133,11 +128,11 @@ class TestPartialFailure:
             failed = 0
 
             for json_file in sorted(Path(inbox_dir).glob("*.json")):
-                shared_data["current_file"] = str(json_file)
-                shared_data["results_dir"] = results_dir
-                shared_data.pop("events", None)
-                shared_data.pop("normalized_events", None)
-                shared_data.pop("validation_failed", None)
+                # Fresh shared_data per file — matches main.py pattern
+                shared_data = {
+                    "current_file": str(json_file),
+                    "results_dir": results_dir,
+                }
 
                 file_tx = Transaction(
                     reference=f"json-file-{json_file.stem}",

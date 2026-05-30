@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "json-event-log-processor"
+version = "0.1.0"
+description = "Batch processor for JSON event logs using the OREF framework."
+requires-python = ">=3.12"
+dependencies = [
+    "oref==0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]

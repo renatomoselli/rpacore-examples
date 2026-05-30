@@ -1,7 +1,6 @@
 """Unit tests for the LoadJsonFile skill."""
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -87,3 +86,39 @@ class TestLoadJsonFile:
         skill.execute(self.mock_ctx)  # Should succeed — data is a list
 
         assert self.mock_ctx.data["events"] == [1, 2, 3]
+
+    def test_raises_on_scalar_json_value(self, tmp_path):
+        """Test that LoadJsonFile raises SystemException for scalar JSON values. [Q14]"""
+        test_file = tmp_path / "test_scalar.json"
+        test_file.write_text(json.dumps("just a string"), encoding="utf-8")
+
+        self.mock_ctx.data = {"current_file": str(test_file)}
+        skill = LoadJsonFile("load_json_file", 1)
+
+        with pytest.raises(SystemException) as exc_info:
+            skill.execute(self.mock_ctx)
+        assert "Expected JSON object or array" in str(exc_info.value)
+
+    def test_raises_on_scalar_json_number(self, tmp_path):
+        """Test that LoadJsonFile raises SystemException for JSON number. [Q14]"""
+        test_file = tmp_path / "test_number.json"
+        test_file.write_text(json.dumps(42), encoding="utf-8")
+
+        self.mock_ctx.data = {"current_file": str(test_file)}
+        skill = LoadJsonFile("load_json_file", 1)
+
+        with pytest.raises(SystemException) as exc_info:
+            skill.execute(self.mock_ctx)
+        assert "Expected JSON object or array" in str(exc_info.value)
+
+    def test_raises_on_scalar_json_null(self, tmp_path):
+        """Test that LoadJsonFile raises SystemException for JSON null. [Q14]"""
+        test_file = tmp_path / "test_null.json"
+        test_file.write_text(json.dumps(None), encoding="utf-8")
+
+        self.mock_ctx.data = {"current_file": str(test_file)}
+        skill = LoadJsonFile("load_json_file", 1)
+
+        with pytest.raises(SystemException) as exc_info:
+            skill.execute(self.mock_ctx)
+        assert "Expected JSON object or array" in str(exc_info.value)

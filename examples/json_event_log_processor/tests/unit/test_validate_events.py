@@ -123,3 +123,22 @@ class TestValidateEvents:
         with pytest.raises(BusinessException) as exc_info:
             skill.execute(self.mock_ctx)
         assert "is not an object" in str(exc_info.value)
+
+    def test_raises_on_empty_string_required_field(self):
+        """Test that ValidateEvents rejects falsy required field values. [Q20]"""
+        self.mock_ctx.data = {
+            "events": [
+                {
+                    "event_id": "",  # present but falsy
+                    "event_type": "info",
+                    "timestamp": "2024-01-01T00:00:00Z",
+                    "source": "test",
+                },
+            ]
+        }
+        skill = ValidateEvents("validate_events", 2)
+
+        with pytest.raises(BusinessException) as exc_info:
+            skill.execute(self.mock_ctx)
+        assert "missing required field: event_id" in str(exc_info.value)
+        assert self.mock_ctx.data["validation_failed"] is True
