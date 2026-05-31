@@ -1,0 +1,16 @@
+# Sample repos (created by create_sample_repos.py at runtime)
+sample_repos/
+
+# Runtime output from main.py
+health_report.jsonl
+health_report.summary.json
+
+# Transaction database
+oref.db
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Test caches
+.pytest_cache/

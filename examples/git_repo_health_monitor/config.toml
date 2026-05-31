@@ -1,0 +1,18 @@
+# Retry and logging
+max_retries = 2
+log_level = "INFO"
+
+# Database for transaction persistence
+db_path = "oref.db"
+
+# Repos to monitor (list of local filesystem paths)
+repos = [
+    "sample_repos/alpha",
+    "sample_repos/beta",
+]
+
+# Stale branch threshold (days)
+stale_branch_days = 30
+
+# Output: single JSONL file, one line per repo
+output_file = "health_report.jsonl"
