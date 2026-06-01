@@ -120,7 +120,7 @@ because the challenge site's progress is not restored across fresh sessions.
 python main.py
 
 # 2. Check transaction log
-sqlite3 oref.db "SELECT reference, status FROM transactions ORDER BY rowid;"
+sqlite3 rpacore.db "SELECT reference, status FROM transactions ORDER BY rowid;"
 
 # 3. Expected: 12 successful transactions
 ```
@@ -168,6 +168,6 @@ See `tests/README.md` for full documentation.
 
 ## Related
 
-- [O REF framework](https://github.com/oref-org/oref)
+- [RPA Core framework](https://github.com/oref-org/oref)
 - [RPACHallenge](https://www.rpachallenge.com/)
 

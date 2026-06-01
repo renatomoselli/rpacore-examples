@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from oref import SystemException
+from rpacore import SystemException
 from skills.write_error_report import WriteErrorReport
 
 
@@ -50,7 +50,7 @@ class TestWriteErrorReport:
         results_dir = str(tmp_path / "results")
         Path(results_dir).mkdir()
 
-        self.mock_ctx.config = {"db_path": str(tmp_path / "oref.db"), "results_dir": results_dir}
+        self.mock_ctx.config = {"db_path": str(tmp_path / "rpacore.db"), "results_dir": results_dir}
 
         with patch("skills.write_error_report.list_transactions") as mock_list:
             mock_list.return_value = [mock_tx, mock_failed_tx]
@@ -70,7 +70,7 @@ class TestWriteErrorReport:
         results_dir = str(tmp_path / "results")
         Path(results_dir).mkdir()
 
-        self.mock_ctx.config = {"db_path": str(tmp_path / "oref.db"), "results_dir": results_dir}
+        self.mock_ctx.config = {"db_path": str(tmp_path / "rpacore.db"), "results_dir": results_dir}
 
         with patch("skills.write_error_report.list_transactions") as mock_list:
             mock_list.return_value = []

@@ -4,7 +4,7 @@ import json
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from oref import BusinessException, ProcessContext, Skill, SystemException
+from rpacore import BusinessException, ProcessContext, Skill, SystemException
 
 from skills._utils import find_row_value as _find_row_value
 from skills._utils import get_timeout

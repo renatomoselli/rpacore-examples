@@ -1,4 +1,4 @@
-"""OREF orchestration for the Windows Calculator example.
+"""RPA Core orchestration for the Windows Calculator example.
 
 Scans an input directory for CSV expression files, builds a transaction
 per file, and runs the queue loop.
@@ -10,7 +10,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from oref import (
+from rpacore import (
     CredentialProvider,
     Engine,
     QueueItem,

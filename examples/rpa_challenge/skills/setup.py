@@ -6,7 +6,7 @@ import urllib.request
 from pathlib import Path
 import openpyxl
 from playwright.sync_api import sync_playwright
-from oref import ProcessContext, Skill, SystemException
+from rpacore import ProcessContext, Skill, SystemException
 
 from skills._utils import find_row_value as _find_row_value
 from skills._utils import get_timeout

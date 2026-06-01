@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-The `excel_reorganization` example follows the OREF conventions established in `rpa_challenge` and `json_event_log_processor` with **high adherence** to established patterns. Minor deviations exist but do not break the overall architecture.
+The `excel_reorganization` example follows the RPA Core conventions established in `rpa_challenge` and `json_event_log_processor` with **high adherence** to established patterns. Minor deviations exist but do not break the overall architecture.
 
 ---
 
@@ -279,7 +279,7 @@ Imports are organized as:
 1. `from __future__ import annotations`
 2. Standard library imports
 3. Third-party imports (`openpyxl`, `playwright`, etc.)
-4. Project imports (`oref`, `skills`, etc.)
+4. Project imports (`RPA Core`, `skills`, etc.)
 
 **Comparison:**
 - ✅ Matches `rpa_challenge/skills/row.py`
@@ -311,7 +311,7 @@ Imports are organized as:
 
 ## 5. Conclusion
 
-The `excel_reorganization` example demonstrates **strong adherence** to OREF conventions established in `rpa_challenge` and `json_event_log_processor`. The code is well-structured, follows the Skill pattern correctly, and uses appropriate exception types.
+The `excel_reorganization` example demonstrates **strong adherence** to RPA Core conventions established in `rpa_challenge` and `json_event_log_processor`. The code is well-structured, follows the Skill pattern correctly, and uses appropriate exception types.
 
 **Key improvements needed:**
 1. Fix config validation to check both presence and type

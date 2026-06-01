@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from oref import ProcessContext, Transaction
+from rpacore import ProcessContext, Transaction
 
 
 def make_context(data: dict | None = None, config: dict | None = None) -> ProcessContext:

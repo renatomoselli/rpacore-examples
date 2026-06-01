@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from oref import BusinessException, SystemException
+from rpacore import BusinessException, SystemException
 
 from skills.load_sales_data import LoadSalesData
 from tests.conftest import make_context

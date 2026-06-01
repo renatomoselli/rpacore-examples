@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from oref import BusinessException, ProcessContext, Skill, SystemException
+from rpacore import BusinessException, ProcessContext, Skill, SystemException
 
 REQUIRED_COLUMNS = ("branch_id", "date", "revenue", "headcount")
 

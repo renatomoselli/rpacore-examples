@@ -1,13 +1,13 @@
 # Windows Calculator
 
-Run arithmetic checks through the Windows Calculator app using OREF skills and pywinauto.
+Run arithmetic checks through the Windows Calculator app using RPA Core skills and pywinauto.
 
 ## Requirements
 
 - Windows with the built-in Calculator app available
 - Python 3.11+
 - UI automation access for the current desktop session
-- OREF installed (`pip install oref`)
+- RPA Core installed (`pip install rpacore`)
 
 ## Usage
 
@@ -52,7 +52,7 @@ done/                       <- processed files moved here
 failed/                     <- failed files moved here
 ```
 
-Each CSV file becomes one OREF transaction with 6 skills executed in sequence.
+Each CSV file becomes one RPA Core transaction with 6 skills executed in sequence.
 The queue ensures exactly-once processing per file.
 
 ## CSV Schema
@@ -70,4 +70,4 @@ python -m pytest tests/ -v
 ```
 
 Unit tests mock the Calculator interactor. Integration tests verify the
-full OREF skill pipeline with mocked automation.
+full RPA Core skill pipeline with mocked automation.

@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from oref import SystemException
+from rpacore import SystemException
 from skills.check_stale_branches import CheckStaleBranches
 
 

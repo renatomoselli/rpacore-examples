@@ -9,7 +9,7 @@ Pattern: Follows examples/json_event_log_processor/skills/validate_events.py:3-6
 from __future__ import annotations
 from pathlib import Path
 from openpyxl import load_workbook
-from oref import BusinessException, ProcessContext, Skill, SystemException, get_logger
+from rpacore import BusinessException, ProcessContext, Skill, SystemException, get_logger
 
 logger = get_logger(__name__)
 

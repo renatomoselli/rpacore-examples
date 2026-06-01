@@ -1,10 +1,10 @@
-"""OREF skill: write test results to a CSV report."""
+"""RPA Core skill: write test results to a CSV report."""
 from __future__ import annotations
 
 import csv
 from pathlib import Path
 
-from oref import ProcessContext, Skill, Status, SystemException
+from rpacore import ProcessContext, Skill, Status, SystemException
 
 
 class WriteReport(Skill):

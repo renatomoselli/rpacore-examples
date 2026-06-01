@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from oref import SystemException, Transaction
+from rpacore import SystemException, Transaction
 
 import main as reconciliation_main
 from skills.match_transaction import MatchTransaction
@@ -12,7 +12,7 @@ def test_main_fails_before_report_when_payment_produces_no_result(tmp_path, monk
     internal_csv = tmp_path / "internal.csv"
     bank_csv = tmp_path / "bank.csv"
     report_file = tmp_path / "output" / "report.csv"
-    db_path = tmp_path / "oref.db"
+    db_path = tmp_path / "rpacore.db"
 
     internal_csv.write_text(
         "\n".join(
@@ -70,7 +70,7 @@ def test_main_exits_nonzero_after_writing_report_for_discrepancies(tmp_path, mon
     internal_csv = tmp_path / "internal.csv"
     bank_csv = tmp_path / "bank.csv"
     report_file = tmp_path / "output" / "report.csv"
-    db_path = tmp_path / "oref.db"
+    db_path = tmp_path / "rpacore.db"
 
     internal_csv.write_text(
         "\n".join(

@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from oref import Engine, ProcessContext, Status, Transaction
+from rpacore import Engine, ProcessContext, Status, Transaction
 
 from skills.append_to_master import AppendToMaster
 

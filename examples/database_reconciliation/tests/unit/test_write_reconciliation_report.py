@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from decimal import Decimal
 
-from oref import Engine, ProcessContext, Status, Transaction
+from rpacore import Engine, ProcessContext, Status, Transaction
 
 from skills.write_reconciliation_report import WriteReconciliationReport
 

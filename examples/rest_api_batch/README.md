@@ -1,6 +1,6 @@
 # REST API Batch Processor
 
-An OREF (Open Robotic Enterprise Framework) example that demonstrates batch processing of REST API records.
+An RPA Core example that demonstrates batch processing of REST API records.
 
 ## Overview
 
@@ -8,7 +8,7 @@ This example fetches all posts from [JSONPlaceholder](https://jsonplaceholder.ty
 
 It demonstrates:
 - **Per-transaction processing**: Each post is processed as an independent transaction
-- **Retry on transient failures**: The OREF Engine retries skills that raise `SystemException`
+- **Retry on transient failures**: The RPA Core Engine retries skills that raise `SystemException`
 - **Business vs system exceptions**: Validation failures (`BusinessException`) are permanent; network errors (`SystemException`) are retried
 - **Crash recovery**: Transaction state is persisted to SQLite after each transaction
 
@@ -33,12 +33,12 @@ python main.py
 This will:
 1. Fetch all 100 posts from JSONPlaceholder
 2. For each post, fetch the corresponding user, validate, enrich, and write to `output.jsonl`
-3. Persist transaction state to `oref.db` for crash recovery
+3. Persist transaction state to `rpacore.db` for crash recovery
 
 ## Output
 
 - `output.jsonl` — one JSON object per line, each containing post and enriched user data
-- `oref.db` — SQLite database with transaction history
+- `rpacore.db` — SQLite database with transaction history
 
 ### Example output line:
 
@@ -53,7 +53,7 @@ Edit `config.toml`:
 ```toml
 max_retries = 2       # Number of retry attempts for transient failures
 log_level = "INFO"     # Logging level
-db_path = "oref.db"    # Transaction database path
+db_path = "rpacore.db"    # Transaction database path
 output_file = "output.jsonl"  # Output JSONL file path
 ```
 
@@ -95,4 +95,4 @@ requirements.txt     — Dependencies (requests)
 
 ## License
 
-This example is part of the oref-examples project.
+This example is part of the RPA Core examples project.

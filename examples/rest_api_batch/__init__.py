@@ -1,1 +1,1 @@
-"""REST API Batch Processor — OREF example."""
+"""REST API Batch Processor — RPA Core example."""

@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from oref import Engine, ProcessContext, Status, Transaction, save_transaction
+from rpacore import Engine, ProcessContext, Status, Transaction, save_transaction
 
 from main import build_payment_transaction
 from skills.load_bank_statement import LoadBankStatement
@@ -15,7 +15,7 @@ def test_full_workflow_writes_reconciliation_report(tmp_path):
     internal_csv = tmp_path / "internal.csv"
     bank_csv = tmp_path / "bank.csv"
     report_file = tmp_path / "output" / "report.csv"
-    db_path = tmp_path / "oref.db"
+    db_path = tmp_path / "rpacore.db"
 
     internal_csv.write_text(
         "\n".join(

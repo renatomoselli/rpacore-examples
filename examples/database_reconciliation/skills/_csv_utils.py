@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from oref import SystemException
+from rpacore import SystemException
 
 
 def read_csv(path: Path, required_columns: tuple[str, ...], action: str) -> list[dict[str, str]]:

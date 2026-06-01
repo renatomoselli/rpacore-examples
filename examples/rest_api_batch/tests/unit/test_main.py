@@ -2,7 +2,7 @@
 
 import pytest
 
-from oref import SystemException
+from rpacore import SystemException
 
 
 class TestValidateConfig:
@@ -15,7 +15,7 @@ class TestValidateConfig:
         config = {
             "max_retries": 2,
             "log_level": "INFO",
-            "db_path": "oref.db",
+            "db_path": "rpacore.db",
             "output_file": "output.jsonl",
         }
         _validate_config(config)  # Should not raise
@@ -42,7 +42,7 @@ class TestValidateConfig:
         config = {
             "max_retries": "not_an_int",  # should be int
             "log_level": "INFO",
-            "db_path": "oref.db",
+            "db_path": "rpacore.db",
             "output_file": "output.jsonl",
         }
 
@@ -58,7 +58,7 @@ class TestValidateConfig:
         config = {
             "max_retries": -1,
             "log_level": "INFO",
-            "db_path": "oref.db",
+            "db_path": "rpacore.db",
             "output_file": "output.jsonl",
         }
 
@@ -74,7 +74,7 @@ class TestValidateConfig:
         config = {
             "max_retries": 0,
             "log_level": "INFO",
-            "db_path": "oref.db",
+            "db_path": "rpacore.db",
             "output_file": "output.jsonl",
         }
         _validate_config(config)  # Should not raise

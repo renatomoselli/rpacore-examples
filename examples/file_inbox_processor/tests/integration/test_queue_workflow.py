@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from oref import (
+from rpacore import (
     BusinessException,
     Engine,
     EnvCredentialProvider,
@@ -39,7 +39,7 @@ def test_queue_workflow_processes_valid_files_and_moves_invalid_file(tmp_path):
     config = {
         "max_retries": 0,
         "log_level": "WARNING",
-        "db_path": str(tmp_path / "oref.db"),
+        "db_path": str(tmp_path / "rpacore.db"),
         "inbox_dir": str(inbox),
         "done_dir": str(done),
         "failed_dir": str(failed),

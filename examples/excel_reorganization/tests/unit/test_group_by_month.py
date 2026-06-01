@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from oref import BusinessException
+from rpacore import BusinessException
 
 from skills.group_by_month import GroupByMonth
 from tests.conftest import make_context

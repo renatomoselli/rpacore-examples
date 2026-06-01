@@ -12,7 +12,7 @@ import pytest
 # Add parent directory to path for importing skills
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from oref import Engine, ProcessContext, Status, Transaction, save_transaction
+from rpacore import Engine, ProcessContext, Status, Transaction, save_transaction
 from skills.check_working_tree import CheckWorkingTree
 from skills.capture_recent_commits import CaptureRecentCommits
 from skills.check_remotes import CheckRemotes
@@ -27,7 +27,7 @@ class TestFullWorkflow:
     def test_full_workflow_produces_correct_output(self):
         """Test the full pipeline: health checks per repo, then summary."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = str(Path(tmpdir) / "oref.db")
+            db_path = str(Path(tmpdir) / "rpacore.db")
             output_file = str(Path(tmpdir) / "health_report.jsonl")
 
             # Create a real git repo for testing
@@ -100,7 +100,7 @@ class TestFullWorkflow:
     def test_full_workflow_with_uncommitted_changes(self):
         """Test the full pipeline detects uncommitted changes as degraded."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = str(Path(tmpdir) / "oref.db")
+            db_path = str(Path(tmpdir) / "rpacore.db")
             output_file = str(Path(tmpdir) / "health_report.jsonl")
 
             # Create a real git repo
@@ -163,7 +163,7 @@ class TestFullWorkflow:
     def test_full_workflow_with_no_remotes(self):
         """Test the full pipeline detects no remotes as degraded."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = str(Path(tmpdir) / "oref.db")
+            db_path = str(Path(tmpdir) / "rpacore.db")
             output_file = str(Path(tmpdir) / "health_report.jsonl")
 
             # Create a real git repo without any remotes
@@ -225,7 +225,7 @@ class TestFullWorkflow:
     def test_full_workflow_writes_summary(self):
         """Test that WriteSummary produces a valid summary JSON file."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = str(Path(tmpdir) / "oref.db")
+            db_path = str(Path(tmpdir) / "rpacore.db")
             output_file = str(Path(tmpdir) / "health_report.jsonl")
 
             # Create a real git repo
@@ -317,7 +317,7 @@ class TestFullWorkflow:
     def test_aggregation_path_repo_health_records(self):
         """Test that repo_health_records accumulates across repos and feeds WriteSummary."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = str(Path(tmpdir) / "oref.db")
+            db_path = str(Path(tmpdir) / "rpacore.db")
             output_file = str(Path(tmpdir) / "health_report.jsonl")
 
             # Create two real git repos

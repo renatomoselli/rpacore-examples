@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill
-from oref import BusinessException, ProcessContext, Skill, SystemException, get_logger
+from rpacore import BusinessException, ProcessContext, Skill, SystemException, get_logger
 
 logger = get_logger(__name__)
 

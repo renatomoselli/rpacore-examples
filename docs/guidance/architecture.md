@@ -1,4 +1,4 @@
-# O REF Examples
+# RPA Core Examples
 
 ## Overview
 
@@ -33,7 +33,7 @@ graph TD
 
 | Directory | Role | Patterns | Dependencies |
 |-----------|------|----------|--------------|
-| `examples/rpa_challenge/` | Main application | One skill per form field, label-based selectors | `oref.Engine`, `playwright` |
+| `examples/rpa_challenge/` | Main application | One skill per form field, label-based selectors | `rpacore.Engine`, `playwright` |
 | `examples/rpa_challenge/skills/` | Skill definitions | One skill per autonomous action | `playwright`, `openpyxl` |
 | `examples/rpa_challenge/tests/` | Test pyramid | Mock-based unit tests + workflow tests | `unittest.mock`, `pytest` |
 
@@ -41,8 +41,8 @@ graph TD
 
 | Dependency | Pattern Impact |
 |------------|----------------|
-| `oref.Engine` | Retry logic, transaction orchestration |
-| `oref.Skill` | Atomic actions with `execute()` contract |
+| `rpacore.Engine` | Retry logic, transaction orchestration |
+| `rpacore.Skill` | Atomic actions with `execute()` contract |
 | `playwright.sync_api` | Label-based selectors, explicit timeouts |
 | `openpyxl` | Excel parsing with schema validation |
 | `sqlite3` | Transaction persistence and resume |

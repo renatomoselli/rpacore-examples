@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from oref import SystemException
+from rpacore import SystemException
 from skills.capture_recent_commits import CaptureRecentCommits
 
 

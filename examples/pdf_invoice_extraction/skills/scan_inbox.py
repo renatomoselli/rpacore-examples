@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from oref import ProcessContext, QueueItem, Skill, SystemException, get_logger
+from rpacore import ProcessContext, QueueItem, Skill, SystemException, get_logger
 
 logger = get_logger(__name__)
 

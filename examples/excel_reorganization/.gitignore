@@ -8,4 +8,4 @@ __pycache__/
 
 # Runtime artifacts
 output/
-oref.db
+rpacore.db

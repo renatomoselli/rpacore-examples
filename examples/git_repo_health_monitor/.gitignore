@@ -6,7 +6,7 @@ health_report.jsonl
 health_report.summary.json
 
 # Transaction database
-oref.db
+rpacore.db
 
 # Python bytecode
 __pycache__/

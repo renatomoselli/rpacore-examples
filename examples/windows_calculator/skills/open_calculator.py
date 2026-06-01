@@ -1,7 +1,7 @@
-"""OREF skill: launch the Windows Calculator application."""
+"""RPA Core skill: launch the Windows Calculator application."""
 from __future__ import annotations
 
-from oref import ProcessContext, Skill, SystemException
+from rpacore import ProcessContext, Skill, SystemException
 
 from calculator_utils import CalculatorInteractor
 

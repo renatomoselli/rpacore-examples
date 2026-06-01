@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from oref import ProcessContext, Skill, SystemException
+from rpacore import ProcessContext, Skill, SystemException
 
 from skills._csv_utils import read_csv
 

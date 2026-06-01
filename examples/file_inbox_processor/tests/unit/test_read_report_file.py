@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from oref import Engine, ProcessContext, Status, Transaction
+from rpacore import Engine, ProcessContext, Status, Transaction
 
 from skills.read_report_file import ReadReportFile
 

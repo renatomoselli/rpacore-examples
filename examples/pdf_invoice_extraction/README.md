@@ -1,6 +1,6 @@
 # PDF Invoice Extraction
 
-Queue-driven PDF invoice extraction example using `SqliteQueue` + `run_queue_loop` to demonstrate OREF's defining architectural feature.
+Queue-driven PDF invoice extraction example using `SqliteQueue` + `run_queue_loop` to demonstrate RPA Core's defining architectural feature.
 
 ## Overview
 

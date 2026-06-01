@@ -14,13 +14,13 @@ run:
 # Remove generated files
 clean:
 	@echo "Cleaning output files, database..."
-	rm -f health_report.jsonl health_report.summary.json oref.db
+	rm -f health_report.jsonl health_report.summary.json rpacore.db
 	@echo "Clean complete."
 
 # Remove only the transaction DB
 db_clean:
 	@echo "Removing transaction database..."
-	rm -f oref.db
+	rm -f rpacore.db
 	@echo "Database cleaned."
 
 # Run all tests

@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from oref import SystemException
+from rpacore import SystemException
 from skills.write_output import WriteOutput
 
 

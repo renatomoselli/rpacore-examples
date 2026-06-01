@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from oref import BusinessException, ProcessContext, SystemException, Transaction
+from rpacore import BusinessException, ProcessContext, SystemException, Transaction
 
 from skills.normalize_record import NormalizeRecord
 

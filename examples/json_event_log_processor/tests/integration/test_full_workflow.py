@@ -4,7 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from oref import Engine, ProcessContext, Status, Transaction, save_transaction
+from rpacore import Engine, ProcessContext, Status, Transaction, save_transaction
 from skills.load_json_file import LoadJsonFile
 from skills.validate_events import ValidateEvents
 from skills.normalize_events import NormalizeEvents
@@ -20,7 +20,7 @@ class TestFullWorkflow:
         with tempfile.TemporaryDirectory() as tmpdir:
             inbox_dir = str(Path(tmpdir) / "inbox")
             results_dir = str(Path(tmpdir) / "results")
-            db_path = str(Path(tmpdir) / "oref.db")
+            db_path = str(Path(tmpdir) / "rpacore.db")
 
             Path(inbox_dir).mkdir()
             Path(results_dir).mkdir()

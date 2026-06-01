@@ -5,10 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "json-event-log-processor"
 version = "0.1.0"
-description = "Batch processor for JSON event logs using the OREF framework."
+description = "Batch processor for JSON event logs using the RPA Core framework."
 requires-python = ">=3.12"
 dependencies = [
-    "oref==0.1.0",
+    "rpacore==0.1.0",
 ]
 
 [project.optional-dependencies]

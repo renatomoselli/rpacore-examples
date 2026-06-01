@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from oref import ProcessContext, Skill, SystemException
+from rpacore import ProcessContext, Skill, SystemException
 
 from skills._path_utils import validate_contained_path
 

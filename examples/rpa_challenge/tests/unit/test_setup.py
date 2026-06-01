@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 import openpyxl
 import pytest
-from oref import ProcessContext, Transaction, SystemException
+from rpacore import ProcessContext, Transaction, SystemException
 
 from skills.setup import (
     OpenChallengePage,

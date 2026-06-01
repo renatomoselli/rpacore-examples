@@ -1,11 +1,11 @@
-"""Integration test: full OREF workflow with mocked Calculator."""
+"""Integration test: full RPA Core workflow with mocked Calculator."""
 from __future__ import annotations
 
 import csv
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from oref import Engine, ProcessContext, Status, Transaction
+from rpacore import Engine, ProcessContext, Status, Transaction
 
 from skills.open_calculator import OpenCalculator
 from skills.load_expressions import LoadExpressions

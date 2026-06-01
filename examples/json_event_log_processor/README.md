@@ -1,6 +1,6 @@
 # JSON Event Log Processor
 
-An OREF (Open Real-time Event Framework) example that processes JSON event log files through a batch pipeline.
+An RPA Core example that processes JSON event log files through a batch pipeline.
 
 ## Overview
 
@@ -26,14 +26,14 @@ results/                  # Output: normalized JSONL files
   ├── events_001_cleaned.jsonl
   └── events_002_cleaned.jsonl
 
-oref.db                   # SQLite database tracking transaction status
+rpacore.db                   # SQLite database tracking transaction status
 error_report.json         # Summary of failed transactions
 ```
 
 ## Prerequisites
 
 - Python 3.9+
-- `oref` package installed (`pip install oref`)
+- `rpacore` package installed (`pip install rpacore`)
 
 ## Setup
 
@@ -57,7 +57,7 @@ python main.py
 This will:
 1. Process all `.json` files in the `inbox/` folder
 2. Output normalized JSONL files to the `results/` folder
-3. Write transaction history to `oref.db`
+3. Write transaction history to `rpacore.db`
 4. Generate `results/error_report.json` with failure details
 
 ## Expected Behavior
@@ -163,7 +163,7 @@ python -m pytest tests/integration/ -v
 
 1. **Validation short-circuit**: Unlike the `rest_api_batch` example where `BusinessException` doesn't stop execution, this pipeline uses a `validation_failed` flag to stop processing on validation errors.
 2. **JSONL output**: Each normalized event is written as a single JSON line, suitable for streaming and log analysis tools.
-3. **Per-file transactions**: Each input file is processed as a separate OREF transaction, enabling partial failure handling.
+3. **Per-file transactions**: Each input file is processed as a separate RPA Core transaction, enabling partial failure handling.
 4. **UTC normalization**: All timestamps are normalized to UTC with timezone offset format.
 
 ## License

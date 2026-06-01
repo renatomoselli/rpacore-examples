@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime
 
-from oref import BusinessException, ProcessContext, Skill, get_logger
+from rpacore import BusinessException, ProcessContext, Skill, get_logger
 
 logger = get_logger(__name__)
 

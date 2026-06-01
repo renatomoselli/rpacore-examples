@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from oref import ProcessContext, SystemException, Transaction
+from rpacore import ProcessContext, SystemException, Transaction
 
 from skills.parse_invoice import ParseInvoice
 

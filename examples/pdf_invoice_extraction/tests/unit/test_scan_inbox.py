@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oref import ProcessContext, SystemException, Transaction
+from rpacore import ProcessContext, SystemException, Transaction
 
 from skills.scan_inbox import ScanInbox
 

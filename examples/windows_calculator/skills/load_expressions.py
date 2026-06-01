@@ -1,10 +1,10 @@
-"""OREF skill: load test expressions from a CSV file."""
+"""RPA Core skill: load test expressions from a CSV file."""
 from __future__ import annotations
 
 import csv
 from pathlib import Path
 
-from oref import BusinessException, ProcessContext, Skill, SystemException
+from rpacore import BusinessException, ProcessContext, Skill, SystemException
 
 
 class LoadExpressions(Skill):

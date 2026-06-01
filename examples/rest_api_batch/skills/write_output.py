@@ -5,7 +5,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from oref import ProcessContext, Skill, SystemException, get_logger
+from rpacore import ProcessContext, Skill, SystemException, get_logger
 from skills import KEY_ENRICHED_RECORD
 
 logger = get_logger(__name__)

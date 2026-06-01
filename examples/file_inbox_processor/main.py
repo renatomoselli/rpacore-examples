@@ -4,7 +4,7 @@ import shutil
 import sqlite3
 from pathlib import Path
 
-from oref import (
+from rpacore import (
     Engine,
     EnvCredentialProvider,
     QueueItem,

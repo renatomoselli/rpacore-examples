@@ -10,7 +10,7 @@ from __future__ import annotations
 import csv
 import datetime
 from pathlib import Path
-from oref import BusinessException, ProcessContext, Skill, SystemException, get_logger
+from rpacore import BusinessException, ProcessContext, Skill, SystemException, get_logger
 
 logger = get_logger(__name__)
 

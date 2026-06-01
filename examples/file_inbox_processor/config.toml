@@ -1,6 +1,6 @@
 max_retries = 1
 log_level = "INFO"
-db_path = "oref.db"
+db_path = "rpacore.db"
 
 inbox_dir = "inbox"
 done_dir = "done"

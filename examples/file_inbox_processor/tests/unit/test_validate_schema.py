@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from oref import Engine, ProcessContext, Status, Transaction
+from rpacore import Engine, ProcessContext, Status, Transaction
 
 from skills.validate_schema import ValidateSchema
 

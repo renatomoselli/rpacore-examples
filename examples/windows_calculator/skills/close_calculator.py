@@ -1,9 +1,9 @@
-"""OREF skill: close the Calculator application (best-effort cleanup)."""
+"""RPA Core skill: close the Calculator application (best-effort cleanup)."""
 from __future__ import annotations
 
 import logging
 
-from oref import ProcessContext, Skill
+from rpacore import ProcessContext, Skill
 
 logger = logging.getLogger(__name__)
 

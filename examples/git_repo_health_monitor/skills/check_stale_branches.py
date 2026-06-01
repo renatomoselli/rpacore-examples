@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 from datetime import datetime, timezone, timedelta
 
-from oref import ProcessContext, Skill, SystemException, get_logger
+from rpacore import ProcessContext, Skill, SystemException, get_logger
 
 logger = get_logger(__name__)
 

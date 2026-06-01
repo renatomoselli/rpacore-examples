@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from oref import SystemException
+from rpacore import SystemException
 
 from main import _validate_config
 

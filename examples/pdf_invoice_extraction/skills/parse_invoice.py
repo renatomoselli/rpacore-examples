@@ -7,7 +7,7 @@ import re
 from datetime import datetime, date
 from typing import Any
 
-from oref import ProcessContext, Skill, SystemException, get_logger
+from rpacore import ProcessContext, Skill, SystemException, get_logger
 
 logger = get_logger(__name__)
 

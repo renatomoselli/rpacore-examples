@@ -20,8 +20,8 @@ sample:
 
 # Remove generated files
 clean:
-	@echo "Cleaning results/, oref.db, and inbox/..."
-	rm -rf results/ oref.db
+	@echo "Cleaning results/, rpacore.db, and inbox/..."
+	rm -rf results/ rpacore.db
 	rm -f inbox/*.json
 	@echo "Clean complete."
 

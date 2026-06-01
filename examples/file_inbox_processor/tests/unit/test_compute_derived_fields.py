@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from oref import Engine, ProcessContext, Status, Transaction
+from rpacore import Engine, ProcessContext, Status, Transaction
 
 from skills.compute_derived_fields import ComputeDerivedFields
 

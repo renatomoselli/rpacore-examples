@@ -4,7 +4,7 @@ import json
 
 import requests
 
-from oref import ProcessContext, Skill, SystemException
+from rpacore import ProcessContext, Skill, SystemException
 from skills import KEY_CURRENT_POST, KEY_CURRENT_USER
 
 USERS_URL = "https://jsonplaceholder.typicode.com/users"

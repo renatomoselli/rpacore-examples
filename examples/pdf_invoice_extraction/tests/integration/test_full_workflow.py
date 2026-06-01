@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from oref import (
+from rpacore import (
     Engine,
     EnvCredentialProvider,
     ProcessContext,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from oref import SystemException
+from rpacore import SystemException
 
 
 def validate_contained_path(file_path: str, allowed_base: str, action: str) -> Path:

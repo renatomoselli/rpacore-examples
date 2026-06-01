@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from oref import ProcessContext, Skill, SystemException, get_logger
+from rpacore import ProcessContext, Skill, SystemException, get_logger
 
 from skills import SEVERITY_MAP
 

@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
-from oref import (
+from rpacore import (
     BusinessException,
     ProcessContext,
     Skill,

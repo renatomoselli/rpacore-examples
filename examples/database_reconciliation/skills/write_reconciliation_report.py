@@ -4,7 +4,7 @@ import csv
 import tempfile
 from pathlib import Path
 
-from oref import ProcessContext, Skill, SystemException
+from rpacore import ProcessContext, Skill, SystemException
 
 REPORT_COLUMNS = (
     "payment_id",

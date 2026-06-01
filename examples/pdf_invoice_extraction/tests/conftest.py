@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from oref import SqliteQueue, Transaction
+from rpacore import SqliteQueue, Transaction
 
 
 @pytest.fixture

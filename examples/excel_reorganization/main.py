@@ -6,7 +6,7 @@ This script loads sales data from CSV, groups by month, and outputs Excel files.
 from __future__ import annotations
 import sys
 from pathlib import Path
-from oref import (
+from rpacore import (
     Engine,
     ProcessContext,
     Status,
@@ -93,7 +93,7 @@ def main() -> None:
     # Run transaction
     engine = Engine(max_retries=int(config["max_retries"]))
     engine.run(ProcessContext(transaction=tx, config=config, data=shared_data))
-    save_transaction(tx, db_path=config.get("db_path", "oref.db"))
+    save_transaction(tx, db_path=config.get("db_path", "rpacore.db"))
 
     if tx.status is not Status.SUCCESSFUL:
         failed = tx.failed_skills()

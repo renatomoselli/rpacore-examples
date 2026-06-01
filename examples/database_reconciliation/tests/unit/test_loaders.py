@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from oref import Engine, ProcessContext, Status, Transaction
+from rpacore import Engine, ProcessContext, Status, Transaction
 
 from skills.load_bank_statement import LoadBankStatement
 from skills.load_internal_records import LoadInternalRecords

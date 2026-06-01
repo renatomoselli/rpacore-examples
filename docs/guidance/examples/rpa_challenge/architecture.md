@@ -31,7 +31,7 @@ graph TD
 
 | Directory | Role | Patterns | Dependencies |
 |-----------|------|----------|--------------|
-| `main.py` | Transaction orchestrator | One transaction per row, reference tracking | `oref.Engine`, `sqlite3` |
+| `main.py` | Transaction orchestrator | One transaction per row, reference tracking | `rpacore.Engine`, `sqlite3` |
 | `skills/` | Skill definitions | One skill per form field, label-based selectors | `playwright`, `openpyxl` |
 | `tests/unit/` | Mock-based tests | No browser, setup_method fixtures | `unittest.mock` |
 | `tests/integration/` | Workflow tests | End-to-end with mocked browser | `pytest` |
@@ -40,8 +40,8 @@ graph TD
 
 | Dependency | Pattern Impact |
 |------------|----------------|
-| `oref.Engine` | Retry logic, transaction orchestration |
-| `oref.Skill` | Atomic actions with `execute()` contract |
+| `rpacore.Engine` | Retry logic, transaction orchestration |
+| `rpacore.Skill` | Atomic actions with `execute()` contract |
 | `playwright.sync_api` | Label-based selectors, explicit timeouts |
 | `openpyxl` | Excel parsing with schema validation |
 | `sqlite3` | Transaction persistence and resume |
@@ -53,7 +53,7 @@ graph TD
 Atomic browser automation steps with explicit timeouts and error handling.
 
 ```python
-from oref import ProcessContext, Skill, SystemException
+from rpacore import ProcessContext, Skill, SystemException
 
 class FillRow(Skill):
     def execute(self, ctx: ProcessContext) -> None:
@@ -143,7 +143,7 @@ engine.run(
 External vs data validation errors.
 
 ```python
-from oref import SystemException, BusinessException
+from rpacore import SystemException, BusinessException
 
 # SystemException - External failures (browser, network, file I/O)
 class SystemException(Exception):

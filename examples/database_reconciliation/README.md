@@ -1,6 +1,6 @@
 # Database Reconciliation
 
-An OREF example that reconciles internal payment records against a bank statement export.
+An RPA Core example that reconciles internal payment records against a bank statement export.
 
 ## Overview
 
@@ -21,10 +21,10 @@ sample_data/
 
 main.py
   setup transaction loads both CSV files
-  one OREF transaction per internal payment
+  one RPA Core transaction per internal payment
   final report transaction writes output/reconciliation_report.csv
 
-oref.db
+rpacore.db
   persisted transaction history
 ```
 
@@ -53,7 +53,7 @@ The sample data includes 20 internal payments, 17 exact matches, 2 amount mismat
 | `status` | `matched`, `amount_mismatch`, or `missing_from_bank` |
 | `reason_code` | Empty for matched records, otherwise the discrepancy reason |
 
-## OREF Behavior
+## RPA Core Behavior
 
 Each internal payment is one transaction. Matched payments complete successfully.
 Missing and mismatched payments raise `BusinessException`, so they are persisted as failed transactions with clear reason messages.

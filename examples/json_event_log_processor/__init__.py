@@ -1,1 +1,1 @@
-"""JSON Event Log Processor — OREF example."""
+"""JSON Event Log Processor — RPA Core example."""

@@ -16,7 +16,7 @@ import pytest
 # Add the parent directory to the path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from oref import ProcessContext, Transaction
+from rpacore import ProcessContext, Transaction
 from skills.setup import (
     OpenChallengePage,
     DownloadInputData,
@@ -35,7 +35,7 @@ def test_skip_in_ci():
     if os.environ.get("CI", "").lower() in ["true", "1"]:
         pytest.skip("Skipping integration test in CI environment")
     if not Path(__file__).parent.parent.exists():
-        pytest.skip("Running outside oref-examples directory")
+        pytest.skip("Running outside RPA Core examples directory")
 
 
 class TestFullWorkflow:

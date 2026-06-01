@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import re
 
-from oref import ProcessContext, Skill, SystemException
+from rpacore import ProcessContext, Skill, SystemException
 
 from skills._utils import get_timeout
 

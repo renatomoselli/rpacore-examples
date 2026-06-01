@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 from openpyxl import load_workbook
-from oref import BusinessException
+from rpacore import BusinessException
 
 from skills.build_output_sheets import BuildOutputSheets
 from tests.conftest import make_context

@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from oref import ProcessContext, SystemException, Transaction
+from rpacore import ProcessContext, SystemException, Transaction
 
 from skills.write_output import WriteOutput
 

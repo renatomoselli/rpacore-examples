@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from oref import BusinessException, ProcessContext, Skill
+from rpacore import BusinessException, ProcessContext, Skill
 
 from skills import ALLOWED_EVENT_TYPES
 

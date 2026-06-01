@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from oref import SystemException
+from rpacore import SystemException
 from skills.write_summary import WriteSummary
 
 class TestWriteSummary:

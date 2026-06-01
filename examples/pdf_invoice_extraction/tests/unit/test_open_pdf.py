@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from oref import ProcessContext, SystemException, Transaction
+from rpacore import ProcessContext, SystemException, Transaction
 
 from skills.open_pdf import OpenPdf
 

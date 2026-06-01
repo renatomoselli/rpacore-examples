@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 
-from oref import (
+from rpacore import (
     Engine,
     ProcessContext,
     Status,

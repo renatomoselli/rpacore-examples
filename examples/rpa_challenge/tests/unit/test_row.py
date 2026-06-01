@@ -7,7 +7,7 @@ These tests use mocked browser objects to avoid requiring actual Playwright.
 import pytest
 from unittest.mock import Mock, call, patch
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from oref import ProcessContext, Transaction, SystemException, BusinessException
+from rpacore import ProcessContext, Transaction, SystemException, BusinessException
 
 from skills.row import FillRow, SubmitRow, _FIELDS, _find_row_value
 

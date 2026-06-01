@@ -6,7 +6,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from oref import BusinessException, ProcessContext, SystemException, Transaction
+from rpacore import BusinessException, ProcessContext, SystemException, Transaction
 
 from skills.validate_invoice import ValidateInvoice
 

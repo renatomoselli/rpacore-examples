@@ -2,7 +2,7 @@
 
 import pytest
 
-from oref import BusinessException
+from rpacore import BusinessException
 from skills.validate_events import ValidateEvents
 
 

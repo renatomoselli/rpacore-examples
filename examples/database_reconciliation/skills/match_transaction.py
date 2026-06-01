@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from oref import ProcessContext, Skill, SystemException
+from rpacore import ProcessContext, Skill, SystemException
 
 
 class MatchTransaction(Skill):

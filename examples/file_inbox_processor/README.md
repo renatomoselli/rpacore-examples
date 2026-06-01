@@ -1,6 +1,6 @@
 # File Inbox Processor
 
-An OREF example that uses the queue path to process branch CSV reports dropped into an inbox folder.
+An RPA Core example that uses the queue path to process branch CSV reports dropped into an inbox folder.
 
 ## Overview
 
@@ -55,9 +55,9 @@ Files with business-rule violations are moved to `failed/`.
 `scan_inbox` enqueues files as `QueueItem` payloads with `file_path`.
 It skips files that already have pending or in-progress queue items, so a
 restart after scanning does not create duplicate active work.
-`run_queue_loop` claims each item atomically, runs the OREF transaction, and marks the queue item successful or failed.
+`run_queue_loop` claims each item atomically, runs the RPA Core transaction, and marks the queue item successful or failed.
 
-The OREF engine retries retryable `SystemException` failures within the transaction according to `max_retries`. Queue-level retries are disabled in this example because source files are moved after a terminal queue outcome.
+The RPA Core engine retries retryable `SystemException` failures within the transaction according to `max_retries`. Queue-level retries are disabled in this example because source files are moved after a terminal queue outcome.
 
 Invalid business data raises `BusinessException`, skips downstream processing, and is not retried. The master CSV includes `source_file` and will not append the same source file twice.
 

@@ -1,11 +1,11 @@
-# oref-examples
+# RPA Core examples
 
-User-facing example automations built on top of OREF.
+User-facing example automations built on top of RPA Core.
 
-This repository is intentionally separate from the main OREF framework repo.
+This repository is intentionally separate from the main RPA Core framework repo.
 It exists to validate the real consumer workflow:
 
-- install OREF as a package
+- install RPA Core as a package
 - write custom skills in a separate project
 - run automations without importing framework source files directly
 
@@ -14,18 +14,18 @@ It exists to validate the real consumer workflow:
 - complete example automations
 - beginner-friendly starter projects
 - examples that show recommended project structure
-- docs that explain how to use OREF from the outside
+- docs that explain how to use RPA Core from the outside
 
 ## What Does Not Belong Here
 
 - framework internals
 - framework tests
-- packaging logic for OREF itself
-- examples that only exist to support the OREF test suite
+- packaging logic for RPA Core itself
+- examples that only exist to support the RPA Core test suite
 
 ## Quick Start
 
-From the OREF repo, build a wheel:
+From the RPA Core repo, build a wheel:
 
 ```powershell
 cd d:\repos\oref
@@ -43,7 +43,7 @@ python -m venv .venv
 Install the latest built wheel:
 
 ```powershell
-pip install d:\repos\oref\dist\oref-0.1.0-py3-none-any.whl
+pip install d:\repos\oref\dist\rpacore-0.1.0-py3-none-any.whl
 ```
 
 Run the starter example:
@@ -71,4 +71,4 @@ The included example builds a transaction with three user-space skills:
 2. write a greeting file
 3. confirm the file contents
 
-This keeps the example small while still showing the OREF execution pattern.
+This keeps the example small while still showing the RPA Core execution pattern.

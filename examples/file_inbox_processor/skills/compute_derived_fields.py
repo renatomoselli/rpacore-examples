@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_UP
 
-from oref import ProcessContext, Skill, Status, SystemException
+from rpacore import ProcessContext, Skill, Status, SystemException
 
 
 class ComputeDerivedFields(Skill):

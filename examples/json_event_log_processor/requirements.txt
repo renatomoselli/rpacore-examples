@@ -1,2 +1,2 @@
-oref==0.1.0
+rpacore==0.1.0
 pytest>=7.0,<10

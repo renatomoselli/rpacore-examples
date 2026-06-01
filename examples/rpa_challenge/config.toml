@@ -3,7 +3,7 @@ max_retries = 2
 log_level = "INFO"
 
 # Database for transaction persistence
-db_path = "oref.db"
+db_path = "rpacore.db"
 
 # Screenshots for debugging (empty string disables)
 screenshot_dir = "screenshots"

@@ -1,5 +1,5 @@
 # =============================================================================
-# O REF Examples Repository - .gitignore
+# RPA Core Examples Repository - .gitignore
 # =============================================================================
 
 # =============================================================================
@@ -125,8 +125,8 @@ screenshots/
 # Transaction / Cache Files
 # =============================================================================
 
-# OREF transaction databases
-oref.db
+# RPA Core transaction databases
+rpacore.db
 *.db
 *.sqlite3
 
@@ -206,7 +206,7 @@ env/
 ENV/
 
 # =============================================================================
-# O REF Specific
+# RPA Core Specific
 # =============================================================================
 
 # Greeting files (SHOULD BE TRACKED)
@@ -250,6 +250,8 @@ coverage_html/
 # ============================================================================
 
 # Pi agent workspace
+AGENTS.md
+CLAUDE.md
 .pi/
 .pi
 

@@ -1,5 +1,5 @@
 max_retries = 1
 log_level = "INFO"
-db_path = "oref.db"
+db_path = "rpacore.db"
 screenshot_dir = ""
 credential_provider = "env"

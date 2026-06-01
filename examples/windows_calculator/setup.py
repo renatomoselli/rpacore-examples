@@ -12,7 +12,7 @@ setup(
     ],
     packages=["skills"],
     install_requires=[
-        "oref",
+        "rpacore",
         "pywinauto>=0.6.8",
     ],
     entry_points={

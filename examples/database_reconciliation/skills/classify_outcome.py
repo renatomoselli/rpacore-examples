@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from oref import BusinessException, ProcessContext, Skill, SystemException
+from rpacore import BusinessException, ProcessContext, Skill, SystemException
 
 
 class ClassifyOutcome(Skill):

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from oref import SystemException
+from rpacore import SystemException
 from skills.load_json_file import LoadJsonFile
 
 

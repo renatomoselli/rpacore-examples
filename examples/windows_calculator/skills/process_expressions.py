@@ -1,9 +1,9 @@
-"""OREF skill: type each expression into Calculator and compare results."""
+"""RPA Core skill: type each expression into Calculator and compare results."""
 from __future__ import annotations
 
 import logging
 
-from oref import ProcessContext, Skill, Status, SystemException
+from rpacore import ProcessContext, Skill, Status, SystemException
 
 from calculator_utils import CalculatorResult
 

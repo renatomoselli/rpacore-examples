@@ -2,7 +2,7 @@
 
 import pytest
 
-from oref import SystemException
+from rpacore import SystemException
 from skills.normalize_events import NormalizeEvents
 
 

@@ -6,7 +6,7 @@ These tests use mocked browser objects.
 
 import pytest
 from unittest.mock import Mock
-from oref import ProcessContext, Transaction, SystemException
+from rpacore import ProcessContext, Transaction, SystemException
 
 from skills.score import RecordScore
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 from openpyxl import Workbook
-from oref import SystemException
+from rpacore import SystemException
 
 from skills.verify_output import VerifyOutput
 from tests.conftest import make_context

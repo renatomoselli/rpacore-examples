@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from oref import BusinessException, ProcessContext, Skill, SystemException
+from rpacore import BusinessException, ProcessContext, Skill, SystemException
 from skills import KEY_CURRENT_POST, KEY_CURRENT_USER, KEY_ENRICHED_RECORD
 
 

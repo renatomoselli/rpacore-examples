@@ -1,11 +1,11 @@
-"""OREF skill: move processed CSV file to done directory."""
+"""RPA Core skill: move processed CSV file to done directory."""
 from __future__ import annotations
 
 import logging
 import shutil
 from pathlib import Path
 
-from oref import BusinessException, ProcessContext, Skill, Status, SystemException
+from rpacore import BusinessException, ProcessContext, Skill, Status, SystemException
 
 logger = logging.getLogger(__name__)
 

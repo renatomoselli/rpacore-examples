@@ -89,7 +89,7 @@ class TestFullWorkflow:
         """Test the full pipeline: fetch posts, fetch users, validate, enrich, write."""
         with tempfile.TemporaryDirectory() as tmpdir:
             output_file = str(Path(tmpdir) / "output.jsonl")
-            db_path = str(Path(tmpdir) / "oref.db")
+            db_path = str(Path(tmpdir) / "rpacore.db")
 
             shared_data = {}
             config = {
@@ -100,7 +100,7 @@ class TestFullWorkflow:
             }
 
             # --- Setup transaction: fetch posts ---
-            from oref import Engine, ProcessContext, Status, Transaction, save_transaction
+            from rpacore import Engine, ProcessContext, Status, Transaction, save_transaction
 
             setup_tx = Transaction(
                 reference="fetch-posts",
@@ -196,7 +196,7 @@ class TestFullWorkflow:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_file = str(Path(tmpdir) / "output.jsonl")
-            db_path = str(Path(tmpdir) / "oref.db")
+            db_path = str(Path(tmpdir) / "rpacore.db")
 
             shared_data = {}
             config = {
@@ -206,7 +206,7 @@ class TestFullWorkflow:
                 "output_file": output_file,
             }
 
-            from oref import (
+            from rpacore import (
                 Engine,
                 ProcessContext,
                 Status,

@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from oref import BusinessException, SystemException
+from rpacore import BusinessException, SystemException
 from skills.validate_post import ValidatePost
 
 
