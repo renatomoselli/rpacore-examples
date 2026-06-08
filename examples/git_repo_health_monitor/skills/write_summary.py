@@ -43,10 +43,34 @@ class WriteSummary(Skill):
         output_dir = str(Path(output_file).parent) or "."
 
         try:
-            # Atomic write: write to a temp file in the same directory, then
-            # os.replace() so readers never see a partial file.
-            # Pattern from json_event_log_processor/skills/write_output.py:45-67
-            fd, tmp_path = tempfile.mkstemp(
+            # --- JSONL file (one line per repo health record) ---
+            jsonl_path = output_file
+            jsonl_dir = str(Path(jsonl_path).parent) or "."
+
+            # Build lines: each health record as a JSON line
+            jsonl_lines = [json.dumps(record, ensure_ascii=False) for record in repo_health_records]
+
+            fd, tmp_jsonl = tempfile.mkstemp(
+                dir=jsonl_dir,
+                suffix=".tmp",
+                prefix=".jsonl_",
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    for line in jsonl_lines:
+                        f.write(line + "\n")
+                os.replace(tmp_jsonl, jsonl_path)
+            except BaseException:
+                try:
+                    os.unlink(tmp_jsonl)
+                except OSError:
+                    pass
+                raise
+
+            # --- Summary JSON (atomic write) ---
+            summary_path = str(Path(output_file).with_suffix(".summary.json"))
+
+            fd, tmp_summary = tempfile.mkstemp(
                 dir=output_dir,
                 suffix=".tmp",
                 prefix=".summary_",
@@ -54,17 +78,17 @@ class WriteSummary(Skill):
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     json.dump(summary, f, indent=2, ensure_ascii=False)
-                os.replace(tmp_path, summary_path)
+                os.replace(tmp_summary, summary_path)
             except BaseException:
-                # Clean up temp file on any failure (including KeyboardInterrupt)
                 try:
-                    os.unlink(tmp_path)
+                    os.unlink(tmp_summary)
                 except OSError:
                     pass
                 raise
 
             logger.info(
-                "Wrote summary report to %s (%d repos: %d healthy, %d degraded, %d unhealthy)",
+                "Wrote JSONL report to %s and summary to %s (%d repos: %d healthy, %d degraded, %d unhealthy)",
+                jsonl_path,
                 summary_path,
                 total,
                 healthy,
@@ -73,6 +97,6 @@ class WriteSummary(Skill):
             )
         except OSError as exc:
             raise SystemException(
-                f"Failed to write summary report to {summary_path}: {exc}",
+                f"Failed to write reports: {exc}",
                 action=self.name,
             ) from exc

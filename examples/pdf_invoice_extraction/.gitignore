@@ -4,5 +4,6 @@ queue.db
 __pycache__/
 .pytest_cache/
 results/
+sample_data/*.pdf
 sample_data/done/
 sample_data/failed/

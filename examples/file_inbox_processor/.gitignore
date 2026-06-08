@@ -1,0 +1,13 @@
+# Runtime-generated directories
+done/
+failed/
+output/
+
+# SQLite queue and transaction databases
+queue.db
+rpacore.db
+
+# Python bytecode and test caches
+__pycache__/
+*.pyc
+.pytest_cache/

@@ -3,7 +3,7 @@
 import json
 import os
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -18,8 +18,8 @@ class TestWriteSummary:
         self.mock_ctx = Mock()
         self.mock_ctx.data = {}
 
-    def test_writes_summary_json(self, tmp_path):
-        """Test that WriteSummary writes a summary JSON file atomically."""
+    def test_writes_jsonl_and_summary_json(self, tmp_path):
+        """Test that WriteSummary writes the JSONL report and summary JSON atomically."""
         output_file = str(tmp_path / "health_report.jsonl")
         self.mock_ctx.data = {
             "repo_health_records": [
@@ -45,6 +45,12 @@ class TestWriteSummary:
         skill = WriteSummary("write_summary", 1)
         skill.execute(self.mock_ctx)
 
+        assert Path(output_file).exists()
+        with open(output_file, encoding="utf-8") as f:
+            jsonl_records = [json.loads(line) for line in f]
+
+        assert jsonl_records == self.mock_ctx.data["repo_health_records"]
+
         summary_path = str(Path(output_file).with_suffix(".summary.json"))
         assert Path(summary_path).exists()
 
@@ -57,6 +63,8 @@ class TestWriteSummary:
         assert summary["degraded"] == 1
         assert summary["unhealthy"] == 1
         assert len(summary["repo_details"]) == 3
+        assert list(tmp_path.glob(".jsonl_*.tmp")) == []
+        assert list(tmp_path.glob(".summary_*.tmp")) == []
 
     def test_handles_empty_records(self, tmp_path):
         """Test that WriteSummary handles missing repo_health_records gracefully."""
@@ -77,6 +85,7 @@ class TestWriteSummary:
         assert summary["healthy"] == 0
         assert summary["degraded"] == 0
         assert summary["unhealthy"] == 0
+        assert Path(output_file).read_text(encoding="utf-8") == ""
 
     def test_raises_on_missing_output_file(self):
         """Test that WriteSummary raises when output_file is missing."""
@@ -106,8 +115,7 @@ class TestWriteSummary:
 
         with pytest.raises(SystemException) as exc_info:
             skill.execute(self.mock_ctx)
-        assert "Failed to write summary report" in str(exc_info.value)
+        assert "Failed to write reports" in str(exc_info.value)
 
-        # Temp file should be cleaned up
-        tmp_files = list(tmp_path.glob(".summary_*.tmp"))
-        assert len(tmp_files) == 0
+        assert list(tmp_path.glob(".jsonl_*.tmp")) == []
+        assert list(tmp_path.glob(".summary_*.tmp")) == []
