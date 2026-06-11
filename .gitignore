@@ -255,6 +255,12 @@ CLAUDE.md
 .pi/
 .pi
 
+# lean-ctx cache
+.lean-ctx/
+
+# Internal planning documents
+.internal/
+
 # RPiv workspace
 .rpiv/
 .rpiv
