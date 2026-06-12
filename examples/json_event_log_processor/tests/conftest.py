@@ -1,6 +1,11 @@
-"""Pytest fixtures for JSON Event Log Processor tests.
+"""Pytest fixtures for JSON Event Log Processor tests."""
 
-Skills are importable directly because the project directory is on
-sys.path when run via ``python -m pytest`` from the project root, or
-when installed in editable mode (``pip install -e .``).
-"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))

@@ -47,7 +47,7 @@ class WriteOutput(Skill):
                         "event_count": len(normalized_events),
                     },
                 )
-            except BaseException:
+            except Exception:
                 try:
                     os.unlink(tmp_path)
                 except OSError:

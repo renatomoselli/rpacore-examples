@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from rpacore import (
     Engine,
@@ -13,6 +15,7 @@ from rpacore import (
     load_config,
     save_transaction,
 )
+from rpacore.paths import resolve_config_paths
 
 from skills.load_json_file import LoadJsonFile
 from skills.validate_events import ValidateEvents
@@ -23,7 +26,7 @@ from skills.write_error_report import WriteErrorReport
 logger = get_logger(__name__)
 
 # The project root is the directory containing main.py.
-# All config paths (inbox_dir, results_dir, db_path) must resolve
+# All config paths (inbox_dir, results_dir, transaction_db_path) must resolve
 # under this root to prevent path traversal attacks.  [S1, S2]
 PROJECT_ROOT = Path(__file__).resolve().parent
 
@@ -37,6 +40,12 @@ def _validate_config(config: dict) -> None:
     Mutates *config* in-place: relative paths are replaced with resolved
     absolute paths after safety checks pass.
     """
+    if "transaction_db_path" not in config and "db_path" in config:
+        raise SystemException(
+            "Config key 'db_path' has been renamed to 'transaction_db_path'",
+            action="main",
+        )
+
     for key, expected_type in (
         ("max_retries", int),
         ("log_level", str),
@@ -75,12 +84,20 @@ def _validate_config(config: dict) -> None:
         )
 
     # Path-type keys: resolved safely under PROJECT_ROOT via resolve_config_paths  [S1, S2]
-    from rpacore.paths import resolve_config_paths
     resolve_config_paths(
         config,
         ["transaction_db_path", "inbox_dir", "results_dir"],
         base_dir=PROJECT_ROOT,
     )
+    for key in ("transaction_db_path", "inbox_dir", "results_dir"):
+        raw_path = Path(str(config[key]))
+        resolved = (raw_path if raw_path.is_absolute() else PROJECT_ROOT / raw_path).resolve()
+        if not resolved.is_relative_to(PROJECT_ROOT):
+            raise SystemException(
+                f"Config key '{key}' must resolve under {PROJECT_ROOT}",
+                action="main",
+            )
+        config[key] = str(resolved)
 
 
 def main() -> None:
@@ -92,6 +109,8 @@ def main() -> None:
     db_path = config["transaction_db_path"]
     inbox_dir = config["inbox_dir"]
     results_dir = config["results_dir"]
+    run_id = f"json-event-log-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}-{uuid4().hex[:8]}"
+    config["run_id"] = run_id
 
     # Ensure results directory exists
     Path(results_dir).mkdir(parents=True, exist_ok=True)
@@ -113,6 +132,8 @@ def main() -> None:
         # Still run error report (will be empty)
         error_tx = Transaction(
             reference="error-report",
+            state={"run_id": run_id},
+            metadata={"example": "json_event_log_processor", "run_id": run_id},
             skills=[
                 WriteErrorReport(name="write_error_report", execution_order=1),
             ],
@@ -130,6 +151,11 @@ def main() -> None:
         file_tx = Transaction(
             reference=f"json-file-{json_file.stem}",
             state={"current_file": str(json_file), "results_dir": results_dir},
+            metadata={
+                "example": "json_event_log_processor",
+                "run_id": run_id,
+                "source_file": json_file.name,
+            },
             skills=[
                 LoadJsonFile(name="load_json_file", execution_order=1),
                 ValidateEvents(name="validate_events", execution_order=2),
@@ -138,6 +164,13 @@ def main() -> None:
             ],
         )
         engine.run(ProcessContext(transaction=file_tx, config=config))
+        events = file_tx.state.get("events")
+        if isinstance(events, list):
+            file_tx.metadata["event_count"] = len(events)
+        failed_skills = file_tx.failed_skills()
+        file_tx.metadata["error_count"] = sum(
+            len(skill.exceptions) for skill in failed_skills
+        )
         save_transaction(file_tx, db_path=db_path)
 
         if file_tx.status == Status.SUCCESSFUL:
@@ -145,7 +178,6 @@ def main() -> None:
             logger.info("Processed: %s", json_file.name)
         else:
             failed += 1
-            failed_skills = file_tx.failed_skills()
             if failed_skills:
                 details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed_skills)
                 logger.warning("File %s failed: %s", json_file.name, details)
@@ -155,6 +187,8 @@ def main() -> None:
     # --- Error report transaction ---
     error_tx = Transaction(
         reference="error-report",
+        state={"run_id": run_id},
+        metadata={"example": "json_event_log_processor", "run_id": run_id},
         skills=[
             WriteErrorReport(name="write_error_report", execution_order=1),
         ],

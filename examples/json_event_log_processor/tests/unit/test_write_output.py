@@ -41,6 +41,12 @@ class TestWriteOutput:
         assert len(lines) == 2
         assert json.loads(lines[0])["event_id"] == "1"
         assert json.loads(lines[1])["event_id"] == "2"
+        assert len(self.transaction.artifacts) == 1
+        artifact = self.transaction.artifacts[0]
+        assert artifact.name == "events_001_cleaned.jsonl"
+        assert artifact.kind == "output"
+        assert artifact.metadata["event_count"] == 2
+        assert artifact.metadata["source_file"] == self.transaction.state["current_file"]
 
     def test_creates_output_file_in_results_dir(self) -> None:
         skill = WriteOutput("write_output", 4)

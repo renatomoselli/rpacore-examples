@@ -7,7 +7,14 @@ from unittest.mock import patch
 import pytest
 import sqlite3
 
-from rpacore import BusinessException, ProcessContext, Status, SystemException, Transaction
+from rpacore import (
+    BusinessException,
+    ProcessContext,
+    Status,
+    SystemException,
+    Transaction,
+    save_transaction,
+)
 
 from skills.write_error_report import WriteErrorReport
 
@@ -26,15 +33,25 @@ class TestWriteErrorReport:
             config={
                 "transaction_db_path": db_path,
                 "results_dir": str(results_dir),
+                "run_id": "test-run",
             },
         )
 
     def test_generates_report_with_failed_transactions(self) -> None:
         from rpacore import Skill as RpaSkill
-        mock_tx = Transaction(reference="ok", status=Status.SUCCESSFUL)
+        mock_tx = Transaction(
+            reference="ok",
+            status=Status.SUCCESSFUL,
+            metadata={"run_id": "test-run"},
+        )
         failed_skill = RpaSkill(name="validate_events", execution_order=2)
         failed_skill.exceptions = [BusinessException("Validation error", stop=True)]
-        mock_failed_tx = Transaction(reference="fail", status=Status.FAILED, skills=[failed_skill])
+        mock_failed_tx = Transaction(
+            reference="fail",
+            status=Status.FAILED,
+            skills=[failed_skill],
+            metadata={"run_id": "test-run"},
+        )
 
         results_dir = self.ctx.config["results_dir"]
 
@@ -50,6 +67,12 @@ class TestWriteErrorReport:
         assert report["failed"] == 1
         assert len(report["failures"]) == 1
         assert report["failures"][0]["transaction_reference"] == "fail"
+        assert len(self.transaction.artifacts) == 1
+        artifact = self.transaction.artifacts[0]
+        assert artifact.name == "error_report.json"
+        assert artifact.kind == "report"
+        assert artifact.metadata["total_transactions"] == 2
+        assert artifact.metadata["failed_count"] == 1
 
     def test_handles_empty_transaction_list(self) -> None:
         results_dir = self.ctx.config["results_dir"]
@@ -72,3 +95,66 @@ class TestWriteErrorReport:
             with pytest.raises(SystemException) as exc_info:
                 skill.execute(self.ctx)
             assert "Failed to read transactions" in str(exc_info.value)
+
+    def test_requires_run_id(self) -> None:
+        self.ctx.config.pop("run_id")
+
+        with pytest.raises(SystemException) as exc_info:
+            WriteErrorReport("write_error_report", 5).execute(self.ctx)
+
+        assert "run_id" in str(exc_info.value)
+
+    def test_filters_report_to_current_run(self, tmp_path: Path) -> None:
+        db_path = str(tmp_path / "rpacore.db")
+        results_dir = tmp_path / "results"
+        results_dir.mkdir(exist_ok=True)
+
+        save_transaction(
+            Transaction(
+                reference="run-1-ok",
+                status=Status.SUCCESSFUL,
+                metadata={"run_id": "run-1"},
+            ),
+            db_path=db_path,
+        )
+        save_transaction(
+            Transaction(
+                reference="run-1-failed",
+                status=Status.FAILED,
+                metadata={"run_id": "run-1"},
+            ),
+            db_path=db_path,
+        )
+        save_transaction(
+            Transaction(
+                reference="error-report",
+                status=Status.SUCCESSFUL,
+                metadata={"run_id": "run-1"},
+            ),
+            db_path=db_path,
+        )
+        save_transaction(
+            Transaction(
+                reference="run-2-ok",
+                status=Status.SUCCESSFUL,
+                metadata={"run_id": "run-2"},
+            ),
+            db_path=db_path,
+        )
+
+        report_tx = Transaction(reference="error-report", state={"run_id": "run-2"})
+        ctx = ProcessContext(
+            transaction=report_tx,
+            config={
+                "transaction_db_path": db_path,
+                "results_dir": str(results_dir),
+            },
+        )
+
+        WriteErrorReport("write_error_report", 5).execute(ctx)
+
+        report = json.loads((results_dir / "error_report.json").read_text(encoding="utf-8"))
+        assert report["total_transactions"] == 1
+        assert report["successful"] == 1
+        assert report["failed"] == 0
+        assert report["failures"] == []

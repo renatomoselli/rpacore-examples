@@ -61,6 +61,7 @@ class LoadJsonFile(Skill):
             )
 
         ctx.state["events"] = events
+        ctx.transaction.metadata["event_count"] = len(events)
         logger.info(
             "Loaded %d events from %s",
             len(events),

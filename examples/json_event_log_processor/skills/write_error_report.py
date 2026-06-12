@@ -23,6 +23,16 @@ class WriteErrorReport(Skill):
     def execute(self, ctx: ProcessContext) -> None:
         db_path = ctx.require_config("transaction_db_path", str, action=self.name)
         results_dir = ctx.require_config("results_dir", str, action=self.name)
+        run_id = ctx.optional_state("run_id", str, None, action=self.name)
+        if run_id is None:
+            config_run_id = ctx.config.get("run_id")
+            if isinstance(config_run_id, str) and config_run_id:
+                run_id = config_run_id
+        if not run_id:
+            raise SystemException(
+                "Missing required run_id for scoped error report",
+                action=self.name,
+            )
 
         try:
             transactions = list_transactions(db_path)
@@ -31,6 +41,11 @@ class WriteErrorReport(Skill):
                 f"Failed to read transactions from db {db_path}: {exc}",
                 action=self.name,
             ) from exc
+
+        transactions = [
+            tx for tx in transactions
+            if tx.metadata.get("run_id") == run_id and tx.reference != "error-report"
+        ]
 
         failed_txs = [tx for tx in transactions if tx.status.name != "SUCCESSFUL"]
 
@@ -87,9 +102,12 @@ class WriteErrorReport(Skill):
                     metadata={
                         "total_transactions": len(transactions),
                         "failed_count": len(failed_txs),
+                        "run_id": run_id,
                     },
                 )
-            except BaseException:
+                ctx.transaction.metadata["run_id"] = run_id
+                ctx.transaction.metadata["error_count"] = len(failed_txs)
+            except Exception:
                 try:
                     os.unlink(tmp_path)
                 except OSError:
