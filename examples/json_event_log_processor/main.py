@@ -40,7 +40,7 @@ def _validate_config(config: dict) -> None:
     for key, expected_type in (
         ("max_retries", int),
         ("log_level", str),
-        ("db_path", str),
+        ("transaction_db_path", str),
         ("inbox_dir", str),
         ("results_dir", str),
     ):
@@ -74,31 +74,13 @@ def _validate_config(config: dict) -> None:
             action="main",
         )
 
-    # Path-type keys: non-empty strings, resolved safely under PROJECT_ROOT  [S1, S2]
-    for dir_key in ("inbox_dir", "results_dir"):
-        dir_path = config[dir_key]
-        if not isinstance(dir_path, str) or not dir_path:
-            raise SystemException(
-                f"Config key '{dir_key}' must be a non-empty string",
-                action="main",
-            )
-        resolved = (PROJECT_ROOT / dir_path).resolve()
-        if not resolved.is_relative_to(PROJECT_ROOT):
-            raise SystemException(
-                f"Config key '{dir_key}' resolves outside project root: {resolved}",
-                action="main",
-            )
-        config[dir_key] = str(resolved)
-
-    # db_path: also ensure it resolves under PROJECT_ROOT  [S1, S2]
-    db_path = config["db_path"]
-    resolved_db = (PROJECT_ROOT / db_path).resolve()
-    if not resolved_db.is_relative_to(PROJECT_ROOT):
-        raise SystemException(
-            f"Config key 'db_path' resolves outside project root: {resolved_db}",
-            action="main",
-        )
-    config["db_path"] = str(resolved_db)
+    # Path-type keys: resolved safely under PROJECT_ROOT via resolve_config_paths  [S1, S2]
+    from rpacore.paths import resolve_config_paths
+    resolve_config_paths(
+        config,
+        ["transaction_db_path", "inbox_dir", "results_dir"],
+        base_dir=PROJECT_ROOT,
+    )
 
 
 def main() -> None:
@@ -107,7 +89,7 @@ def main() -> None:
     configure_logger(level=str(config["log_level"]))
 
     engine = Engine(max_retries=config["max_retries"])
-    db_path = config["db_path"]
+    db_path = config["transaction_db_path"]
     inbox_dir = config["inbox_dir"]
     results_dir = config["results_dir"]
 
@@ -124,14 +106,6 @@ def main() -> None:
 
     json_files = sorted(inbox_path.glob("*.json"))
 
-    # Verify every globbed file resolves under inbox_dir  [S2]
-    for jf in json_files:
-        if not jf.resolve().is_relative_to(inbox_path.resolve()):
-            raise SystemException(
-                f"Inbox file escapes inbox directory: {jf}",
-                action="main",
-            )
-
     logger.info("Found %d JSON files in %s", len(json_files), inbox_dir)
 
     if not json_files:
@@ -143,7 +117,7 @@ def main() -> None:
                 WriteErrorReport(name="write_error_report", execution_order=1),
             ],
         )
-        engine.run(ProcessContext(transaction=error_tx, config=config, data={}))
+        engine.run(ProcessContext(transaction=error_tx, config=config))
         save_transaction(error_tx, db_path=db_path)
         logger.info("No files to process. Exiting.")
         return
@@ -153,15 +127,9 @@ def main() -> None:
     failed = 0
 
     for json_file in json_files:
-        # Fresh shared_data per file — avoids stale state leaking across
-        # transactions (Q1, precedent: rest_api_batch commit 4bdd1de).
-        shared_data: dict = {
-            "current_file": str(json_file),
-            "results_dir": results_dir,
-        }
-
         file_tx = Transaction(
             reference=f"json-file-{json_file.stem}",
+            state={"current_file": str(json_file), "results_dir": results_dir},
             skills=[
                 LoadJsonFile(name="load_json_file", execution_order=1),
                 ValidateEvents(name="validate_events", execution_order=2),
@@ -169,7 +137,7 @@ def main() -> None:
                 WriteOutput(name="write_output", execution_order=4),
             ],
         )
-        engine.run(ProcessContext(transaction=file_tx, config=config, data=shared_data))
+        engine.run(ProcessContext(transaction=file_tx, config=config))
         save_transaction(file_tx, db_path=db_path)
 
         if file_tx.status == Status.SUCCESSFUL:
@@ -191,7 +159,7 @@ def main() -> None:
             WriteErrorReport(name="write_error_report", execution_order=1),
         ],
     )
-    engine.run(ProcessContext(transaction=error_tx, config=config, data={}))
+    engine.run(ProcessContext(transaction=error_tx, config=config))
     save_transaction(error_tx, db_path=db_path)
 
     logger.info(

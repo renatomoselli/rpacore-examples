@@ -47,22 +47,24 @@ class TestPartialFailure:
             ]
             (Path(inbox_dir) / "events_001.json").write_text(json.dumps(events), encoding="utf-8")
 
-            shared_data = {}
             config = {
                 "max_retries": 0,
                 "log_level": "WARNING",
-                "db_path": db_path,
+                "transaction_db_path": db_path,
                 "inbox_dir": inbox_dir,
                 "results_dir": results_dir,
             }
 
             engine = Engine(max_retries=0)
 
-            shared_data["current_file"] = str(Path(inbox_dir) / "events_001.json")
-            shared_data["results_dir"] = results_dir
+            shared_data = {
+                "current_file": str(Path(inbox_dir) / "events_001.json"),
+                "results_dir": results_dir,
+            }
 
             file_tx = Transaction(
                 reference="json-file-events_001",
+                state=shared_data,
                 skills=[
                     LoadJsonFile(name="load_json_file", execution_order=1),
                     ValidateEvents(name="validate_events", execution_order=2),
@@ -70,7 +72,7 @@ class TestPartialFailure:
                     WriteOutput(name="write_output", execution_order=4),
                 ],
             )
-            engine.run(ProcessContext(transaction=file_tx, config=config, data=shared_data))
+            engine.run(ProcessContext(transaction=file_tx, config=config))
             save_transaction(file_tx, db_path=db_path)
 
             # Transaction should fail
@@ -81,7 +83,7 @@ class TestPartialFailure:
             assert not output_file.exists()
 
             # NormalizeEvents should NOT have run (no normalized_events)
-            assert "normalized_events" not in shared_data
+            assert "normalized_events" not in file_tx.state
 
     def test_successful_file_produces_output(self):
         """Test that a valid file produces output even when another file fails."""
@@ -118,7 +120,7 @@ class TestPartialFailure:
             config = {
                 "max_retries": 0,
                 "log_level": "WARNING",
-                "db_path": db_path,
+                "transaction_db_path": db_path,
                 "inbox_dir": inbox_dir,
                 "results_dir": results_dir,
             }
@@ -136,6 +138,7 @@ class TestPartialFailure:
 
                 file_tx = Transaction(
                     reference=f"json-file-{json_file.stem}",
+                    state=shared_data,
                     skills=[
                         LoadJsonFile(name="load_json_file", execution_order=1),
                         ValidateEvents(name="validate_events", execution_order=2),
@@ -143,7 +146,7 @@ class TestPartialFailure:
                         WriteOutput(name="write_output", execution_order=4),
                     ],
                 )
-                engine.run(ProcessContext(transaction=file_tx, config=config, data=shared_data))
+                engine.run(ProcessContext(transaction=file_tx, config=config))
                 save_transaction(file_tx, db_path=db_path)
 
                 if file_tx.status == Status.SUCCESSFUL:

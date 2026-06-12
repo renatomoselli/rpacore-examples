@@ -8,59 +8,43 @@ REQUIRED_FIELDS = ("event_id", "event_type", "timestamp", "source")
 
 
 class ValidateEvents(Skill):
-    """Validate that all events in the loaded data conform to the expected schema.
-
-    Sets ctx.data["validation_failed"] = True before raising BusinessException
-    so that NormalizeEvents can check the flag and raise SystemException to stop
-    execution (the engine only breaks on SystemException).
-
-    The flag is set once at the start of validation to avoid redundant
-    assignments on each error path.  [Q19]
-    """
+    """Validate that all events in the loaded data conform to the expected schema."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        events = ctx.data.get("events")
-
-        # Assume failure until all validations pass; cleared at the end.
-        ctx.data["validation_failed"] = True
+        events = ctx.optional_state("events", list, None, action=self.name)
 
         if events is None:
             raise BusinessException(
                 "No events in context — load_json_file must run first",
-                action=self.name,
+                action=self.name, stop=True,
             )
-
         if not isinstance(events, list):
             raise BusinessException(
                 f"Expected a list of events, got {type(events).__name__}",
-                action=self.name,
+                action=self.name, stop=True,
             )
-
         if not events:
             raise BusinessException(
-                "Event list is empty",
-                action=self.name,
+                "Event list is empty", action=self.name, stop=True,
             )
 
         for i, event in enumerate(events):
             if not isinstance(event, dict):
                 raise BusinessException(
                     f"Event at index {i} is not an object (got {type(event).__name__})",
-                    action=self.name,
+                    action=self.name, stop=True,
                 )
-
             for field in REQUIRED_FIELDS:
                 if field not in event or not event[field]:
                     raise BusinessException(
-                        f"Event at index {i} (id={event.get('event_id', 'unknown')}) missing required field: {field}",
-                        action=self.name,
+                        f"Event at index {i} (id={event.get('event_id', 'unknown')}) "
+                        f"missing required field: {field}",
+                        action=self.name, stop=True,
                     )
-
             if event["event_type"] not in ALLOWED_EVENT_TYPES:
                 raise BusinessException(
-                    f"Event at index {i} (id={event.get('event_id', 'unknown')}) has invalid event_type: {event['event_type']!r} (expected one of {ALLOWED_EVENT_TYPES})",
-                    action=self.name,
+                    f"Event at index {i} (id={event.get('event_id', 'unknown')}) "
+                    f"has invalid event_type: {event['event_type']!r} "
+                    f"(expected one of {ALLOWED_EVENT_TYPES})",
+                    action=self.name, stop=True,
                 )
-
-        # All validations passed
-        ctx.data["validation_failed"] = False
