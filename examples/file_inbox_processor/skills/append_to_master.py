@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from rpacore import ProcessContext, Skill, SystemException
+from rpacore import ProcessContext, Skill, Status, SystemException
 
 from skills._path_utils import validate_contained_path
 
@@ -14,21 +14,27 @@ class AppendToMaster(Skill):
     """Append the processed report to the consolidated CSV."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        if ctx.data.get("validation_failed"):
+        if ctx.optional_state("validation_failed", bool, False, action=self.name):
+            self.status = Status.SKIPPED
             return
 
-        report = ctx.data.get("processed_report")
+        report = ctx.require_state("processed_report", dict, action=self.name)
         if not isinstance(report, dict):
             raise SystemException("No processed report in context", action=self.name)
 
-        master_csv = ctx.config.get("master_csv")
-        if not isinstance(master_csv, str) or not master_csv:
+        master_csv = ctx.require_config("master_csv", str, action=self.name)
+        if not master_csv:
             raise SystemException("Config key 'master_csv' must be a non-empty string", action=self.name)
 
         path = Path(master_csv)
         path.parent.mkdir(parents=True, exist_ok=True)
         write_header = not path.exists() or path.stat().st_size == 0
-        raw_source = ctx.data.get("report_file") or ctx.data.get("file_path", "")
+        raw_source = ctx.optional_state("report_file", str, "", action=self.name) or ctx.optional_state(
+            "file_path",
+            str,
+            "",
+            action=self.name,
+        )
         if not isinstance(raw_source, str) or not raw_source:
             raise SystemException("No source file available", action=self.name)
 
@@ -41,7 +47,8 @@ class AppendToMaster(Skill):
         source_file = source_path.name
 
         if source_file and _already_appended(path, source_file):
-            ctx.data["master_csv"] = str(path)
+            ctx.state["master_csv"] = str(path)
+            ctx.add_artifact("master_csv", str(path), kind="csv", metadata={"source_file": source_file})
             return
 
         try:
@@ -55,7 +62,8 @@ class AppendToMaster(Skill):
         except OSError as exc:
             raise SystemException(f"Unable to append to master CSV {path}: {exc}", action=self.name) from exc
 
-        ctx.data["master_csv"] = str(path)
+        ctx.state["master_csv"] = str(path)
+        ctx.add_artifact("master_csv", str(path), kind="csv", metadata={"source_file": source_file})
 
 
 def _already_appended(path: Path, source_file: str) -> bool:

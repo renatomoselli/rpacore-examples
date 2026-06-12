@@ -9,17 +9,17 @@ class ComputeDerivedFields(Skill):
     """Calculate business metrics for the validated branch report."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        if ctx.data.get("validation_failed"):
+        if ctx.optional_state("validation_failed", bool, False, action=self.name):
             self.status = Status.SKIPPED
             return
 
-        report = ctx.data.get("validated_report")
+        report = ctx.require_state("validated_report", dict, action=self.name)
         if not isinstance(report, dict):
             raise SystemException("No validated report in context", action=self.name)
 
         revenue = report["revenue"]
         headcount = report["headcount"]
-        if not isinstance(revenue, Decimal) or not isinstance(headcount, int):
+        if not isinstance(revenue, str) or not isinstance(headcount, int):
             raise SystemException("Validated report has unexpected types", action=self.name)
         if headcount == 0:
             raise SystemException(
@@ -27,10 +27,15 @@ class ComputeDerivedFields(Skill):
                 action=self.name,
             )
 
-        revenue_per_headcount = (revenue / Decimal(headcount)).quantize(
+        try:
+            revenue_amount = Decimal(revenue)
+        except Exception as exc:
+            raise SystemException("Validated report has unexpected types", action=self.name) from exc
+
+        revenue_per_headcount = (revenue_amount / Decimal(headcount)).quantize(
             Decimal("0.01"),
             rounding=ROUND_HALF_UP,
         )
         enriched = dict(report)
-        enriched["revenue_per_headcount"] = revenue_per_headcount
-        ctx.data["processed_report"] = enriched
+        enriched["revenue_per_headcount"] = str(revenue_per_headcount)
+        ctx.state["processed_report"] = enriched

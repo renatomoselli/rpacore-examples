@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import pytest
+
 from rpacore import (
     BusinessException,
     Engine,
@@ -16,7 +18,7 @@ from rpacore import (
     run_queue_loop,
 )
 
-from main import _move_failed_file, build_transaction, save_transaction, scan_inbox
+from main import _move_failed_file, build_transaction, scan_inbox
 from skills.append_to_master import AppendToMaster
 
 
@@ -39,14 +41,14 @@ def test_queue_workflow_processes_valid_files_and_moves_invalid_file(tmp_path):
     config = {
         "max_retries": 0,
         "log_level": "WARNING",
-        "db_path": str(tmp_path / "rpacore.db"),
+        "transaction_db_path": str(tmp_path / "rpacore.db"),
         "inbox_dir": str(inbox),
         "done_dir": str(done),
         "failed_dir": str(failed),
         "master_csv": str(output / "master_consolidated.csv"),
         "queue": {
             "db_path": str(tmp_path / "queue.db"),
-            "claim_timeout": 30,
+            "lease_timeout": 30,
             "max_retries": 0,
         },
     }
@@ -55,7 +57,6 @@ def test_queue_workflow_processes_valid_files_and_moves_invalid_file(tmp_path):
 
     def after_item(item: QueueItem, transaction, error):
         if transaction is not None:
-            save_transaction(transaction, db_path=str(config["db_path"]))
             if transaction.status is not Status.SUCCESSFUL:
                 _move_failed_file(item, config)
         elif error is not None:
@@ -69,6 +70,7 @@ def test_queue_workflow_processes_valid_files_and_moves_invalid_file(tmp_path):
         EnvCredentialProvider(),
         worker_id="test-worker",
         after_item=after_item,
+        transaction_db_path=str(config["transaction_db_path"]),
     )
 
     assert summary.processed == 2
@@ -110,7 +112,7 @@ def test_scan_inbox_does_not_enqueue_duplicate_active_items(tmp_path):
         "inbox_dir": str(inbox),
         "queue": {
             "db_path": str(tmp_path / "queue.db"),
-            "claim_timeout": 30,
+            "lease_timeout": 30,
             "max_retries": 0,
         },
     }
@@ -139,7 +141,9 @@ def test_business_validation_failure_does_not_add_system_failure(tmp_path):
         )
     )
 
-    Engine(max_retries=1).run(ProcessContext(transaction=tx, config=config, data={"file_path": str(inbox_file)}))
+    # Seed state from payload (migrated: was ProcessContext(..., data={"file_path": ...}))
+    tx.state["file_path"] = str(inbox_file)
+    Engine(max_retries=1).run(ProcessContext(transaction=tx, config=config))
 
     failed = tx.failed_skills()
     assert len(failed) == 1
@@ -151,7 +155,7 @@ def test_business_validation_failure_does_not_add_system_failure(tmp_path):
 
 def test_master_append_is_idempotent_by_source_file(tmp_path):
     master_csv = tmp_path / "master.csv"
-    data = {
+    state = {
         "report_file": str(tmp_path / "valid.csv"),
         "processed_report": {
             "branch_id": 101,
@@ -165,7 +169,10 @@ def test_master_append_is_idempotent_by_source_file(tmp_path):
     for _ in range(2):
         skill = AppendToMaster(name="append_to_master", execution_order=1)
         tx = Transaction(reference="append", skills=[skill])
-        Engine(max_retries=0).run(ProcessContext(transaction=tx, config=config, data=data))
+        # Seed state (migrated: was ProcessContext(..., data=state))
+        for key, value in state.items():
+            tx.state[key] = value
+        Engine(max_retries=0).run(ProcessContext(transaction=tx, config=config))
 
     with master_csv.open("r", encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
@@ -175,6 +182,7 @@ def test_master_append_is_idempotent_by_source_file(tmp_path):
 
 
 def next_item_id(queue: SqliteQueue, reference: str) -> str:
+    """Get queue item ID by reference (test-only SQL helper)."""
     import sqlite3
 
     conn = sqlite3.connect(queue.db_path)
@@ -190,6 +198,7 @@ def next_item_id(queue: SqliteQueue, reference: str) -> str:
 
 
 def count_queue_items(queue: SqliteQueue, reference: str) -> int:
+    """Count queue items by reference (test-only SQL helper)."""
     import sqlite3
 
     conn = sqlite3.connect(queue.db_path)

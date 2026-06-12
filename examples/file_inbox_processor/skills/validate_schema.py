@@ -12,26 +12,28 @@ class ValidateSchema(Skill):
     """Validate report schema and business rules."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        rows = ctx.data.get("report_rows")
+        rows = ctx.require_state("report_rows", action=self.name)
         if rows is None:
             raise SystemException("No report rows in context", action=self.name)
         if not isinstance(rows, list) or not rows:
-            ctx.data["validation_failed"] = True
-            raise BusinessException("Report must contain exactly one data row", action=self.name)
+            ctx.state["validation_failed"] = True
+            raise BusinessException("Report must contain exactly one data row", action=self.name, stop=True)
         if len(rows) != 1:
-            ctx.data["validation_failed"] = True
+            ctx.state["validation_failed"] = True
             raise BusinessException(
                 f"Report must contain exactly one data row, got {len(rows)}",
                 action=self.name,
+                stop=True,
             )
 
         row = rows[0]
         missing = [column for column in REQUIRED_COLUMNS if column not in row or row[column] == ""]
         if missing:
-            ctx.data["validation_failed"] = True
+            ctx.state["validation_failed"] = True
             raise BusinessException(
                 f"Report missing required column(s): {', '.join(missing)}",
                 action=self.name,
+                stop=True,
             )
 
         try:
@@ -40,23 +42,29 @@ class ValidateSchema(Skill):
             revenue = Decimal(row["revenue"])
             headcount = int(row["headcount"])
         except (ValueError, InvalidOperation) as exc:
-            ctx.data["validation_failed"] = True
-            raise BusinessException(f"Report contains invalid field value: {exc}", action=self.name) from exc
+            ctx.state["validation_failed"] = True
+            raise BusinessException(
+                f"Report contains invalid field value: {exc}",
+                action=self.name,
+                stop=True,
+            ) from exc
 
         if branch_id <= 0:
-            ctx.data["validation_failed"] = True
-            raise BusinessException("branch_id must be a positive integer", action=self.name)
+            ctx.state["validation_failed"] = True
+            raise BusinessException("branch_id must be a positive integer", action=self.name, stop=True)
         if revenue < 0:
-            ctx.data["validation_failed"] = True
-            raise BusinessException("revenue must be greater than or equal to zero", action=self.name)
+            ctx.state["validation_failed"] = True
+            raise BusinessException("revenue must be greater than or equal to zero", action=self.name, stop=True)
         if headcount <= 0:
-            ctx.data["validation_failed"] = True
-            raise BusinessException("headcount must be greater than zero", action=self.name)
+            ctx.state["validation_failed"] = True
+            raise BusinessException("headcount must be greater than zero", action=self.name, stop=True)
 
-        ctx.data["validated_report"] = {
+        ctx.state["validated_report"] = {
             "branch_id": branch_id,
             "date": report_date.isoformat(),
-            "revenue": revenue,
+            "revenue": str(revenue),
             "headcount": headcount,
         }
-        ctx.data["validation_failed"] = False
+        ctx.state["validation_failed"] = False
+        ctx.transaction.metadata["branch_id"] = branch_id
+        ctx.transaction.metadata["report_date"] = report_date.isoformat()

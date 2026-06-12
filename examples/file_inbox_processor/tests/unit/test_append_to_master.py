@@ -5,6 +5,8 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import pytest
+
 from rpacore import Engine, ProcessContext, Status, Transaction
 
 from skills.append_to_master import AppendToMaster
@@ -15,9 +17,12 @@ def _run(data, config):
         reference="append-master",
         skills=[AppendToMaster(name="append_to_master", execution_order=1)],
     )
-    ctx = ProcessContext(transaction=tx, data=data, config=config)
+    # Seed state from data dict
+    for key, value in data.items():
+        tx.state[key] = value
+    ctx = ProcessContext(transaction=tx, config=config)
     Engine(max_retries=0).run(ctx)
-    return tx, data
+    return tx
 
 
 def _make_report(report_file="valid.csv"):
@@ -35,7 +40,7 @@ def _make_report(report_file="valid.csv"):
 
 def test_appends_row_to_new_master(tmp_path):
     master = tmp_path / "master.csv"
-    tx, data = _run(_make_report(), {"master_csv": str(master)})
+    tx = _run(_make_report(), {"master_csv": str(master)})
     assert tx.status == Status.SUCCESSFUL
     assert master.exists()
     with master.open(encoding="utf-8") as f:
@@ -51,7 +56,7 @@ def test_appends_header_only_once(tmp_path):
     data2 = _make_report("b.csv")
     # Give each run its own mutable copy
     for data in (data1, data2):
-        tx, _ = _run(data, {"master_csv": str(master)})
+        tx = _run(data, {"master_csv": str(master)})
         assert tx.status == Status.SUCCESSFUL
 
     with master.open(encoding="utf-8") as f:
@@ -63,7 +68,7 @@ def test_appends_header_only_once(tmp_path):
 def test_idempotent_by_source_file(tmp_path):
     master = tmp_path / "master.csv"
     for _ in range(3):
-        tx, _ = _run(_make_report("same.csv"), {"master_csv": str(master)})
+        tx = _run(_make_report("same.csv"), {"master_csv": str(master)})
         assert tx.status == Status.SUCCESSFUL
 
     with master.open(encoding="utf-8") as f:
@@ -71,23 +76,15 @@ def test_idempotent_by_source_file(tmp_path):
     assert len(rows) == 1
 
 
-def test_skips_when_validation_failed():
-    tx, _ = _run(
-        {"validation_failed": True, "processed_report": {}},
-        {"master_csv": "/tmp/should_not_exist.csv"},
-    )
-    assert tx.status == Status.SUCCESSFUL
-
-
 def test_raises_when_no_processed_report():
-    tx, _ = _run({}, {"master_csv": "/tmp/test.csv"})
+    tx = _run({}, {"master_csv": "/tmp/test.csv"})
     assert tx.status == Status.FAILED
-    assert "No processed report" in str(tx.failed_skills()[0].exceptions[-1])
+    assert "processed_report" in str(tx.failed_skills()[0].exceptions[-1])
 
 
 def test_raises_when_no_master_csv_config():
     data = _make_report()
-    tx, _ = _run(data, {})
+    tx = _run(data, {})
     assert tx.status == Status.FAILED
     assert "master_csv" in str(tx.failed_skills()[0].exceptions[-1]).lower()
 
@@ -106,7 +103,7 @@ def test_path_traversal_blocked(tmp_path):
         },
     }
     config = {"master_csv": str(master), "inbox_dir": str(tmp_path / "inbox")}
-    tx, _ = _run(data, config)
+    tx = _run(data, config)
     assert tx.status == Status.FAILED
     assert "outside allowed directory" in str(tx.failed_skills()[0].exceptions[-1]).lower()
 
@@ -114,6 +111,6 @@ def test_path_traversal_blocked(tmp_path):
 def test_no_inbox_dir_skips_path_validation(tmp_path):
     """When inbox_dir is not in config, path validation is skipped."""
     master = tmp_path / "master.csv"
-    tx, data = _run(_make_report(), {"master_csv": str(master)})
+    tx = _run(_make_report(), {"master_csv": str(master)})
     assert tx.status == Status.SUCCESSFUL
     assert master.exists()

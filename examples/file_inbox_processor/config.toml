@@ -1,6 +1,6 @@
 max_retries = 1
 log_level = "INFO"
-db_path = "rpacore.db"
+transaction_db_path = "rpacore.db"
 
 inbox_dir = "inbox"
 done_dir = "done"
@@ -9,5 +9,5 @@ master_csv = "output/master_consolidated.csv"
 
 [queue]
 db_path = "queue.db"
-claim_timeout = 30
+lease_timeout = 30
 max_retries = 0

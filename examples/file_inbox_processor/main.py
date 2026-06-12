@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import shutil
-import sqlite3
 from pathlib import Path
 
 from rpacore import (
@@ -16,7 +15,6 @@ from rpacore import (
     get_logger,
     load_config,
     run_queue_loop,
-    save_transaction,
 )
 
 from skills.append_to_master import AppendToMaster
@@ -32,7 +30,7 @@ def _validate_config(config: dict) -> None:
     for key, expected_type in (
         ("max_retries", int),
         ("log_level", str),
-        ("db_path", str),
+        ("transaction_db_path", str),
         ("inbox_dir", str),
         ("done_dir", str),
         ("failed_dir", str),
@@ -55,7 +53,7 @@ def _validate_config(config: dict) -> None:
     if not isinstance(queue_config, dict):
         raise SystemException("Missing required [queue] config section", action="main")
 
-    for key in ("db_path", "claim_timeout", "max_retries"):
+    for key in ("db_path", "lease_timeout", "max_retries"):
         if key not in queue_config:
             raise SystemException(
                 f"Missing required [queue] config key: {key}", action="main"
@@ -65,9 +63,9 @@ def _validate_config(config: dict) -> None:
         raise SystemException(
             "Config key 'queue.db_path' must be a non-empty string", action="main"
         )
-    if not isinstance(queue_config["claim_timeout"], int) or queue_config["claim_timeout"] <= 0:
+    if not isinstance(queue_config["lease_timeout"], int) or queue_config["lease_timeout"] <= 0:
         raise SystemException(
-            f"Config key 'queue.claim_timeout' must be a positive int, got {queue_config['claim_timeout']!r}",
+            f"Config key 'queue.lease_timeout' must be a positive int, got {queue_config['lease_timeout']!r}",
             action="main",
         )
     if not isinstance(queue_config["max_retries"], int) or queue_config["max_retries"] < 0:
@@ -83,19 +81,17 @@ def scan_inbox(config: dict, queue: SqliteQueue) -> int:
     if not inbox.exists():
         raise SystemException(f"Inbox directory does not exist: {inbox}", action="scan_inbox")
 
-    existing_refs = _active_queue_references(queue)
     count = 0
     for csv_file in sorted(inbox.glob("*.csv")):
         reference = f"branch-report-{csv_file.stem}"
-        if reference in existing_refs:
-            continue
-        queue.add(
+        added = queue.add_once(
             QueueItem(
                 reference=reference,
                 payload={"file_path": str(csv_file)},
             )
         )
-        count += 1
+        if added:
+            count += 1
     return count
 
 
@@ -110,15 +106,6 @@ def build_transaction(item: QueueItem) -> Transaction:
             MoveFile(name="move_file", execution_order=5),
         ],
     )
-
-
-def _active_queue_references(queue: SqliteQueue) -> set[str]:
-    """Return queue references that are not terminal yet."""
-    with sqlite3.connect(queue.db_path) as conn:
-        rows = conn.execute(
-            "SELECT reference FROM queue_items WHERE status IN ('pending', 'in_progress')"
-        ).fetchall()
-    return {str(row[0]) for row in rows}
 
 
 def _safe_resolve(file_path: str, allowed_base: str) -> Path | None:
@@ -180,7 +167,6 @@ def main() -> None:
 
     def after_item(item: QueueItem, transaction: Transaction | None, error: Exception | None) -> None:
         if transaction is not None:
-            save_transaction(transaction, db_path=str(config["db_path"]))
             if transaction.status is not Status.SUCCESSFUL:
                 _move_failed_file(item, config)
         elif error is not None:
@@ -195,6 +181,7 @@ def main() -> None:
         worker_id="file-inbox-worker",
         logger=logger,
         after_item=after_item,
+        transaction_db_path=str(config["transaction_db_path"]),
     )
 
     logger.info(
