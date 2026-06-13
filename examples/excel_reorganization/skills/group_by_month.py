@@ -1,10 +1,10 @@
 """Group sales data by year-month and sort by employee name.
 
-This skill groups rows from ctx.data["sales_data"] by year-month key (YYYY-MM),
+This skill groups rows from ctx.state["sales_data"] by year-month key (YYYY-MM),
 sorts each group by employee name, and stores the grouped data in
-ctx.data["grouped_data"] as a dict[str, list[dict]].
+ctx.state["grouped_data"] as a dict[str, list[dict]].
 
-Pattern: Follows examples/rpa_challenge/skills/validate_events.py:3-64
+Pattern: Follows examples/json_event_log_processor/skills/load_json_file.py:52
 """
 
 from __future__ import annotations
@@ -19,12 +19,7 @@ class GroupByMonth(Skill):
 
     def execute(self, ctx: ProcessContext) -> None:
         """Group sales data by year-month, sort by employee name, and store in context."""
-        sales_data = ctx.data.get("sales_data")
-        if sales_data is None:
-            raise BusinessException(
-                "No sales_data in context — LoadSalesData must run before this skill",
-                action=self.name,
-            )
+        sales_data = ctx.require_state("sales_data", list, action=self.name)
 
         # Group by year-month key (YYYY-MM)
         grouped_data: dict[str, list[dict[str, Any]]] = {}
@@ -50,7 +45,6 @@ class GroupByMonth(Skill):
         logger.info("Grouped %d rows into %d months", len(sales_data), len(grouped_data))
 
         # Store in context
-        ctx.data["grouped_data"] = grouped_data
-        # Set expected months for VerifyOutput skill
-        ctx.data["expected_months"] = set(grouped_data.keys())
-        logger.info("Grouped %d rows into %d months", len(sales_data), len(grouped_data))
+        ctx.state["grouped_data"] = grouped_data
+        # Set expected months for VerifyOutput skill. Keep durable state JSON-safe.
+        ctx.state["expected_months"] = sorted(grouped_data.keys())

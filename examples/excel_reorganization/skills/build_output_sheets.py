@@ -4,10 +4,11 @@ This skill creates an Excel workbook with one sheet per month (YYYY-MM format),
 populates each sheet with sales data rows sorted by employee name, and adds
 a subtotal row at the bottom of each sheet.
 
-Pattern: Follows examples/rpa_challenge/skills/setup.py:95-112
+Pattern: Follows examples/json_event_log_processor/skills/write_output.py:39-45
 """
 
 from __future__ import annotations
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from openpyxl import Workbook, load_workbook
@@ -21,24 +22,26 @@ class BuildOutputSheets(Skill):
 
     def execute(self, ctx: ProcessContext) -> None:
         """Create workbook with monthly sheets, populate data, and save to file."""
-        grouped_data = ctx.data.get("grouped_data")
-        output_dir = ctx.data.get("output_dir")
-        output_filename = ctx.data.get("output_filename")
+        grouped_data = ctx.require_state("grouped_data", dict, action=self.name)
+        output_dir = ctx.require_config("output_dir", str, action=self.name)
+        output_filename = ctx.require_state("output_filename", str, action=self.name)
 
-        if grouped_data is None:
-            raise BusinessException(
-                "No grouped_data in context — GroupByMonth must run before this skill",
-                action=self.name,
-            )
-        if output_dir is None:
-            raise BusinessException("No output_dir in context.", action=self.name)
-        if output_filename is None:
-            raise BusinessException("No output_filename in context.", action=self.name)
         if not grouped_data:
             raise BusinessException("No grouped data available.", action=self.name)
 
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        output_filename = self._resolve_output_filename(str(output_filename), grouped_data)
+        output_path = output_dir / output_filename
+        output_dir_resolved = output_dir.resolve()
+        output_path_resolved = output_path.resolve()
+        if not output_path_resolved.is_relative_to(output_dir_resolved):
+            raise SystemException(
+                f"Output path escapes output_dir: {output_path}",
+                action=self.name,
+            )
+        output_path = output_path_resolved
 
         # Create workbook with one sheet per month
         # Use write_only=True to avoid creating default sheet
@@ -75,9 +78,6 @@ class BuildOutputSheets(Skill):
             subtotal = sum(float(row["amount"]) for row in month_data)
             ws.append(["Subtotal", "", subtotal, ""])
 
-        output_filename = self._resolve_output_filename(str(output_filename), grouped_data)
-        output_path = output_dir / output_filename
-
         try:
             # Save workbook with write_only mode.
             workbook.save(output_path)
@@ -99,7 +99,36 @@ class BuildOutputSheets(Skill):
         logger.info("Created Excel workbook: %s", output_path)
 
         # Store output path in context for VerifyOutput skill
-        ctx.data["output_path"] = str(output_path)
+        ctx.state["output_path"] = str(output_path)
+
+        # Record artifact with metadata
+        total_rows = sum(len(month_data) for month_data in grouped_data.values())
+        unique_employees = len({
+            row["employee_name"]
+            for month_data in grouped_data.values()
+            for row in month_data
+        })
+        generated_at = datetime.now(timezone.utc).isoformat()
+        artifact_metadata = {
+            "row_count": total_rows,
+            "month_count": len(grouped_data),
+            "employee_count": unique_employees,
+            "generated_at": generated_at,
+        }
+        ctx.add_artifact(
+            name=output_filename,
+            path=str(output_path),
+            kind="output",
+            metadata=artifact_metadata,
+        )
+
+        # Update Transaction.metadata with computed fields for reporting
+        tx = ctx.transaction
+        tx.metadata["row_count"] = total_rows
+        tx.metadata["month_count"] = len(grouped_data)
+        tx.metadata["output_path"] = str(output_path)
+        tx.metadata["employee_count"] = unique_employees
+        tx.metadata["generated_at"] = generated_at
 
     def _apply_sheet_formatting(self, ws: Any) -> None:
         """Apply basic formatting to worksheet."""

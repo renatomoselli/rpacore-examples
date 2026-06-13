@@ -11,13 +11,13 @@ from rpacore import (
     ProcessContext,
     Status,
     Transaction,
-    BusinessException,
     SystemException,
     load_config,
     save_transaction,
     get_logger,
     configure_logger,
 )
+from rpacore.paths import resolve_config_paths
 from skills import (
     LoadSalesData,
     GroupByMonth,
@@ -27,32 +27,63 @@ from skills import (
 
 logger = get_logger(__name__)
 
+# The project root is the directory containing main.py.
+# All config paths (csv_path, output_dir, transaction_db_path) must resolve
+# under this root to prevent path traversal attacks.
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR"}
+
 
 def _validate_config(config: dict) -> None:
-    """Validate config has required keys and types."""
-    required_keys = ["max_retries", "log_level", "csv_path", "output_dir"]
-    missing_keys = set(required_keys) - set(config.keys())
-    if missing_keys:
-        raise SystemException(f"Config missing required keys: {missing_keys}", action="validate_config")
+    """Validate config and resolve path values to absolute paths under PROJECT_ROOT.
 
-    expected_types = {
-        "max_retries": int,
-        "log_level": str,
-        "csv_path": str,
-        "output_dir": str,
-    }
-    for key, expected_type in expected_types.items():
-        if not isinstance(config[key], expected_type):
+    Mutates *config* in-place: relative paths are replaced with resolved
+    absolute paths after safety checks pass.
+    """
+    if "transaction_db_path" not in config and "db_path" in config:
+        raise SystemException(
+            "Config key 'db_path' has been renamed to 'transaction_db_path'",
+            action="validate_config",
+        )
+
+    for key, expected_type in (
+        ("max_retries", int),
+        ("log_level", str),
+        ("csv_path", str),
+        ("output_dir", str),
+        ("transaction_db_path", str),
+    ):
+        if key not in config:
+            raise SystemException(f"Missing required config key: {key}", action="validate_config")
+        if type(config[key]) is not expected_type:
             raise SystemException(
-                f"{key} must be {expected_type.__name__}",
+                f"Config key '{key}' must be {expected_type.__name__}, got {type(config[key]).__name__}",
                 action="validate_config",
             )
 
-    if config["log_level"] not in ["DEBUG", "INFO", "WARNING", "ERROR"]:
-        raise SystemException(f"Invalid log_level: {config['log_level']}", action="validate_config")
+    # log_level validation
+    if config["log_level"] not in LOG_LEVELS:
+        raise SystemException(
+            f"Config key 'log_level' must be one of {sorted(LOG_LEVELS)}, got {config['log_level']!r}",
+            action="validate_config",
+        )
 
-    # Note: db_path is not required for CSV→Excel workflow (no database involved)
-    # It will be used only if future features add database persistence
+    # Path-type keys: resolved safely under PROJECT_ROOT via resolve_config_paths
+    resolve_config_paths(
+        config,
+        ["csv_path", "output_dir", "transaction_db_path"],
+        base_dir=PROJECT_ROOT,
+    )
+    for key in ("csv_path", "output_dir", "transaction_db_path"):
+        raw_path = Path(str(config[key]))
+        resolved = (raw_path if raw_path.is_absolute() else PROJECT_ROOT / raw_path).resolve()
+        if not resolved.is_relative_to(PROJECT_ROOT):
+            raise SystemException(
+                f"Config key '{key}' must resolve under {PROJECT_ROOT}",
+                action="validate_config",
+            )
+        config[key] = str(resolved)
 
 
 def main() -> None:
@@ -62,26 +93,25 @@ def main() -> None:
     configure_logger(level=str(config["log_level"]))
     logger = get_logger(__name__)
 
-    csv_path = str(config["csv_path"])
-    output_dir = str(config["output_dir"])
+    csv_path = config["csv_path"]
+    output_dir = config["output_dir"]
+    output_filename = config.get("output_filename", "sales_report_{month}.xlsx")
 
     # Ensure output directory exists
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    # Shared context for all skills
-    shared_data: dict = {
-        "sales_data": None,
-        "grouped_data": None,
-        "output_path": None,
-        "expected_months": set(),
-        "csv_path": str(config["csv_path"]),
-        "output_dir": str(config["output_dir"]),
-        "output_filename": str(config.get("output_filename", "sales_report_{month}.xlsx")),
-    }
-
-    # Create transaction with all skills
+    # Create transaction with all skills and seed initial state
     tx = Transaction(
         reference="excel-reorganization",
+        state={
+            "csv_path": csv_path,
+            "output_dir": output_dir,
+            "output_filename": output_filename,
+        },
+        metadata={
+            "example": "excel_reorganization",
+            "source_csv": csv_path,
+        },
         skills=[
             LoadSalesData(name="load_sales_data", execution_order=1),
             GroupByMonth(name="group_by_month", execution_order=2),
@@ -91,9 +121,9 @@ def main() -> None:
     )
 
     # Run transaction
-    engine = Engine(max_retries=int(config["max_retries"]))
-    engine.run(ProcessContext(transaction=tx, config=config, data=shared_data))
-    save_transaction(tx, db_path=config.get("db_path", "rpacore.db"))
+    engine = Engine(max_retries=config["max_retries"])
+    engine.run(ProcessContext(transaction=tx, config=config))
+    save_transaction(tx, db_path=config["transaction_db_path"])
 
     if tx.status is not Status.SUCCESSFUL:
         failed = tx.failed_skills()

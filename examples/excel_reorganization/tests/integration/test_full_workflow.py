@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from openpyxl import load_workbook
 
 from skills import BuildOutputSheets, GroupByMonth, LoadSalesData, VerifyOutput
@@ -17,17 +19,21 @@ def test_full_excel_reorganization_workflow(tmp_path):
         encoding="utf-8",
     )
     ctx = make_context(
-        {
+        state={
+            "output_filename": "sales_report_{month}.xlsx",
+        },
+        config={
             "csv_path": str(csv_path),
             "output_dir": str(output_dir),
-            "output_filename": "sales_report_{month}.xlsx",
-        }
+        },
     )
+    ctx.transaction.metadata["source_csv"] = str(csv_path)
 
     LoadSalesData(name="load_sales_data", execution_order=1).execute(ctx)
     GroupByMonth(name="group_by_month", execution_order=2).execute(ctx)
     BuildOutputSheets(name="build_output_sheets", execution_order=3).execute(ctx)
     VerifyOutput(name="verify_output", execution_order=4).execute(ctx)
+    json.dumps(ctx.transaction.state)
 
     output_path = output_dir / "sales_report_2024-01.xlsx"
     workbook = load_workbook(output_path)
@@ -39,3 +45,12 @@ def test_full_excel_reorganization_workflow(tmp_path):
     ]
     assert workbook["2024-01"]["C4"].value == 25.5
     assert workbook["2024-01"]["A1"].font.bold is True
+
+    # Verify metadata was populated
+    meta = ctx.transaction.metadata
+    assert meta["source_csv"] == str(csv_path)
+    assert meta["row_count"] == 3
+    assert meta["month_count"] == 2
+    assert meta["output_path"] == str(output_path)
+    assert meta["employee_count"] == 3
+    assert "generated_at" in meta

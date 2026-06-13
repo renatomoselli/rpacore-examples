@@ -2,6 +2,7 @@
 
 This skill verifies that the output Excel file can be read with openpyxl,
 contains all expected months, and has the correct structure (header + data + subtotal).
+It also verifies Transaction.metadata contains required fields.
 
 Pattern: Follows examples/json_event_log_processor/skills/validate_events.py:3-64
 """
@@ -17,17 +18,10 @@ class VerifyOutput(Skill):
     """Verify output Excel file is readable and complete."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        """Verify output file exists, is readable, and has correct structure."""
-        output_path = ctx.data.get("output_path")
-        expected_months = ctx.data.get("expected_months")
-        grouped_data = ctx.data.get("grouped_data")
-
-        if output_path is None:
-            raise BusinessException("No output_path in context.", action=self.name)
-        if expected_months is None:
-            raise BusinessException("No expected_months in context.", action=self.name)
-        if grouped_data is None:
-            raise BusinessException("No grouped_data in context.", action=self.name)
+        """Verify output file exists, is readable, has correct structure, and metadata is set."""
+        output_path = ctx.require_state("output_path", str, action=self.name)
+        expected_months = ctx.require_state("expected_months", list, action=self.name)
+        grouped_data = ctx.require_state("grouped_data", dict, action=self.name)
 
         output_path = Path(output_path)
 
@@ -43,8 +37,9 @@ class VerifyOutput(Skill):
 
         # Verify sheet names match expected months
         actual_months = list(workbook.sheetnames)
-        missing_months = set(expected_months) - set(actual_months)
-        extra_months = set(actual_months) - set(expected_months)
+        expected_month_set = set(expected_months)
+        missing_months = expected_month_set - set(actual_months)
+        extra_months = set(actual_months) - expected_month_set
 
         if missing_months:
             raise SystemException(
@@ -98,5 +93,30 @@ class VerifyOutput(Skill):
                     f"Sheet '{month}' subtotal {actual_subtotal} does not match expected {expected_subtotal}",
                     action=self.name,
                 )
+
+        # Verify Transaction.metadata contains required fields
+        metadata = ctx.transaction.metadata
+        required_meta_keys = {
+            "source_csv", "row_count", "month_count",
+            "output_path", "employee_count", "generated_at",
+        }
+        missing_meta = required_meta_keys - set(metadata.keys())
+        if missing_meta:
+            raise SystemException(
+                f"Transaction.metadata missing required fields: {missing_meta}",
+                action=self.name,
+            )
+
+        # Verify metadata values are consistent with actual output
+        if metadata.get("month_count") != len(expected_months):
+            raise SystemException(
+                f"Metadata month_count {metadata.get('month_count')} does not match actual {len(expected_months)}",
+                action=self.name,
+            )
+        if metadata.get("output_path") != str(output_path):
+            raise SystemException(
+                f"Metadata output_path {metadata.get('output_path')} does not match actual {output_path}",
+                action=self.name,
+            )
 
         logger.info("Output verification passed: %s", output_path)

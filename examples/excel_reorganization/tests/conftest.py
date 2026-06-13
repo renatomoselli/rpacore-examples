@@ -3,9 +3,9 @@ from __future__ import annotations
 from rpacore import ProcessContext, Transaction
 
 
-def make_context(data: dict | None = None, config: dict | None = None) -> ProcessContext:
+def make_context(state: dict | None = None, config: dict | None = None) -> ProcessContext:
+    tx = Transaction(reference="test", skills=[], state=state or {})
     return ProcessContext(
-        transaction=Transaction(reference="test", skills=[]),
+        transaction=tx,
         config=config or {},
-        data=data or {},
     )

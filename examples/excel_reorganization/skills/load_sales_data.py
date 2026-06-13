@@ -1,9 +1,9 @@
 """Load and validate sales data from CSV file.
 
 This skill reads a flat CSV file with columns (Employee Name, Date, Amount, Country),
-validates the schema, and stores the data in ctx.data["sales_data"] as a list of dicts.
+validates the schema, and stores the data in ctx.state["sales_data"] as a list of dicts.
 
-Pattern: Follows examples/json_event_log_processor/skills/load_json_file.py:23-53
+Pattern: Follows examples/json_event_log_processor/skills/load_json_file.py:16-52
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ class LoadSalesData(Skill):
 
     def execute(self, ctx: ProcessContext) -> None:
         """Load CSV file, validate schema, and store data in context."""
-        csv_path = ctx.data.get("csv_path")
+        csv_path = ctx.require_config("csv_path", str, action=self.name)
         if csv_path is None:
             raise BusinessException(
                 "No csv_path in context — main.py must set this before running skill",
@@ -54,7 +54,7 @@ class LoadSalesData(Skill):
         self._validate_schema(rows, csv_path)
 
         # Store data in context
-        ctx.data["sales_data"] = rows
+        ctx.state["sales_data"] = rows
         logger.info("Loaded %d rows from %s", len(rows), csv_path)
 
     def _validate_schema(self, rows: list[dict], csv_path: str) -> None:

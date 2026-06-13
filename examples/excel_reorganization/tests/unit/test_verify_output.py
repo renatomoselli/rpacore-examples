@@ -38,12 +38,21 @@ def test_verify_output_accepts_complete_workbook(tmp_path):
         ],
     )
     ctx = make_context(
-        {
+        state={
             "output_path": str(output_path),
-            "expected_months": {"2024-01"},
+            "expected_months": ["2024-01"],
             "grouped_data": _grouped_data(),
-        }
+        },
     )
+    # Seed transaction metadata (normally set by BuildOutputSheets)
+    ctx.transaction.metadata.update({
+        "source_csv": "sample.csv",
+        "row_count": 2,
+        "month_count": 1,
+        "output_path": str(output_path),
+        "employee_count": 2,
+        "generated_at": "2024-01-15T00:00:00+00:00",
+    })
 
     VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
 
@@ -58,12 +67,20 @@ def test_verify_output_rejects_missing_data_rows(tmp_path):
         ],
     )
     ctx = make_context(
-        {
+        state={
             "output_path": str(output_path),
-            "expected_months": {"2024-01"},
+            "expected_months": ["2024-01"],
             "grouped_data": _grouped_data(),
-        }
+        },
     )
+    ctx.transaction.metadata.update({
+        "source_csv": "sample.csv",
+        "row_count": 2,
+        "month_count": 1,
+        "output_path": str(output_path),
+        "employee_count": 2,
+        "generated_at": "2024-01-15T00:00:00+00:00",
+    })
 
     with pytest.raises(SystemException, match="expected 4"):
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
@@ -81,12 +98,43 @@ def test_verify_output_rejects_wrong_subtotal(tmp_path):
         ],
     )
     ctx = make_context(
-        {
+        state={
             "output_path": str(output_path),
-            "expected_months": {"2024-01"},
+            "expected_months": ["2024-01"],
             "grouped_data": _grouped_data(),
-        }
+        },
     )
+    ctx.transaction.metadata.update({
+        "source_csv": "sample.csv",
+        "row_count": 2,
+        "month_count": 1,
+        "output_path": str(output_path),
+        "employee_count": 2,
+        "generated_at": "2024-01-15T00:00:00+00:00",
+    })
 
     with pytest.raises(SystemException, match="subtotal"):
+        VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
+
+
+def test_verify_output_rejects_missing_metadata(tmp_path):
+    output_path = tmp_path / "sales.xlsx"
+    _write_workbook(
+        output_path,
+        [
+            ["Employee Name", "Date", "Amount", "Country"],
+            ["Alice", "2024-01-05", 10.0, "USA"],
+            ["Subtotal", "", 10.0, ""],
+        ],
+    )
+    ctx = make_context(
+        state={
+            "output_path": str(output_path),
+            "expected_months": ["2024-01"],
+            "grouped_data": {"2024-01": [{"employee_name": "Alice", "date": "2024-01-05", "amount": 10.0, "country": "USA"}]},
+        },
+    )
+    # Do NOT seed metadata — should fail
+
+    with pytest.raises(SystemException, match="Transaction.metadata missing"):
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)

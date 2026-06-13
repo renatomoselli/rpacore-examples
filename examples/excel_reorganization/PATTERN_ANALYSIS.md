@@ -72,23 +72,23 @@ logger.info("Loaded %d rows from %s", len(rows), csv_path)
 
 **Status: CORRECT**
 
-Context access uses the established patterns:
+Context access uses the current RPA Core state/config patterns:
 
 ```python
 # Reading
-csv_path = ctx.data.get("csv_path")
-sales_data = ctx.data.get("sales_data")
+csv_path = ctx.require_config("csv_path", str, action=self.name)
+sales_data = ctx.require_state("sales_data", list, action=self.name)
 
 # Writing
-ctx.data["sales_data"] = rows
-ctx.data["expected_months"] = set(grouped_data.keys())
+ctx.state["sales_data"] = rows
+ctx.state["expected_months"] = sorted(grouped_data.keys())
 ```
 
 **Comparison:**
 - ✅ Matches `json_event_log_processor/skills/load_json_file.py`
-- ✅ Matches `rpa_challenge/skills/row.py`: `page = ctx.data["page"]`
+- ✅ Keeps durable workflow state JSON-safe for transaction persistence
 
-**Observation:** The pattern is consistent. Using `.get()` for optional values and direct access for required values is the correct approach.
+**Observation:** Durable values belong in `ctx.state`; runtime-only handles belong in `ctx.resources`. Use guard helpers for required state/config values.
 
 ---
 
@@ -303,7 +303,7 @@ Imports are organized as:
 
 1. ✅ Consistent logging pattern with `get_logger(__name__)`
 2. ✅ Proper use of `BusinessException` vs `SystemException`
-3. ✅ Correct context access patterns (`ctx.data.get()`, `ctx.data["key"]`)
+3. ✅ Correct context access patterns (`ctx.require_state()`, `ctx.require_config()`, `ctx.state["key"]`)
 4. ✅ Good docstrings on all public classes and methods
 5. ✅ Proper import organization
 
