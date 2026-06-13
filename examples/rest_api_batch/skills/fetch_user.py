@@ -1,37 +1,57 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 
 import requests
 
-from rpacore import ProcessContext, Skill, SystemException
-from skills import KEY_CURRENT_POST, KEY_CURRENT_USER
+from rpacore import BusinessException, ProcessContext, Skill, SystemException
+from skills import API_MODE_FIXTURE
 
 USERS_URL = "https://jsonplaceholder.typicode.com/users"
+FIXTURE_USERS = {
+    1: {
+        "id": 1,
+        "name": "Leanne Graham",
+        "email": "leanne@example.test",
+        "address": {"city": "Gwenborough"},
+    },
+    2: {
+        "id": 2,
+        "name": "Clementine Bauch",
+        "email": "clementine@example.test",
+        "address": {"city": "South Elvis"},
+    },
+}
 
 
 class FetchUser(Skill):
     """Fetch a single user record from JSONPlaceholder /users/{userId} endpoint."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        post = ctx.data.get(KEY_CURRENT_POST)
-        if post is None:
-            raise SystemException(
-                "No current_post in context — fetch_posts must run first",
-                action=self.name,
-            )
+        post = ctx.require_state("current_post", dict, action=self.name)
 
         user_id = post.get("userId")
         if user_id is None:
-            raise SystemException(
+            raise BusinessException(
                 f"Post has no userId: {post}",
-                action=self.name,
+                action=self.name, stop=True,
             )
+
+        if ctx.config.get("api_mode") == API_MODE_FIXTURE:
+            user = FIXTURE_USERS.get(user_id)
+            if user is None:
+                raise BusinessException(
+                    f"Post {post.get('id', 'unknown')} references unknown userId: {user_id!r}",
+                    action=self.name, stop=True,
+                )
+            ctx.state["current_user"] = deepcopy(user)
+            return
 
         try:
             resp = requests.get(f"{USERS_URL}/{user_id}", timeout=30)
             resp.raise_for_status()
-            ctx.data[KEY_CURRENT_USER] = resp.json()
+            ctx.state["current_user"] = resp.json()
         except (json.JSONDecodeError, ValueError) as exc:
             raise SystemException(
                 f"Invalid JSON in user {user_id} response: {exc}",

@@ -4,12 +4,13 @@ An RPA Core example that demonstrates batch processing of REST API records.
 
 ## Overview
 
-This example fetches all posts from [JSONPlaceholder](https://jsonplaceholder.typicode.com/), enriches each with user data, validates the records, and writes the results to a JSONL output file.
+This example processes deterministic REST-shaped fixture data by default, enriches each post with user data, validates the records, and writes the valid results to a JSONL output file. The skills can also run against [JSONPlaceholder](https://jsonplaceholder.typicode.com/) by changing `api_mode` to `"live"`.
 
 It demonstrates:
 - **Per-transaction processing**: Each post is processed as an independent transaction
 - **Retry on transient failures**: The RPA Core Engine retries skills that raise `SystemException`
-- **Business vs system exceptions**: Validation failures (`BusinessException`) are permanent; network errors (`SystemException`) are retried
+- **Business vs system exceptions**: Validation failures (`BusinessException`) are permanent; HTTP/network errors (`SystemException`) are retried
+- **Artifact reporting**: Successful output writes attach the JSONL path to the transaction audit trail
 - **Crash recovery**: Transaction state is persisted to SQLite after each transaction
 
 ## Prerequisites
@@ -31,9 +32,11 @@ python main.py
 ```
 
 This will:
-1. Fetch all 100 posts from JSONPlaceholder
-2. For each post, fetch the corresponding user, validate, enrich, and write to `output.jsonl`
-3. Persist transaction state to `rpacore.db` for crash recovery
+1. Load deterministic fixture posts without using the network
+2. Validate each post before fetching/enriching user data
+3. Skip invalid records via `BusinessException(stop=True)`
+4. Write valid enriched records to `output.jsonl`
+5. Persist transaction state to `rpacore.db` for crash recovery
 
 ## Output
 
@@ -53,8 +56,9 @@ Edit `config.toml`:
 ```toml
 max_retries = 2       # Number of retry attempts for transient failures
 log_level = "INFO"     # Logging level
-db_path = "rpacore.db"    # Transaction database path
-output_file = "output.jsonl"  # Output JSONL file path
+transaction_db_path = "rpacore.db"  # Transaction database path
+output_file = "output.jsonl"        # Output JSONL file path
+api_mode = "fixture"                # fixture = no network, live = JSONPlaceholder
 ```
 
 ## Running Tests
@@ -82,15 +86,15 @@ requirements.txt     — Dependencies (requests)
 
 | Skill | Transaction | Execution Order | Purpose |
 |-------|-----------|-----------------|---------|
-| FetchPosts | Setup (runs once) | 1 | Fetch all posts from JSONPlaceholder |
-| FetchUser | Per-post | 1 | Fetch user data for current post |
-| ValidatePost | Per-post | 2 | Validate post has non-empty title and body |
+| FetchPosts | Setup (runs once) | 1 | Fetch all posts from fixture data or JSONPlaceholder |
+| ValidatePost | Per-post | 1 | Validate post has non-empty title, body, and userId |
+| FetchUser | Per-post | 2 | Fetch user data for current post |
 | EnrichRecord | Per-post | 3 | Merge post and user data into enriched record |
 | WriteOutput | Per-post | 4 | Append enriched record to JSONL output file |
 
 ## Exception Handling
 
-- **BusinessException**: Raised when a post fails validation (empty title/body). This is a permanent failure — the post will not be retried.
+- **BusinessException**: Raised when a post fails validation (empty title/body/userId). This is a permanent failure; the post will not be retried and will not be written.
 - **SystemException**: Raised for network errors, HTTP errors, or file I/O errors. The Engine will retry up to `max_retries` times.
 
 ## License

@@ -1,21 +1,13 @@
 """Unit tests for the EnrichRecord skill."""
 
-from unittest.mock import Mock
-
 import pytest
 
-from rpacore import BusinessException, SystemException
-
+from rpacore import BusinessException, ProcessContext, SystemException, Transaction
 from skills.enrich_record import EnrichRecord
 
 
 class TestEnrichRecord:
     """Test the EnrichRecord skill."""
-
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.mock_ctx = Mock()
-        self.mock_ctx.data = {}
 
     def test_enriches_record_with_post_and_user(self):
         """Test that EnrichRecord merges post and user data correctly."""
@@ -30,13 +22,14 @@ class TestEnrichRecord:
             "email": "Sincere@april.biz",
             "address": {"city": "Gwenborough"},
         }
-        self.mock_ctx.data = {
-            "current_post": post,
-            "current_user": user,
-        }
+        transaction = Transaction(
+            reference="test",
+            state={"current_post": post, "current_user": user},
+        )
+        ctx = ProcessContext(transaction=transaction)
 
         skill = EnrichRecord("enrich_record", 3)
-        skill.execute(self.mock_ctx)
+        skill.execute(ctx)
 
         expected = {
             "postId": 1,
@@ -47,76 +40,103 @@ class TestEnrichRecord:
             "userEmail": "Sincere@april.biz",
             "userCity": "Gwenborough",
         }
-        assert self.mock_ctx.data["enriched_record"] == expected
+        assert ctx.state["enriched_record"] == expected
 
     def test_enriches_with_empty_city_when_missing(self):
         """Test that EnrichRecord handles missing city gracefully."""
         post = {"id": 1, "title": "Test", "body": "Test"}
         user = {"id": 1, "name": "Test", "email": "test@test.com"}
-        self.mock_ctx.data = {"current_post": post, "current_user": user}
+        transaction = Transaction(
+            reference="test",
+            state={"current_post": post, "current_user": user},
+        )
+        ctx = ProcessContext(transaction=transaction)
 
         skill = EnrichRecord("enrich_record", 3)
-        skill.execute(self.mock_ctx)
+        skill.execute(ctx)
 
-        assert self.mock_ctx.data["enriched_record"]["userCity"] == ""
+        assert ctx.state["enriched_record"]["userCity"] == ""
 
     def test_raises_on_missing_post(self):
         """Test that EnrichRecord raises SystemException when no current_post exists."""
-        self.mock_ctx.data = {"current_user": {"id": 1}}
+        transaction = Transaction(
+            reference="test",
+            state={"current_user": {"id": 1}},
+        )
+        ctx = ProcessContext(transaction=transaction)
 
         skill = EnrichRecord("enrich_record", 3)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(self.mock_ctx)
+            skill.execute(ctx)
 
-        assert "No current_post" in str(exc_info.value)
+        assert "Missing required state" in str(exc_info.value)
 
     def test_raises_on_missing_user(self):
         """Test that EnrichRecord raises SystemException when no current_user exists."""
-        self.mock_ctx.data = {"current_post": {"id": 1}}
+        transaction = Transaction(
+            reference="test",
+            state={"current_post": {"id": 1}},
+        )
+        ctx = ProcessContext(transaction=transaction)
 
         skill = EnrichRecord("enrich_record", 3)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(self.mock_ctx)
+            skill.execute(ctx)
 
-        assert "No current_user" in str(exc_info.value)
+        assert "Missing required state" in str(exc_info.value)
 
     def test_raises_on_missing_user_id(self):
         """Test that EnrichRecord raises when user id is missing."""
         post = {"id": 1, "title": "Test", "body": "Test"}
         user = {"name": "Test", "email": "test@test.com"}
-        self.mock_ctx.data = {"current_post": post, "current_user": user}
+        transaction = Transaction(
+            reference="test",
+            state={"current_post": post, "current_user": user},
+        )
+        ctx = ProcessContext(transaction=transaction)
 
         skill = EnrichRecord("enrich_record", 3)
 
         with pytest.raises(BusinessException) as exc_info:
-            skill.execute(self.mock_ctx)
+            skill.execute(ctx)
 
         assert "missing required field: id" in str(exc_info.value)
+        assert exc_info.value.stops_execution is True
 
     def test_raises_on_empty_user_name(self):
         """Test that EnrichRecord raises when user name is empty."""
         post = {"id": 1, "title": "Test", "body": "Test"}
         user = {"id": 1, "name": "", "email": "test@test.com"}
-        self.mock_ctx.data = {"current_post": post, "current_user": user}
+        transaction = Transaction(
+            reference="test",
+            state={"current_post": post, "current_user": user},
+        )
+        ctx = ProcessContext(transaction=transaction)
 
         skill = EnrichRecord("enrich_record", 3)
 
         with pytest.raises(BusinessException) as exc_info:
-            skill.execute(self.mock_ctx)
+            skill.execute(ctx)
 
         assert "missing required field: name" in str(exc_info.value)
+        assert exc_info.value.stops_execution is True
 
     def test_raises_on_missing_user_email(self):
         """Test that EnrichRecord raises when user email is missing."""
         post = {"id": 1, "title": "Test", "body": "Test"}
         user = {"id": 1, "name": "Test"}
-        self.mock_ctx.data = {"current_post": post, "current_user": user}
+        transaction = Transaction(
+            reference="test",
+            state={"current_post": post, "current_user": user},
+        )
+        ctx = ProcessContext(transaction=transaction)
 
         skill = EnrichRecord("enrich_record", 3)
 
         with pytest.raises(BusinessException) as exc_info:
-            skill.execute(self.mock_ctx)
+            skill.execute(ctx)
 
         assert "missing required field: email" in str(exc_info.value)
+        assert exc_info.value.stops_execution is True

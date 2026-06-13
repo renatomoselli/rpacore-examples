@@ -9,7 +9,7 @@ import json
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -63,6 +63,7 @@ SAMPLE_USERS = {
 
 def _make_mock_response(data):
     """Create a mock requests.Response object."""
+    from unittest.mock import Mock
     mock_response = Mock()
     mock_response.json.return_value = data
     mock_response.raise_for_status.return_value = None
@@ -84,6 +85,53 @@ def _mock_get(url, **kwargs):
 class TestFullWorkflow:
     """Integration test for the full batch workflow."""
 
+    def test_fixture_mode_full_workflow_without_http(self, tmp_path):
+        """Test default fixture flow: invalid post is skipped and artifacts are attached."""
+        from rpacore import Engine, ProcessContext, Status, Transaction
+
+        config = {
+            "max_retries": 0,
+            "log_level": "WARNING",
+            "transaction_db_path": str(tmp_path / "rpacore.db"),
+            "output_file": str(tmp_path / "output.jsonl"),
+            "api_mode": "fixture",
+        }
+
+        engine = Engine(max_retries=0)
+        setup_tx = Transaction(
+            reference="fetch-posts",
+            state={},
+            skills=[FetchPosts(name="fetch_posts", execution_order=1)],
+        )
+        with patch("requests.get") as mock_get:
+            engine.run(ProcessContext(transaction=setup_tx, config=config))
+        mock_get.assert_not_called()
+        assert setup_tx.status == Status.SUCCESSFUL
+
+        post_statuses = {}
+        artifact_count = 0
+        for post in setup_tx.state["posts"]:
+            post_tx = Transaction(
+                reference=f"post-{post['id']}",
+                state={"current_post": post},
+                skills=[
+                    ValidatePost(name="validate_post", execution_order=1),
+                    FetchUser(name="fetch_user", execution_order=2),
+                    EnrichRecord(name="enrich_record", execution_order=3),
+                    WriteOutput(name="write_output", execution_order=4),
+                ],
+            )
+            with patch("requests.get") as mock_get:
+                engine.run(ProcessContext(transaction=post_tx, config=config))
+            mock_get.assert_not_called()
+            post_statuses[post["id"]] = post_tx.status
+            artifact_count += len(post_tx.artifacts)
+
+        output_lines = Path(config["output_file"]).read_text(encoding="utf-8").splitlines()
+        assert [json.loads(line)["postId"] for line in output_lines] == [1, 3]
+        assert post_statuses[2] == Status.FAILED
+        assert artifact_count == 2
+
     @patch("requests.get", side_effect=_mock_get)
     def test_full_workflow_produces_correct_output(self, mock_get):
         """Test the full pipeline: fetch posts, fetch users, validate, enrich, write."""
@@ -91,12 +139,12 @@ class TestFullWorkflow:
             output_file = str(Path(tmpdir) / "output.jsonl")
             db_path = str(Path(tmpdir) / "rpacore.db")
 
-            shared_data = {}
             config = {
                 "max_retries": 0,
                 "log_level": "WARNING",
-                "db_path": db_path,
+                "transaction_db_path": db_path,
                 "output_file": output_file,
+                "api_mode": "live",
             }
 
             # --- Setup transaction: fetch posts ---
@@ -104,36 +152,33 @@ class TestFullWorkflow:
 
             setup_tx = Transaction(
                 reference="fetch-posts",
+                state={},
                 skills=[FetchPosts(name="fetch_posts", execution_order=1)],
             )
             engine = Engine(max_retries=0)
-            engine.run(ProcessContext(transaction=setup_tx, config=config, data=shared_data))
+            engine.run(ProcessContext(transaction=setup_tx, config=config))
             assert setup_tx.status == Status.SUCCESSFUL
-            assert len(shared_data["posts"]) == 3
+            posts = setup_tx.state.get("posts", [])
+            assert len(posts) == 3
 
             # --- Per-post transactions ---
             results = []
-            for post in shared_data["posts"]:
-                shared_data["current_post"] = post
-
-                # Clear stale shared state from previous transaction
-                shared_data.pop("current_user", None)
-                shared_data.pop("enriched_record", None)
-
+            for post in posts:
                 post_tx = Transaction(
                     reference=f"post-{post['id']}",
+                    state={"current_post": post},
                     skills=[
-                        FetchUser(name="fetch_user", execution_order=1),
-                        ValidatePost(name="validate_post", execution_order=2),
+                        ValidatePost(name="validate_post", execution_order=1),
+                        FetchUser(name="fetch_user", execution_order=2),
                         EnrichRecord(name="enrich_record", execution_order=3),
                         WriteOutput(name="write_output", execution_order=4),
                     ],
                 )
-                engine.run(ProcessContext(transaction=post_tx, config=config, data=shared_data))
+                engine.run(ProcessContext(transaction=post_tx, config=config))
                 save_transaction(post_tx, db_path=db_path)
 
                 assert post_tx.status == Status.SUCCESSFUL
-                results.append(shared_data["enriched_record"])
+                results.append(post_tx.state["enriched_record"])
 
             # --- Verify output ---
             assert len(results) == 3
@@ -159,11 +204,10 @@ class TestFullWorkflow:
 
     @patch("requests.get")
     def test_partial_batch_failure_with_empty_title(self, mock_get):
-        """Test that a post with empty title fails but other posts succeed.
+        """Test that a post with empty title fails and is NOT in output (stop=True).
 
-        Note: BusinessException does not short-circuit skill execution.
-        EnrichRecord and WriteOutput still run for the failed post,
-        so the output file contains ALL records including the failed one.
+        With stop=True, BusinessException short-circuit prevents EnrichRecord
+        and WriteOutput from running, so the failed post is excluded from output.
         """
         partial_posts = [
             {
@@ -198,12 +242,12 @@ class TestFullWorkflow:
             output_file = str(Path(tmpdir) / "output.jsonl")
             db_path = str(Path(tmpdir) / "rpacore.db")
 
-            shared_data = {}
             config = {
                 "max_retries": 0,
                 "log_level": "WARNING",
-                "db_path": db_path,
+                "transaction_db_path": db_path,
                 "output_file": output_file,
+                "api_mode": "live",
             }
 
             from rpacore import (
@@ -217,65 +261,46 @@ class TestFullWorkflow:
             # Setup
             setup_tx = Transaction(
                 reference="fetch-posts",
+                state={},
                 skills=[FetchPosts(name="fetch_posts", execution_order=1)],
             )
             engine = Engine(max_retries=0)
-            engine.run(
-                ProcessContext(transaction=setup_tx, config=config, data=shared_data)
-            )
+            engine.run(ProcessContext(transaction=setup_tx, config=config))
             assert setup_tx.status == Status.SUCCESSFUL
 
-            # Process posts — post 2 fails (BusinessException), 1 and 3 succeed
-            results = []
+            # Process posts — post 2 fails (BusinessException with stop=True),
+            # 1 and 3 succeed
             failed_ids = []
             post_statuses = {}  # post_id → transaction status
-            for post in shared_data["posts"]:
-                shared_data["current_post"] = post
-                shared_data.pop("current_user", None)
-                shared_data.pop("enriched_record", None)
-
+            for post in setup_tx.state["posts"]:
                 post_tx = Transaction(
                     reference=f"post-{post['id']}",
+                    state={"current_post": post},
                     skills=[
-                        FetchUser(name="fetch_user", execution_order=1),
-                        ValidatePost(name="validate_post", execution_order=2),
-                        EnrichRecord(
-                            name="enrich_record", execution_order=3
-                        ),
+                        ValidatePost(name="validate_post", execution_order=1),
+                        FetchUser(name="fetch_user", execution_order=2),
+                        EnrichRecord(name="enrich_record", execution_order=3),
                         WriteOutput(name="write_output", execution_order=4),
                     ],
                 )
-                engine.run(
-                    ProcessContext(transaction=post_tx, config=config, data=shared_data)
-                )
+                engine.run(ProcessContext(transaction=post_tx, config=config))
                 save_transaction(post_tx, db_path=db_path)
 
                 post_statuses[post["id"]] = post_tx.status
-                if post_tx.status == Status.SUCCESSFUL:
-                    results.append(shared_data["enriched_record"])
-                else:
+                if post_tx.status != Status.SUCCESSFUL:
                     failed_ids.append(post["id"])
 
-            # Verify: posts 1 and 3 succeed, post 2 fails (BusinessException)
-            # Note: BusinessException does NOT short-circuit skill execution —
-            # EnrichRecord and WriteOutput still run for the failed post,
-            # so the output file will contain ALL 3 records.
-            assert len(results) == 2
-            assert 1 in [r["postId"] for r in results]
-            assert 3 in [r["postId"] for r in results]
+            # Verify: posts 1 and 3 succeed, post 2 fails
             assert 2 in failed_ids
-
-            # Verify post 2's transaction status is FAILED (not retried)
             assert post_statuses[2] == Status.FAILED
             assert post_statuses[1] == Status.SUCCESSFUL
             assert post_statuses[3] == Status.SUCCESSFUL
 
-            # Verify JSONL file contains ALL 3 records including the failed post
-            # (BusinessException does not short-circuit; EnrichRecord + WriteOutput still run)
+            # Verify JSONL file — post 2 is NOT in output due to stop=True short-circuit
             content = Path(output_file).read_text(encoding="utf-8")
             lines = content.strip().split("\n")
-            assert len(lines) == 3
+            assert len(lines) == 2
             post_ids_in_output = [json.loads(line)["postId"] for line in lines]
             assert 1 in post_ids_in_output
-            assert 2 in post_ids_in_output
             assert 3 in post_ids_in_output
+            assert 2 not in post_ids_in_output
