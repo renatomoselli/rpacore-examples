@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import sqlite3
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
+from uuid import uuid4
+
 from rpacore import (
+    BusinessException,
     Engine,
     ProcessContext,
     Status,
@@ -14,6 +19,7 @@ from rpacore import (
     load_config,
     save_transaction,
 )
+from rpacore.paths import resolve_config_paths
 
 from skills.check_working_tree import CheckWorkingTree
 from skills.capture_recent_commits import CaptureRecentCommits
@@ -21,40 +27,94 @@ from skills.check_remotes import CheckRemotes
 from skills.check_stale_branches import CheckStaleBranches
 from skills.write_repo_report import WriteRepoReport
 from skills.write_summary import WriteSummary
+from create_sample_repos import prepare_sample_repos
 
 logger = get_logger(__name__)
 
-def _validate_config(config: dict) -> None:
-    """Validate config has required keys with correct types and ranges."""
-    valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+PROJECT_ROOT = Path(__file__).resolve().parent
+LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+DEFAULT_SAMPLE_REPOS = ["sample_repos/alpha", "sample_repos/beta"]
+
+
+def _uses_default_sample_repos(config: dict) -> bool:
+    return config.get("repos") == DEFAULT_SAMPLE_REPOS
+
+
+def _resolve_repo_path(repo_path: str) -> str:
+    path = Path(repo_path).expanduser()
+    if not path.is_absolute():
+        path = PROJECT_ROOT / path
+    return str(path.resolve())
+
+
+def _exception_kind(exc: BaseException | None) -> str:
+    if isinstance(exc, BusinessException):
+        return "business"
+    if isinstance(exc, SystemException):
+        return "system"
+    return "none"
+
+
+def _failed_repo_record(repo_path: str, repo_tx: Transaction) -> dict[str, object]:
+    failed_skills = repo_tx.failed_skills()
+    failed_skill = failed_skills[-1] if failed_skills else None
+    exception = failed_skill.exceptions[-1] if failed_skill and failed_skill.exceptions else None
+    health_status = "system_failed" if isinstance(exception, SystemException) else "failed"
+    return {
+        "repository": repo_path,
+        "repo_name": Path(repo_path).name,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "health_status": health_status,
+        "failure_type": _exception_kind(exception),
+        "failed_skill": failed_skill.name if failed_skill else "",
+        "error": str(exception) if exception is not None else str(repo_tx.status),
+        "uncommitted_changes": len(repo_tx.state.get("uncommitted_changes", [])),
+        "recent_commits": repo_tx.state.get("recent_commits", []),
+        "remotes": repo_tx.state.get("remotes", {}),
+        "stale_branches": repo_tx.state.get("stale_branches", []),
+        "branches": repo_tx.state.get("all_branches", []),
+        "last_commit": None,
+    }
+
+def _validate_config(config: dict) -> dict:
+    """Validate config and resolve path values to absolute paths under PROJECT_ROOT."""
+    if "transaction_db_path" not in config and "db_path" in config:
+        logger.warning("Config key 'db_path' is deprecated; using it as 'transaction_db_path'.")
+        config["transaction_db_path"] = config.pop("db_path")
+
     for key, expected_type in (
         ("max_retries", int),
         ("log_level", str),
-        ("db_path", str),
+        ("transaction_db_path", str),
         ("repos", list),
         ("output_file", str),
-        ("stale_branch_days", int),  # [Q1/I2]
+        ("stale_branch_days", int),
     ):
         if key not in config:
-            raise SystemException(f"Missing required config key: {key}", action="main")
-        if not isinstance(config[key], expected_type):
             raise SystemException(
-                f"Config key '{key}' must be {expected_type.__name__}, got {type(config[key]).__name__}",
+                f"Missing required config key: {key}", action="main",
+            )
+        if type(config[key]) is not expected_type:
+            raise SystemException(
+                f"Config key '{key}' must be {expected_type.__name__}, "
+                f"got {type(config[key]).__name__}",
                 action="main",
             )
+
     if config["max_retries"] < 0:
         raise SystemException(
             f"Config key 'max_retries' must be >= 0, got {config['max_retries']}",
             action="main",
         )
-    if config["stale_branch_days"] <= 0:  # [Q1/I2] range check
+    if config["stale_branch_days"] <= 0:
         raise SystemException(
             f"Config key 'stale_branch_days' must be > 0, got {config['stale_branch_days']}",
             action="main",
         )
-    if config["log_level"].upper() not in valid_levels:
+    if config["log_level"].upper() not in LOG_LEVELS:
         raise SystemException(
-            f"Config key 'log_level' must be one of {valid_levels}, got {config['log_level']!r}",
+            f"Config key 'log_level' must be one of {sorted(LOG_LEVELS)}, "
+            f"got {config['log_level']!r}",
             action="main",
         )
     if not config["repos"]:
@@ -62,59 +122,72 @@ def _validate_config(config: dict) -> None:
             "Config key 'repos' must be a non-empty list",
             action="main",
         )
+    resolved_repos = []
     for repo_path in config["repos"]:
         if not isinstance(repo_path, str) or not repo_path.strip():
             raise SystemException(
                 f"Config key 'repos' contains empty or invalid path: {repo_path!r}",
                 action="main",
             )
-        if not Path(repo_path).is_dir():
+        resolved_repo_path = _resolve_repo_path(repo_path)
+        if not Path(resolved_repo_path).is_dir():
             raise SystemException(
-                f"Config key 'repos' path does not exist on disk: {repo_path!r}",
+                f"Config key 'repos' path does not exist or is not a directory: {repo_path!r}",
                 action="main",
             )
+        resolved_repos.append(resolved_repo_path)
+
+    config = resolve_config_paths(
+        config,
+        ["output_file", "transaction_db_path"],
+        base_dir=PROJECT_ROOT,
+    )
+    config["repos"] = resolved_repos
+    return config
 
 def main() -> None:
     config = load_config("config.toml")
-    _validate_config(config)
+    if _uses_default_sample_repos(config):
+        prepare_sample_repos(PROJECT_ROOT / "sample_repos")
+    config = _validate_config(config)
     configure_logger(level=str(config["log_level"]))
 
     engine = Engine(max_retries=int(config["max_retries"]))
-    db_path = str(config["db_path"])
-    output_file = str(config["output_file"])
+    db_path = config["transaction_db_path"]  # already resolved absolute by _validate_config
+    output_file = config["output_file"]
     repos = config["repos"]
-    shared_data: dict = {}
+    run_id = str(uuid4())[:8]
 
-    # Clear transaction DB for idempotent runs
-    db_file = Path(db_path)
-    if db_file.exists():
-        db_file.unlink()
+    # Cross-repo accumulator (lives in main() scope, not in Transaction.state)
+    repo_health_records: list[dict] = []
 
     if not repos:
         logger.warning("No repos configured in 'repos'. Exiting.")
-        # Still produce an empty summary
         summary_tx = Transaction(
             reference="summary-report",
+            state={"repo_health_records": [], "output_file": output_file},
+            metadata={"example": "git_repo_health_monitor", "run_id": run_id},
             skills=[WriteSummary(name="write_summary", execution_order=1)],
         )
-        engine.run(ProcessContext(transaction=summary_tx, config=config, data=shared_data))
+        engine.run(ProcessContext(transaction=summary_tx, config=config))
         save_transaction(summary_tx, db_path=db_path)
         return
 
     # --- One transaction per repo ---
     successful = 0
     failed = 0
-    repo_health_records: list[dict] = []
 
     for repo_path in repos:
-        # Clear all shared state from previous transaction
-        shared_data.clear()
-
-        shared_data["current_repo"] = repo_path
-        shared_data["output_file"] = output_file
-
         repo_tx = Transaction(
             reference=f"repo-{Path(repo_path).name}",
+            state={
+                "current_repo": repo_path,
+                "output_file": output_file,
+            },
+            metadata={
+                "example": "git_repo_health_monitor",
+                "run_id": run_id,
+            },
             skills=[
                 CheckWorkingTree(name="check_working_tree", execution_order=1),
                 CaptureRecentCommits(name="capture_recent_commits", execution_order=2),
@@ -123,16 +196,28 @@ def main() -> None:
                 WriteRepoReport(name="write_repo_report", execution_order=5),
             ],
         )
-        engine.run(ProcessContext(transaction=repo_tx, config=config, data=shared_data))
+        engine.run(ProcessContext(transaction=repo_tx, config=config))
         try:
             save_transaction(repo_tx, db_path=db_path)
-        except OSError as exc:
-            logger.warning("Could not persist transaction for %s: %s", repo_path, exc)
+        except (OSError, sqlite3.Error) as exc:
+            raise SystemException(
+                f"Could not persist transaction for {repo_path}: {exc}",
+                action="main",
+            ) from exc
 
-        if "health_report" in shared_data:  # [I8] explicit key-checking
-            health = shared_data["health_report"]
+        if "health_report" in repo_tx.state:
+            health = repo_tx.state["health_report"]
             repo_health_records.append(health)
             logger.info("Repo %s: %s", Path(repo_path).name, health.get("health_status", "unknown"))
+        elif repo_tx.status == Status.FAILED:
+            health = _failed_repo_record(repo_path, repo_tx)
+            repo_health_records.append(health)
+            logger.warning(
+                "Repo %s: %s in %s",
+                Path(repo_path).name,
+                health["health_status"],
+                health["failed_skill"],
+            )
 
         if repo_tx.status == Status.SUCCESSFUL:
             successful += 1
@@ -145,22 +230,30 @@ def main() -> None:
             else:
                 logger.warning("Repo %s: %s", Path(repo_path).name, repo_tx.status)
 
-    # --- Summary transaction with error handling [I9] ---
+    # --- Summary transaction ---
     summary_tx = Transaction(
         reference="summary-report",
+        state={
+            "repo_health_records": repo_health_records,
+            "output_file": output_file,
+        },
+        metadata={
+            "example": "git_repo_health_monitor",
+            "run_id": run_id,
+        },
         skills=[
             WriteSummary(name="write_summary", execution_order=1),
         ],
     )
-    # Pass collected health data via shared_data
-    shared_data["repo_health_records"] = repo_health_records
     try:
-        engine.run(ProcessContext(transaction=summary_tx, config=config, data=shared_data))
+        engine.run(ProcessContext(transaction=summary_tx, config=config))
         save_transaction(summary_tx, db_path=db_path)
     except Exception as exc:
         logger.error("Summary transaction failed: %s", exc)
-        # Clean up partial summary file
+        jsonl_path = Path(output_file)
         summary_path = Path(output_file).with_suffix(".summary.json")
+        if jsonl_path.exists():
+            jsonl_path.unlink()
         if summary_path.exists():
             summary_path.unlink()
         raise

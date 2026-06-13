@@ -3,45 +3,36 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from rpacore import ProcessContext, Skill, SystemException, get_logger
+from rpacore import BusinessException, ProcessContext, Skill, SystemException, get_logger
 
 logger = get_logger(__name__)
 
 class WriteRepoReport(Skill):
-    """Aggregate health check results and store in shared_data.
+    """Aggregate health check results and store in state.
 
     Computes health_status based on failure count:
-      - 0 failures → "healthy"
-      - 1-2 failures → "degraded"
-      - 3+ failures → "unhealthy"
+      - 0 failures \u2192 "healthy"
+      - 1-2 failures \u2192 "degraded"
+      - 3+ failures \u2192 "unhealthy"
 
-    Stores ctx.data["repo_health_records"] = list of health report dicts.
-    Stores ctx.data["health_report"] = latest health report dict (for compatibility).
+    Stores ctx.state["health_report"] = latest health report dict.
 
-    Note: JSONL file writing is handled by WriteSummary in batch mode.
+    Raises BusinessException(stop=True) for "degraded" and "unhealthy" repos
+    \u2014 signals business rule violation while preserving health data in state.
+
+    Note: JSONL and summary file writing is handled by WriteSummary.
     """
 
     def execute(self, ctx: ProcessContext) -> None:
-        repo_path = ctx.data.get("current_repo")
-        if repo_path is None:
-            raise SystemException(
-                "No current_repo in context — main.py must set it first",
-                action=self.name,
-            )
+        repo_path = ctx.require_state("current_repo", str, action=self.name)
+        ctx.require_state("output_file", str, action=self.name)  # verify present, not needed locally
 
-        output_file = ctx.data.get("output_file")
-        if output_file is None:
-            raise SystemException(
-                "No output_file in context — main.py must set it first",
-                action=self.name,
-            )
-
-        # Collect data from upstream skills
-        uncommitted_changes = ctx.data.get("uncommitted_changes", [])
-        recent_commits = ctx.data.get("recent_commits", [])
-        remotes = ctx.data.get("remotes", {})
-        stale_branches = ctx.data.get("stale_branches", [])
-        all_branches = ctx.data.get("all_branches", [])
+        # Collect data from upstream skills using optional_state with defaults
+        uncommitted_changes = ctx.optional_state("uncommitted_changes", list, [], action=self.name)
+        recent_commits = ctx.optional_state("recent_commits", list, [], action=self.name)
+        remotes = ctx.optional_state("remotes", dict, {}, action=self.name)
+        stale_branches = ctx.optional_state("stale_branches", list, [], action=self.name)
+        all_branches = ctx.optional_state("all_branches", list, [], action=self.name)
 
         # Weighted failure count: uncommitted changes scale with severity (capped at 2)
         failure_count = 0
@@ -67,8 +58,13 @@ class WriteRepoReport(Skill):
 
         health_report = {
             "repository": repo_path,
+            "repo_name": Path(repo_path).name,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "health_status": health_status,
+            "failure_type": "business" if health_status in ("degraded", "unhealthy") else "none",
+            "classification": "business_rule_violation" if health_status in ("degraded", "unhealthy") else "ok",
+            "failed_skill": "",
+            "error": "",
             "uncommitted_changes": len(uncommitted_changes),
             "recent_commits": recent_commits,
             "remotes": remotes,
@@ -77,17 +73,24 @@ class WriteRepoReport(Skill):
             "last_commit": last_commit,
         }
 
-        # Store in shared_data for batch write by WriteSummary
-        # Initialize list on first call, append subsequent calls
-        if "repo_health_records" not in ctx.data:
-            ctx.data["repo_health_records"] = []
-        ctx.data["repo_health_records"].append(health_report)
-
-        # Also store as single dict for backwards compatibility
-        ctx.data["health_report"] = health_report
+        # Store in durable state (preserved even if BusinessException is raised below)
+        ctx.state["health_report"] = health_report
+        ctx.transaction.metadata["repo_name"] = Path(repo_path).name
+        ctx.transaction.metadata["repo_path"] = repo_path
+        ctx.transaction.metadata["health_status"] = health_status
 
         logger.info(
             "Computed health report for %s (%s)",
             Path(repo_path).name,
             health_status,
         )
+
+        # Raise BusinessException for degraded or unhealthy reports
+        # Health data is already persisted in ctx.state before the raise,
+        # so stop=True has minimal downstream impact (WriteRepoReport is last skill).
+        if health_status in ("degraded", "unhealthy"):
+            raise BusinessException(
+                f"Repo {Path(repo_path).name} is {health_status}",
+                action=self.name,
+                stop=True,
+            )

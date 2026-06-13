@@ -25,7 +25,7 @@ graph TD
 
 **Transaction Per Row** — 10 individual transactions for 10 data rows (not batched) — each transaction has its own unique reference ID for resume capability.
 
-**Stateless Skills** — Skills read from `ctx.data["page"]` and `ctx.data["row"]` — no internal state, no hidden dependencies.
+**Stateless Skills** — Skills read durable row data from `ctx.state` and runtime browser handles from `ctx.resources` — no internal state, no hidden dependencies.
 
 ## Module Structure
 
@@ -57,7 +57,7 @@ from rpacore import ProcessContext, Skill, SystemException
 
 class FillRow(Skill):
     def execute(self, ctx: ProcessContext) -> None:
-        page = ctx.data["page"]
+        page = ctx.resources["page"]
         row: dict = self.arguments["row"]
         
         # Validate required fields exist
@@ -108,9 +108,9 @@ class FillRow(Skill):
 - **Explicit error types** — SystemException for external failures, BusinessException for data validation
 - **Timeouts** — All browser operations have explicit timeouts (10_000ms)
 
-### Process Context Boundary (CRITICAL: dict-based data passing, NOT typed context)
+### Process Context Boundary (CRITICAL: durable state plus runtime resources)
 
-Transaction creates context, skills access via `ctx.data`.
+Transaction creates context, skills access durable JSON-safe values via `ctx.state` and non-durable browser handles via `ctx.resources`.
 
 ```python
 # Transaction definition
@@ -127,7 +127,7 @@ engine.run(
     ProcessContext(
         transaction=row_tx,
         config=config,
-        data=shared_data  # dict - shared across all skills
+        resources={"page": page},
     )
 )
 ```

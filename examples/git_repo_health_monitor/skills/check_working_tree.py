@@ -10,17 +10,12 @@ logger = get_logger(__name__)
 class CheckWorkingTree(Skill):
     """Check for uncommitted changes in the working tree via `git status --porcelain`.
 
-    Stores ctx.data["uncommitted_changes"] = list of changed file paths.
+    Stores ctx.state["uncommitted_changes"] = list of changed file paths.
     Raises SystemException if git is not installed or the path is not a git repo.
     """
 
     def execute(self, ctx: ProcessContext) -> None:
-        repo_path = ctx.data.get("current_repo")
-        if repo_path is None:
-            raise SystemException(
-                "No current_repo in context — main.py must set it first",
-                action=self.name,
-            )
+        repo_path = ctx.require_state("current_repo", str, action=self.name)
 
         try:
             result = subprocess.run(
@@ -31,7 +26,7 @@ class CheckWorkingTree(Skill):
             )
         except FileNotFoundError as exc:
             raise SystemException(
-                "git command not found — is git installed?",
+                "git command not found \u2014 is git installed?",
                 action=self.name,
             ) from exc
         except subprocess.TimeoutExpired as exc:
@@ -60,7 +55,7 @@ class CheckWorkingTree(Skill):
                 filename = line[2:].lstrip(" ")
                 changed_files.append(filename)
 
-        ctx.data["uncommitted_changes"] = changed_files
+        ctx.state["uncommitted_changes"] = changed_files
         logger.info(
             "Found %d uncommitted changes in %s",
             len(changed_files),

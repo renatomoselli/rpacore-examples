@@ -27,7 +27,7 @@ graph TD
 
 **Transaction Per Row** — 10 individual transactions for 10 data rows (not batched) — each transaction has its own unique reference ID for resume capability.
 
-**Stateless Skills** — Skills read from `ctx.data["page"]` and `ctx.data["row"]` — no internal state, no hidden dependencies.
+**Stateless Skills** — Skills read durable row data from `ctx.state` and runtime browser handles from `ctx.resources` — no internal state, no hidden dependencies.
 
 ## Module Structure
 

@@ -11,17 +11,12 @@ logger = get_logger(__name__)
 class CaptureRecentCommits(Skill):
     """Capture the 10 most recent commits via `git log --oneline -10`.
 
-    Stores ctx.data["recent_commits"] = list of {commit_hash, subject, timestamp} dicts.
+    Stores ctx.state["recent_commits"] = list of {commit_hash, subject, timestamp} dicts.
     Raises SystemException if git is not installed or the path is not a git repo.
     """
 
     def execute(self, ctx: ProcessContext) -> None:
-        repo_path = ctx.data.get("current_repo")
-        if repo_path is None:
-            raise SystemException(
-                "No current_repo in context — main.py must set it first",
-                action=self.name,
-            )
+        repo_path = ctx.require_state("current_repo", str, action=self.name)
 
         try:
             result = subprocess.run(
@@ -33,7 +28,7 @@ class CaptureRecentCommits(Skill):
             )
         except FileNotFoundError as exc:
             raise SystemException(
-                "git command not found — is git installed?",
+                "git command not found \u2014 is git installed?",
                 action=self.name,
             ) from exc
         except subprocess.TimeoutExpired as exc:
@@ -76,7 +71,7 @@ class CaptureRecentCommits(Skill):
                     "timestamp": ts,
                 })
 
-        ctx.data["recent_commits"] = commits
+        ctx.state["recent_commits"] = commits
         logger.info(
             "Captured %d recent commits from %s",
             len(commits),

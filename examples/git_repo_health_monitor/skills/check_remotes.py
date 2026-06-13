@@ -10,19 +10,14 @@ logger = get_logger(__name__)
 class CheckRemotes(Skill):
     """Check remote configuration via `git remote -v`.
 
-    Stores ctx.data["remotes"] = dict mapping remote name → URL string.
+    Stores ctx.state["remotes"] = dict mapping remote name \u2192 URL string.
     Raises SystemException if git is not installed or the path is not a git repo.
-    No exception is raised for repos without remotes — WriteRepoReport will
+    No exception is raised for repos without remotes \u2014 WriteRepoReport will
     count "no remotes" as a health degradation.
     """
 
     def execute(self, ctx: ProcessContext) -> None:
-        repo_path = ctx.data.get("current_repo")
-        if repo_path is None:
-            raise SystemException(
-                "No current_repo in context — main.py must set it first",
-                action=self.name,
-            )
+        repo_path = ctx.require_state("current_repo", str, action=self.name)
 
         try:
             result = subprocess.run(
@@ -33,7 +28,7 @@ class CheckRemotes(Skill):
             )
         except FileNotFoundError as exc:
             raise SystemException(
-                "git command not found — is git installed?",
+                "git command not found \u2014 is git installed?",
                 action=self.name,
             ) from exc
         except subprocess.TimeoutExpired as exc:
@@ -66,9 +61,9 @@ class CheckRemotes(Skill):
                 if remote_name not in remotes:
                     remotes[remote_name] = remote_url
 
-        # No remotes is not an error — just an empty dict.
+        # No remotes is not an error \u2014 just an empty dict.
         # WriteRepoReport will count "no remotes" as a health degradation.
-        ctx.data["remotes"] = remotes
+        ctx.state["remotes"] = remotes
         logger.info(
             "Found %d remotes in %s",
             len(remotes),
