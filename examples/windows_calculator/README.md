@@ -38,12 +38,12 @@ input/
   expr_example.csv          <- sample CSV (edit or replace)
 
 skills/
-  open_calculator.py        <- Skill 1: launch Calculator
-  load_expressions.py       <- Skill 2: parse CSV
+  load_expressions.py       <- Skill 1: parse and validate CSV
+  open_calculator.py        <- Skill 2: launch Calculator
   process_expressions.py    <- Skill 3: type + compare
-  write_report.py           <- Skill 4: write results CSV
-  move_file.py              <- Skill 5: move successful files to done/
-  close_calculator.py       <- Skill 6: cleanup
+  close_calculator.py       <- Skill 4: cleanup
+  write_report.py           <- Skill 5: write results CSV artifact
+  move_file.py              <- Skill 6: move successful files to done/
 
 output/
   expressions_results.csv   <- results written here
@@ -54,6 +54,10 @@ failed/                     <- failed files moved here
 
 Each CSV file becomes one RPA Core transaction with 6 skills executed in sequence.
 The queue ensures exactly-once processing per file.
+
+Configuration follows the current RPA Core API: top-level transaction
+persistence uses `transaction_db_path`, and queue leases use
+`[queue].lease_timeout` rather than the older queue claim-timeout key.
 
 ## CSV Schema
 

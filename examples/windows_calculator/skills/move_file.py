@@ -14,18 +14,18 @@ class MoveFile(Skill):
     """Move processed CSV to done/ directory."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        if ctx.data.get("validation_failed"):
+        if ctx.optional_state("validation_failed", bool, False, action=self.name):
             self.status = Status.SKIPPED
             return
-        if ctx.data.get("has_failures"):
+        if ctx.optional_state("has_failures", bool, False, action=self.name):
             raise BusinessException("Calculator expression check failed", action=self.name)
 
-        file_path = ctx.data.get("file_path")
-        if not isinstance(file_path, str) or not file_path:
+        file_path = ctx.require_state("file_path", str, action=self.name)
+        if not file_path:
             raise SystemException("No source file available to move", action=self.name)
 
-        done_dir = ctx.config.get("done_dir")
-        if not isinstance(done_dir, str) or not done_dir:
+        done_dir = ctx.require_config("done_dir", str, action=self.name)
+        if not done_dir:
             raise SystemException("Config key 'done_dir' must be a non-empty string", action=self.name)
 
         src = Path(file_path)
@@ -45,7 +45,7 @@ class MoveFile(Skill):
                 action=self.name,
             ) from exc
 
-        ctx.data["moved_file"] = str(dst)
+        ctx.state["moved_file"] = str(dst)
 
 
 def _unique_destination(directory: Path, filename: str) -> Path:

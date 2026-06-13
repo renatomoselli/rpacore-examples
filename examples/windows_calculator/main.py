@@ -5,13 +5,11 @@ per file, and runs the queue loop.
 """
 from __future__ import annotations
 
-import sqlite3
 import shutil
 import sys
 from pathlib import Path
 
 from rpacore import (
-    CredentialProvider,
     Engine,
     QueueItem,
     SqliteQueue,
@@ -38,6 +36,7 @@ def _validate_config(config: dict) -> None:
     for key, expected_type in (
         ("engine_max_retries", int),
         ("log_level", str),
+        ("transaction_db_path", str),
         ("input_dir", str),
         ("output_dir", str),
         ("done_dir", str),
@@ -46,7 +45,7 @@ def _validate_config(config: dict) -> None:
     ):
         if key not in config:
             raise SystemException(f"Missing required config key: {key}", action="main")
-        if not isinstance(config[key], expected_type):
+        if type(config[key]) is not expected_type:
             raise SystemException(
                 f"Config key '{key}' must be {expected_type.__name__}, "
                 f"got {type(config[key]).__name__}",
@@ -57,53 +56,66 @@ def _validate_config(config: dict) -> None:
     if not isinstance(queue_config, dict):
         raise SystemException("Missing required [queue] config section", action="main")
 
+    for key in ("db_path", "lease_timeout", "max_retries"):
+        if key not in queue_config:
+            raise SystemException(f"Missing required [queue] config key: {key}", action="main")
+    if type(queue_config["db_path"]) is not str or not queue_config["db_path"]:
+        raise SystemException(
+            "Config key 'queue.db_path' must be a non-empty string", action="main"
+        )
+    if type(queue_config["lease_timeout"]) is not int or queue_config["lease_timeout"] <= 0:
+        raise SystemException(
+            f"Config key 'queue.lease_timeout' must be a positive int, "
+            f"got {queue_config['lease_timeout']!r}",
+            action="main",
+        )
+    if type(queue_config["max_retries"]) is not int or queue_config["max_retries"] < 0:
+        raise SystemException(
+            f"Config key 'queue.max_retries' must be a non-negative int, "
+            f"got {queue_config['max_retries']!r}",
+            action="main",
+        )
+
 
 def scan_inbox(config: dict, queue: SqliteQueue) -> int:
     """Add new CSV files in the input directory as queue items."""
     input_dir = Path(str(config["input_dir"]))
     if not input_dir.exists():
-        raise SystemException(f"Input directory does not exist: {input_dir}", action="scan_inbox")
+        raise SystemException(
+            f"Input directory does not exist: {input_dir}", action="scan_inbox"
+        )
 
-    existing_refs = _active_queue_references(queue)
     count = 0
-
     for csv_file in sorted(input_dir.glob("*.csv")):
         reference = f"calculator-{csv_file.stem}"
-        if reference in existing_refs:
-            continue
-        queue.add(
+        added = queue.add_once(
             QueueItem(
                 reference=reference,
                 payload={"file_path": str(csv_file)},
             )
         )
-        count += 1
-
+        if added:
+            count += 1
     return count
 
 
 def build_transaction(item: QueueItem) -> Transaction:
-    """Build a 6-skill transaction for one CSV file."""
+    """Build a 6-skill transaction for one CSV file.
+
+    Note: transaction.state is seeded from item.payload by run_queue_loop()
+    via _seed_transaction_state_from_payload() — no manual state= needed.
+    """
     return Transaction(
         reference=item.reference,
         skills=[
-            OpenCalculator(name="open_calculator", execution_order=1),
-            LoadExpressions(name="load_expressions", execution_order=2),
+            LoadExpressions(name="load_expressions", execution_order=1),
+            OpenCalculator(name="open_calculator", execution_order=2),
             ProcessExpressions(name="process_expressions", execution_order=3),
-            WriteReport(name="write_report", execution_order=4),
-            MoveFile(name="move_file", execution_order=5),
-            CloseCalculator(name="close_calculator", execution_order=6),
+            CloseCalculator(name="close_calculator", execution_order=4),
+            WriteReport(name="write_report", execution_order=5),
+            MoveFile(name="move_file", execution_order=6),
         ],
     )
-
-
-def _active_queue_references(queue: SqliteQueue) -> set[str]:
-    """Return queue references that are not terminal yet."""
-    with sqlite3.connect(queue.db_path) as conn:
-        rows = conn.execute(
-            "SELECT reference FROM queue_items WHERE status IN ('pending', 'in_progress')"
-        ).fetchall()
-    return {str(row[0]) for row in rows}
 
 
 def _move_failed_file(item: QueueItem, config: dict) -> None:
@@ -147,7 +159,7 @@ def _load_example_config() -> dict:
     config = dict(load_config(str(config_path)))
     base_dir = config_path.parent
 
-    for key in ("input_dir", "output_dir", "done_dir", "failed_dir"):
+    for key in ("input_dir", "output_dir", "done_dir", "failed_dir", "transaction_db_path"):
         value = config.get(key)
         if isinstance(value, str):
             path = Path(value)
@@ -187,7 +199,7 @@ def main() -> None:
 
     def after_item(item: QueueItem, transaction: Transaction | None, error: Exception | None) -> None:
         if transaction is not None:
-            if transaction.status != Status.SUCCESSFUL:
+            if transaction.status is not Status.SUCCESSFUL:
                 _move_failed_file(item, config)
         elif error is not None:
             _move_failed_file(item, config)
@@ -206,6 +218,7 @@ def main() -> None:
         worker_id="calculator-worker",
         logger=logger,
         after_item=after_item,
+        transaction_db_path=str(config["transaction_db_path"]),
     )
 
     logger.info(

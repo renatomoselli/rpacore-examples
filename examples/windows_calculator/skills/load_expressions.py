@@ -11,9 +11,7 @@ class LoadExpressions(Skill):
     """Parse the expression CSV and store rows in context."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        file_path = ctx.data.get("file_path")
-        if not isinstance(file_path, str) or not file_path:
-            raise SystemException("Queue item payload missing file_path", action=self.name)
+        file_path = ctx.require_state("file_path", str, action=self.name)
 
         path = Path(file_path)
 
@@ -33,10 +31,11 @@ class LoadExpressions(Skill):
             actual = set(reader.fieldnames) if reader.fieldnames else set()
             if not required.issubset(actual):
                 missing = required - actual
-                ctx.data["validation_failed"] = True
+                ctx.state["validation_failed"] = True
                 raise BusinessException(
                     f"Missing required columns: {missing}",
                     action=self.name,
+                    stop=True,
                 )
 
             for row_num, row in enumerate(reader, start=2):
@@ -55,11 +54,12 @@ class LoadExpressions(Skill):
                 )
 
         if not expressions:
-            ctx.data["validation_failed"] = True
+            ctx.state["validation_failed"] = True
             raise BusinessException(
                 "CSV file contains no valid expressions",
                 action=self.name,
+                stop=True,
             )
 
-        ctx.data["report_file"] = str(path)
-        ctx.data["expressions"] = expressions
+        ctx.state["report_file"] = str(path)
+        ctx.state["expressions"] = expressions

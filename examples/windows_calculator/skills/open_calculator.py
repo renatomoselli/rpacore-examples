@@ -11,7 +11,7 @@ class OpenCalculator(Skill):
 
     def execute(self, ctx: ProcessContext) -> None:
         # Use existing interactor from context (e.g., test injection) or create a new one
-        interactor = ctx.data.get("interactor")
+        interactor = ctx.resources.get("interactor")
         if interactor is None:
             calculator_path = ctx.config.get("calculator_path")
             interactor = CalculatorInteractor(calculator_path=calculator_path)
@@ -22,4 +22,4 @@ class OpenCalculator(Skill):
                     action=self.name,
                 )
 
-        ctx.data["interactor"] = interactor
+        ctx.resources["interactor"] = interactor

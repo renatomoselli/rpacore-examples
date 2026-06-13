@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -19,12 +20,12 @@ def _build_transaction():
     return Transaction(
         reference="calc-batch",
         skills=[
-            OpenCalculator(name="open_calculator", execution_order=1),
-            LoadExpressions(name="load_expressions", execution_order=2),
+            LoadExpressions(name="load_expressions", execution_order=1),
+            OpenCalculator(name="open_calculator", execution_order=2),
             ProcessExpressions(name="process_expressions", execution_order=3),
-            WriteReport(name="write_report", execution_order=4),
-            MoveFile(name="move_file", execution_order=5),
-            CloseCalculator(name="close_calculator", execution_order=6),
+            CloseCalculator(name="close_calculator", execution_order=4),
+            WriteReport(name="write_report", execution_order=5),
+            MoveFile(name="move_file", execution_order=6),
         ],
     )
 
@@ -70,23 +71,26 @@ def test_full_workflow_pass_and_fail(tmp_path):
         skills=[
             LoadExpressions(name="load_expressions", execution_order=1),
             ProcessExpressions(name="process_expressions", execution_order=2),
-            WriteReport(name="write_report", execution_order=3),
-            MoveFile(name="move_file", execution_order=4),
-            CloseCalculator(name="close_calculator", execution_order=5),
+            CloseCalculator(name="close_calculator", execution_order=3),
+            WriteReport(name="write_report", execution_order=4),
+            MoveFile(name="move_file", execution_order=5),
         ],
     )
-    data = {"file_path": str(csv_file), "interactor": interactor}
+    tx.state["file_path"] = str(csv_file)
+    ctx = ProcessContext(transaction=tx, config=config)
+    ctx.resources["interactor"] = interactor
 
-    Engine(max_retries=0).run(ProcessContext(transaction=tx, data=data, config=config))
+    Engine(max_retries=0).run(ctx)
 
     assert tx.status == Status.FAILED
-    assert "results" in data
-    assert len(data["results"]) == 2
-    assert data["results"][0].passed is True
-    assert data["results"][1].passed is False
+    assert "results" in tx.state
+    assert len(tx.state["results"]) == 2
+    assert tx.state["results"][0]["passed"] is True
+    assert tx.state["results"][1]["passed"] is False
+    json.dumps(tx.state)
 
     # Report written
-    report_path = Path(data["report_path"])
+    report_path = Path(tx.state["report_path"])
     assert report_path.exists()
 
     with report_path.open(encoding="utf-8") as f:
@@ -114,24 +118,27 @@ def test_validation_failure_skips_downstream(tmp_path):
     tx = Transaction(
         reference="calc-bad",
         skills=[
-            OpenCalculator(name="open_calculator", execution_order=1),
-            LoadExpressions(name="load_expressions", execution_order=2),
+            LoadExpressions(name="load_expressions", execution_order=1),
+            OpenCalculator(name="open_calculator", execution_order=2),
             ProcessExpressions(name="process_expressions", execution_order=3),
-            WriteReport(name="write_report", execution_order=4),
-            MoveFile(name="move_file", execution_order=5),
-            CloseCalculator(name="close_calculator", execution_order=6),
+            CloseCalculator(name="close_calculator", execution_order=4),
+            WriteReport(name="write_report", execution_order=5),
+            MoveFile(name="move_file", execution_order=6),
         ],
     )
-    data = {"file_path": str(csv_file), "interactor": interactor}
+    tx.state["file_path"] = str(csv_file)
+    ctx = ProcessContext(transaction=tx, config=config)
+    ctx.resources["interactor"] = interactor
 
-    Engine(max_retries=0).run(ProcessContext(transaction=tx, data=data, config=config))
+    Engine(max_retries=0).run(ctx)
 
     assert tx.status == Status.FAILED
-    assert data.get("validation_failed") is True
-    assert "results" not in data
-    assert "report_path" not in data
-    # Calculator must be closed even when validation fails
-    interactor.close.assert_called_once()
+    assert tx.state.get("validation_failed") is True
+    assert "results" not in tx.state
+    assert "report_path" not in tx.state
+    # Validation fails before Calculator is opened.
+    interactor.launch.assert_not_called()
+    interactor.close.assert_not_called()
 
 
 def test_move_file_moves_to_done(tmp_path):
@@ -156,18 +163,20 @@ def test_move_file_moves_to_done(tmp_path):
         skills=[
             LoadExpressions(name="load_expressions", execution_order=1),
             ProcessExpressions(name="process_expressions", execution_order=2),
-            WriteReport(name="write_report", execution_order=3),
-            MoveFile(name="move_file", execution_order=4),
-            CloseCalculator(name="close_calculator", execution_order=5),
+            CloseCalculator(name="close_calculator", execution_order=3),
+            WriteReport(name="write_report", execution_order=4),
+            MoveFile(name="move_file", execution_order=5),
         ],
     )
-    data = {"file_path": str(csv_file), "interactor": interactor}
+    tx.state["file_path"] = str(csv_file)
+    ctx = ProcessContext(transaction=tx, config=config)
+    ctx.resources["interactor"] = interactor
 
-    Engine(max_retries=0).run(ProcessContext(transaction=tx, data=data, config=config))
+    Engine(max_retries=0).run(ctx)
 
     assert tx.status == Status.SUCCESSFUL
     assert not csv_file.exists()  # original moved
     done_file = done_dir / csv_file.name
     assert done_file.exists()
-    assert data.get("moved_file") == str(done_file)
+    assert tx.state.get("moved_file") == str(done_file)
     interactor.close.assert_called_once()
