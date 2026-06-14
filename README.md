@@ -25,17 +25,17 @@ It exists to validate the real consumer workflow:
 
 ## Quick Start
 
-From the RPA Core repo, build a wheel:
+From a sibling checkout of the RPA Core framework repo, build a wheel:
 
 ```powershell
-cd d:\repos\oref
+cd ..\rpacore
 .venv\Scripts\python.exe -m build
 ```
 
 From this repo, create and activate a virtual environment:
 
 ```powershell
-cd d:\repos\oref-examples
+cd ..\rpacore-examples
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
@@ -43,32 +43,35 @@ python -m venv .venv
 Install the latest built wheel:
 
 ```powershell
-pip install d:\repos\oref\dist\rpacore-0.1.0-py3-none-any.whl
+pip install ..\rpacore\dist\rpacore-0.1.0-py3-none-any.whl
 ```
 
-Run the starter example:
+Run an example from its own directory:
 
 ```powershell
-python .\main.py
+cd examples\json_event_log_processor
+python main.py
+```
+
+Most examples include tests:
+
+```powershell
+python -m pytest tests
 ```
 
 ## Project Layout
 
+Each example under `examples/` follows a consistent structure:
+
 ```text
-oref-examples/
-  config.toml
-  main.py
-  skills/
+examples/<name>/
+  main.py              # Entry point - run with python main.py
+  config.toml          # Workflow configuration
+  skills/              # Individual skill modules
     __init__.py
-    greet_user.py
+    <skill_name>.py
+  tests/
+    unit/              # Unit tests per skill
+    integration/       # End-to-end workflow tests
 ```
 
-## Starter Example
-
-The included example builds a transaction with three user-space skills:
-
-1. validate the input
-2. write a greeting file
-3. confirm the file contents
-
-This keeps the example small while still showing the RPA Core execution pattern.

@@ -1,4 +1,4 @@
-"""Unit tests for ScanInbox skill."""
+"""Unit tests for scan_inbox plain function."""
 
 from __future__ import annotations
 
@@ -8,126 +8,89 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from rpacore import ProcessContext, SystemException, Transaction
+from rpacore import SqliteQueue, SystemException
 
-from skills.scan_inbox import ScanInbox
-
+from main import scan_inbox
 
 class TestScanInbox:
-    """Tests for ScanInbox skill."""
+    """Tests for the scan_inbox plain function."""
 
-    def test_scan_inbox_pdf_discovery(self, tmp_env: str, mock_queue: MagicMock):
+    def test_scan_inbox_pdf_discovery(self, tmp_env: str):
         """Test that PDF files are discovered and enqueued."""
         sample_data_dir = str(tmp_env / "sample_data")
         os.makedirs(sample_data_dir, exist_ok=True)
 
-        # Create sample PDF files
         for i in range(3):
             (Path(sample_data_dir) / f"invoice_{i:03d}.pdf").write_text("fake pdf")
 
-        ctx = ProcessContext(
-            transaction=Transaction(reference="test", skills=[]),
-            data={},
-            config={"sample_data_dir": sample_data_dir},
-        )
-        skill = ScanInbox(
-            name="scan_inbox",
-            execution_order=1,
-            arguments={"queue": mock_queue},
-        )
-        skill.execute(ctx)
+        queue = MagicMock()
+        queue.add_once = MagicMock(return_value=True)
+        config = {"sample_data_dir": sample_data_dir}
 
-        assert ctx.data["scanned_count"] == 3
-        assert mock_queue.add.call_count == 3
+        result = scan_inbox(config, queue)
 
-    def test_scan_inbox_empty_inbox(self, tmp_env: str, mock_queue: MagicMock):
-        """Test that empty inbox sets scanned_count to 0."""
+        assert result == 3
+        assert queue.add_once.call_count == 3
+
+    def test_scan_inbox_empty_inbox(self, tmp_env: str):
+        """Test that empty inbox returns 0."""
         sample_data_dir = str(tmp_env / "sample_data")
         os.makedirs(sample_data_dir, exist_ok=True)
 
-        ctx = ProcessContext(
-            transaction=Transaction(reference="test", skills=[]),
-            data={},
-            config={"sample_data_dir": sample_data_dir},
-        )
-        skill = ScanInbox(
-            name="scan_inbox",
-            execution_order=1,
-            arguments={"queue": mock_queue},
-        )
-        skill.execute(ctx)
+        queue = MagicMock()
+        queue.add_once = MagicMock(return_value=True)
+        config = {"sample_data_dir": sample_data_dir}
 
-        assert ctx.data["scanned_count"] == 0
-        mock_queue.add.assert_not_called()
+        result = scan_inbox(config, queue)
 
-    def test_scan_inbox_skip_subdirectories(self, tmp_env: str, mock_queue: MagicMock):
+        assert result == 0
+        queue.add_once.assert_not_called()
+
+    def test_scan_inbox_skip_subdirectories(self, tmp_env: str):
         """Test that PDFs in done/ or failed/ subdirectories are skipped."""
         sample_data_dir = str(tmp_env / "sample_data")
         os.makedirs(sample_data_dir, exist_ok=True)
         done_dir = Path(sample_data_dir) / "done"
         done_dir.mkdir(exist_ok=True)
 
-        # Create PDF in root
         (Path(sample_data_dir) / "invoice_001.pdf").write_text("fake pdf")
-        # Create PDF in done/ (should be skipped)
         (done_dir / "invoice_002.pdf").write_text("fake pdf")
 
-        ctx = ProcessContext(
-            transaction=Transaction(reference="test", skills=[]),
-            data={},
-            config={"sample_data_dir": sample_data_dir},
-        )
-        skill = ScanInbox(
-            name="scan_inbox",
-            execution_order=1,
-            arguments={"queue": mock_queue},
-        )
-        skill.execute(ctx)
+        queue = MagicMock()
+        queue.add_once = MagicMock(return_value=True)
+        config = {"sample_data_dir": sample_data_dir}
 
-        assert ctx.data["scanned_count"] == 1
+        result = scan_inbox(config, queue)
 
-    def test_scan_inbox_missing_queue(self, tmp_env: str):
-        """Test that missing queue raises SystemException."""
-        ctx = ProcessContext(
-            transaction=Transaction(reference="test", skills=[]),
-            data={},
-            config={},
-        )
-        skill = ScanInbox(
-            name="scan_inbox",
-            execution_order=1,
-            arguments={},
-        )
+        assert result == 1
 
-        with pytest.raises(SystemException, match="No queue"):
-            skill.execute(ctx)
+    def test_scan_inbox_missing_directory(self, tmp_env: str):
+        """Test that missing inbox directory raises SystemException."""
+        queue = MagicMock()
+        config = {"sample_data_dir": "/nonexistent/path"}
 
-    def test_scan_inbox_payload_structure(self, tmp_env: str, mock_queue: MagicMock):
+        with pytest.raises(SystemException, match="does not exist"):
+            scan_inbox(config, queue)
+
+    def test_scan_inbox_payload_structure(self, tmp_env: str):
         """Test that queue items have correct payload structure."""
         sample_data_dir = str(tmp_env / "sample_data")
         os.makedirs(sample_data_dir, exist_ok=True)
         (Path(sample_data_dir) / "invoice_001.pdf").write_text("fake pdf")
 
-        ctx = ProcessContext(
-            transaction=Transaction(reference="test", skills=[]),
-            data={},
-            config={"sample_data_dir": sample_data_dir},
-        )
-        skill = ScanInbox(
-            name="scan_inbox",
-            execution_order=1,
-            arguments={"queue": mock_queue},
-        )
-        skill.execute(ctx)
+        queue = MagicMock()
+        queue.add_once = MagicMock(return_value=True)
+        config = {"sample_data_dir": sample_data_dir}
 
-        # Verify queue.add was called with QueueItem having correct payload
-        call_args = mock_queue.add.call_args
+        scan_inbox(config, queue)
+
+        call_args = queue.add_once.call_args
         item = call_args[0][0]
         assert item.payload["file_path"] == os.path.join(sample_data_dir, "invoice_001.pdf")
         assert item.payload["original_name"] == "invoice_001.pdf"
         assert item.reference == "invoice_001"
 
-    def test_scan_inbox_hidden_files_skipped(self, tmp_env: str, mock_queue: MagicMock):
+    def test_scan_inbox_hidden_files_skipped(self, tmp_env: str):
         """Test that hidden files (starting with .) are skipped."""
         sample_data_dir = str(tmp_env / "sample_data")
         os.makedirs(sample_data_dir, exist_ok=True)
@@ -135,32 +98,27 @@ class TestScanInbox:
         (Path(sample_data_dir) / "invoice_001.pdf").write_text("fake pdf")
         (Path(sample_data_dir) / ".DS_Store.pdf").write_text("fake pdf")
 
-        ctx = ProcessContext(
-            transaction=Transaction(reference="test", skills=[]),
-            data={},
-            config={"sample_data_dir": sample_data_dir},
-        )
-        skill = ScanInbox(
-            name="scan_inbox",
-            execution_order=1,
-            arguments={"queue": mock_queue},
-        )
-        skill.execute(ctx)
+        queue = MagicMock()
+        queue.add_once = MagicMock(return_value=True)
+        config = {"sample_data_dir": sample_data_dir}
 
-        assert ctx.data["scanned_count"] == 1
+        result = scan_inbox(config, queue)
 
-    def test_scan_inbox_missing_directory(self, tmp_env: str, mock_queue: MagicMock):
-        """Test that missing inbox directory raises SystemException."""
-        ctx = ProcessContext(
-            transaction=Transaction(reference="test", skills=[]),
-            data={},
-            config={"sample_data_dir": "/nonexistent/path"},
-        )
-        skill = ScanInbox(
-            name="scan_inbox",
-            execution_order=1,
-            arguments={"queue": mock_queue},
-        )
+        assert result == 1
 
-        with pytest.raises(SystemException, match="does not exist"):
-            skill.execute(ctx)
+    def test_scan_inbox_idempotent_enqueue(self, tmp_env: str):
+        """Test that add_once returns False for duplicate references."""
+        sample_data_dir = str(tmp_env / "sample_data")
+        os.makedirs(sample_data_dir, exist_ok=True)
+        (Path(sample_data_dir) / "invoice_001.pdf").write_text("fake pdf")
+        (Path(sample_data_dir) / "invoice_002.pdf").write_text("fake pdf")
+
+        queue = MagicMock()
+        # First file adds successfully, second is duplicate
+        queue.add_once = MagicMock(side_effect=[True, False])
+        config = {"sample_data_dir": sample_data_dir}
+
+        result = scan_inbox(config, queue)
+
+        assert result == 1  # Only 1 newly added
+        assert queue.add_once.call_count == 2  # Both files attempted

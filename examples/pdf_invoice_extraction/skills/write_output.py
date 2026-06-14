@@ -5,11 +5,11 @@ from __future__ import annotations
 import csv
 import os
 import shutil
-import time
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from rpacore import ProcessContext, Skill, SystemException, get_logger
+from rpacore import BusinessException, ProcessContext, Skill, SystemException, get_logger
 
 logger = get_logger(__name__)
 
@@ -27,32 +27,17 @@ _CSV_HEADER = [
 class WriteOutput(Skill):
     """Write normalized invoice record to CSV output and move the source PDF to done/.
 
-    On success: appends record to CSV, moves PDF to done/ folder.
-    On validation failure: normalize_record raises SystemException (checking the
-    validation_failed flag), short-circuiting execution before this skill runs.
-
-    Expected input keys in ctx.data:
-        - normalized_record: dict — Normalized invoice record from normalize_record
-        - file_path: str — Original PDF file path
-
-    Sets on ctx.data:
-        - output_written: bool — True if record was written to CSV
+    On success: moves PDF to done/, atomically appends record to CSV, and registers artifacts.
+    On duplicate: raises BusinessException (stop=True) for duplicate invoice numbers.
     """
 
     def execute(self, ctx: ProcessContext) -> None:
-        normalized_record = ctx.data.get("normalized_record")
-        if normalized_record is None:
-            raise SystemException(
-                "No normalized_record in context — normalize_record must run first",
-                action=self.name,
-            )
+        if ctx.optional_state("validation_failed", bool, False, action=self.name):
+            logger.info("Validation failed earlier; skipping output write.")
+            return
 
-        file_path = ctx.data.get("file_path")
-        if file_path is None:
-            raise SystemException(
-                "No file_path in context — scan_inbox must run first",
-                action=self.name,
-            )
+        normalized_record = ctx.require_state("normalized_record", dict, action=self.name)
+        file_path = ctx.require_state("file_path", str, action=self.name)
 
         results_dir = str(ctx.config.get("results_dir", "results"))
         output_csv = str(ctx.config.get("output_csv", "results/output.csv"))
@@ -62,62 +47,142 @@ class WriteOutput(Skill):
         Path(os.path.join(sample_data_dir, "done")).mkdir(parents=True, exist_ok=True)
         Path(os.path.join(sample_data_dir, "failed")).mkdir(parents=True, exist_ok=True)
 
-        # Write CSV record
-        self._write_csv_record(output_csv, normalized_record)
+        # Validate duplicate/corrupt CSV state before moving the source PDF.
+        self._ensure_invoice_not_written(output_csv, normalized_record)
 
-        # Move the source PDF (skip if file doesn't exist — e.g. in tests)
-        original_name = ctx.data.get("original_name", Path(file_path).name)
+        original_name = ctx.optional_state(
+            "original_name", str, Path(file_path).name, action=self.name
+        )
+        dest_path = ctx.optional_state("done_path", str, "", action=self.name) or None
         if os.path.exists(file_path):
-            dest_path = self._find_unique_dest(sample_data_dir, "done", original_name)
-            shutil.move(file_path, dest_path)
+            if dest_path is None:
+                dest_path = self._find_unique_dest(sample_data_dir, "done", original_name)
+                ctx.state["done_path"] = dest_path
+            try:
+                shutil.move(file_path, dest_path)
+            except OSError as exc:
+                raise SystemException(
+                    f"Failed to move PDF to done/: {exc}",
+                    action=self.name,
+                ) from exc
             logger.info("Moved PDF to done/: %s", original_name)
         else:
             logger.info("Source PDF not found, skipping move: %s", file_path)
 
-        ctx.data["output_written"] = True
+        self._write_csv_record(output_csv, normalized_record)
+        ctx.state["output_written"] = True
+
+        ctx.add_artifact(
+            "invoice_csv",
+            output_csv,
+            kind="csv",
+            metadata={
+                "invoice_number": normalized_record.get("invoice_number", ""),
+                "vendor": normalized_record.get("vendor", ""),
+                "source_file": original_name,
+            },
+        )
+        if dest_path is not None:
+            ctx.add_artifact(
+                "source_pdf",
+                dest_path,
+                kind="pdf",
+                metadata={
+                    "invoice_number": normalized_record.get("invoice_number", ""),
+                    "source_file": original_name,
+                },
+            )
+
         logger.info(
             "Wrote invoice %s to %s",
             normalized_record.get("invoice_number", "unknown"),
             output_csv,
         )
 
+    def _ensure_invoice_not_written(self, output_csv: str, invoice: dict) -> None:
+        """Raise if the current CSV is unreadable or already has this invoice."""
+        rows = self._read_csv_rows(output_csv)
+        self._raise_if_duplicate(rows, str(invoice.get("invoice_number", "")))
+
     def _write_csv_record(self, output_csv: str, invoice: dict) -> None:
-        """Append a single invoice record to the CSV file.
+        """Append a single invoice record using an atomic CSV replacement."""
+        rows = self._read_csv_rows(output_csv)
+        invoice_number = str(invoice.get("invoice_number", ""))
+        self._raise_if_duplicate(rows, invoice_number)
+        rows.append(self._csv_row(invoice))
+        self._replace_csv(output_csv, rows)
 
-        Skips if the invoice_number already exists in the CSV (idempotency guard).
-        """
-        invoice_number = invoice.get("invoice_number", "")
-        file_exists = os.path.exists(output_csv)
+    def _read_csv_rows(self, output_csv: str) -> list[dict[str, str]]:
+        """Read existing CSV rows, treating malformed output as retryable."""
+        if not os.path.exists(output_csv):
+            return []
 
-        # Idempotency check: skip if this invoice was already written
-        if file_exists and invoice_number:
-            try:
-                with open(output_csv, "r", encoding="utf-8") as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        if row.get("invoice_number") == invoice_number:
-                            logger.info(
-                                "Skipping duplicate invoice %s (already in CSV)",
-                                invoice_number,
-                            )
-                            return
-            except (csv.Error, OSError):
-                pass  # If we can't read, proceed with append (best-effort)
+        try:
+            with open(output_csv, "r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                if reader.fieldnames != _CSV_HEADER:
+                    raise csv.Error(f"Unexpected CSV header: {reader.fieldnames!r}")
+                return [dict(row) for row in reader]
+        except (csv.Error, OSError) as exc:
+            raise SystemException(
+                f"Could not read existing CSV output {output_csv}: {exc}",
+                action=self.name,
+            ) from exc
 
-        with open(output_csv, "a", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=_CSV_HEADER)
-            if not file_exists:
+    def _replace_csv(self, output_csv: str, rows: list[dict[str, str]]) -> None:
+        """Atomically replace the CSV with the supplied rows."""
+        output_path = Path(output_csv)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = None
+        try:
+            fd, temp_path = tempfile.mkstemp(
+                prefix=f".{output_path.name}.",
+                suffix=".tmp",
+                dir=str(output_path.parent),
+            )
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=_CSV_HEADER)
                 writer.writeheader()
+                writer.writerows(rows)
+            os.replace(temp_path, output_path)
+        except OSError as exc:
+            raise SystemException(
+                f"Could not update CSV output {output_csv}: {exc}",
+                action=self.name,
+            ) from exc
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.unlink(temp_path)
 
-            writer.writerow({
-                "invoice_number": invoice_number,
-                "date": invoice.get("date", ""),
-                "vendor": invoice.get("vendor", ""),
-                "line_items_count": invoice.get("line_items_count", len(invoice.get("line_items", []))),
-                "subtotal": self._format_decimal(invoice.get("subtotal")),
-                "total": self._format_decimal(invoice.get("total")),
-                "currency": invoice.get("currency", "USD"),
-            })
+    def _csv_row(self, invoice: dict) -> dict[str, str]:
+        """Return a normalized CSV row for an invoice."""
+        return {
+            "invoice_number": str(invoice.get("invoice_number", "")),
+            "date": str(invoice.get("date", "")),
+            "vendor": str(invoice.get("vendor", "")),
+            "line_items_count": str(
+                invoice.get("line_items_count", len(invoice.get("line_items", [])))
+            ),
+            "subtotal": self._format_decimal(invoice.get("subtotal")),
+            "total": self._format_decimal(invoice.get("total")),
+            "currency": str(invoice.get("currency", "USD")),
+        }
+
+    def _raise_if_duplicate(self, rows: list[dict[str, str]], invoice_number: str) -> None:
+        """Raise BusinessException when invoice_number already exists."""
+        if not invoice_number:
+            raise BusinessException(
+                "Missing invoice number for output",
+                action=self.name,
+                stop=True,
+            )
+        for row in rows:
+            if row.get("invoice_number") == invoice_number:
+                raise BusinessException(
+                    f"Duplicate invoice number: {invoice_number}",
+                    action=self.name,
+                    stop=True,
+                )
 
     @staticmethod
     def _format_decimal(value: float | int | None) -> str:
@@ -135,16 +200,13 @@ class WriteOutput(Skill):
         if not os.path.exists(dest_path):
             return dest_path
 
-        # File exists — append timestamp suffix to avoid overwriting
         stem, ext = os.path.splitext(name)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         dest_path = os.path.join(dest_dir, f"{stem}_{timestamp}{ext}")
 
-        # Double-check in case of race
         if not os.path.exists(dest_path):
             return dest_path
 
-        # Last resort: keep incrementing
         counter = 1
         while True:
             dest_path = os.path.join(dest_dir, f"{stem}_{timestamp}_{counter}{ext}")

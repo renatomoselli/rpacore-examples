@@ -4,20 +4,24 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, date
+import unicodedata
+from datetime import datetime
 from typing import Any
 
 from rpacore import ProcessContext, Skill, SystemException, get_logger
 
 logger = get_logger(__name__)
 
+_MAX_INVOICE_NUMBER_LENGTH = 64
+_MAX_VENDOR_LENGTH = 120
+_MAX_MONEY_LENGTH = 32
+_MAX_CURRENCY_LENGTH = 8
+_MAX_DESCRIPTION_LENGTH = 160
 
 class ParseInvoice(Skill):
     """Parse invoice text into structured data."""
 
     # Common invoice number patterns
-    # Requires a separator (colon or hash) after the label to avoid
-    # matching "INVOICE\nInvoice Number: INV-001" and capturing "Invoice"
     _INVOICE_RE = re.compile(
         r"(?:invoice|inv\.?|#|num\.?)\s*(?:no\.?|number|n\.)?\s*[:#]\s*"
         r"([A-Z0-9][A-Z0-9\-_.]+)",
@@ -36,9 +40,7 @@ class ParseInvoice(Skill):
         re.IGNORECASE,
     )
 
-    # Total patterns — uses "net total" instead of "net " to avoid
-    # matching "net income", "net profit", etc.
-    # Negative lookbehind (?<![a-z]) prevents matching "Subtotal"
+    # Total patterns
     _TOTAL_RE = re.compile(
         r"(?<![a-z])(?:total|amount\s*due|grand\s*total|net\s*total)\s*(?:amount)?\s*[:#]?\s*"
         r"([€$£¥R]?[€$£¥]?\s*[\d,]+\.?\d*)",
@@ -52,9 +54,18 @@ class ParseInvoice(Skill):
         re.IGNORECASE,
     )
 
+    # Some PDF extractors can surface ReportLab-rendered tabs as literal "n"
+    # glyphs. Keep this fallback narrow so ordinary words containing "n" are
+    # not treated as column separators.
+    # The mojibake currency literals match double-encoded PDF text extraction.
+    _COMPACT_LINE_ITEM_RE = re.compile(
+        r"^(?P<desc>.+?)n(?P<qty>\d+(?:\.\d+)?)n"
+        r"(?P<price>R?\$|â‚¬|Â£|Â¥)?\s*(?P<amount>[\d,]+(?:\.\d+)?)$"
+    )
+
     def execute(self, ctx: ProcessContext) -> None:
         """Parse invoice text into structured data."""
-        pdf_text = ctx.data.get("pdf_text", "")
+        pdf_text = ctx.optional_state("pdf_text", str, "", action=self.name)
         if not pdf_text:
             raise SystemException("No PDF text to parse", action=self.name)
 
@@ -90,24 +101,83 @@ class ParseInvoice(Skill):
         # Detect currency from total
         parsed["currency"] = self._detect_currency(pdf_text)
 
-        ctx.data["parsed_invoice"] = parsed
+        parsed = self._sanitize_parsed_invoice(parsed)
+        ctx.state["parsed_invoice"] = parsed
         logger.info("Parsed invoice: %s", parsed.get("invoice_number", "UNKNOWN"))
 
+    def _sanitize_parsed_invoice(self, parsed: dict[str, Any]) -> dict[str, Any]:
+        """Sanitize parsed invoice data before it enters durable state."""
+        sanitized = dict(parsed)
+        sanitized["invoice_number"] = self._clean_text(
+            sanitized.get("invoice_number", ""), max_length=_MAX_INVOICE_NUMBER_LENGTH
+        )
+        sanitized["date"] = self._clean_text(sanitized.get("date", ""), max_length=32)
+        sanitized["vendor"] = self._clean_text(
+            sanitized.get("vendor", ""), max_length=_MAX_VENDOR_LENGTH
+        )
+        sanitized["total"] = self._clean_money(sanitized.get("total", ""), "total")
+        sanitized["subtotal"] = self._clean_money(sanitized.get("subtotal", ""), "subtotal")
+        sanitized["currency"] = self._clean_text(
+            sanitized.get("currency", "USD"), max_length=_MAX_CURRENCY_LENGTH
+        )
+
+        line_items = sanitized.get("line_items", [])
+        if not isinstance(line_items, list):
+            raise SystemException("Parsed line_items must be a list", action=self.name)
+        sanitized["line_items"] = [
+            self._sanitize_line_item(item)
+            for item in line_items
+            if isinstance(item, dict)
+        ]
+        return sanitized
+
+    def _sanitize_line_item(self, item: dict[str, Any]) -> dict[str, Any]:
+        """Sanitize one parsed line item for durable state."""
+        quantity = item.get("quantity", 0)
+        unit_price = item.get("unit_price", 0)
+        try:
+            quantity = float(quantity)
+            unit_price = float(unit_price)
+        except (TypeError, ValueError) as exc:
+            raise SystemException(
+                f"Invalid line item numeric value: {item!r}",
+                action=self.name,
+            ) from exc
+        return {
+            "description": self._clean_text(
+                item.get("description", ""), max_length=_MAX_DESCRIPTION_LENGTH
+            ),
+            "quantity": quantity,
+            "unit_price": round(unit_price, 2),
+        }
+
+    def _clean_money(self, value: object, field_name: str) -> str:
+        """Clean a captured money string and verify it remains parseable."""
+        text = self._clean_text(value, max_length=_MAX_MONEY_LENGTH)
+        if text and ParseInvoice._try_parse_number(text) is None:
+            raise SystemException(
+                f"Parsed {field_name} is not numeric: {text!r}",
+                action=self.name,
+            )
+        return text
+
+    @staticmethod
+    def _clean_text(value: object, *, max_length: int) -> str:
+        """Strip control characters and bound string length."""
+        text = "" if value is None else str(value)
+        text = "".join(
+            " " if unicodedata.category(char) == "Cc" else char
+            for char in text
+        )
+        text = re.sub(r"\s+", " ", text).strip()
+        return text[:max_length]
+
     def _normalize_date(self, raw: str) -> str:
-        """Normalize a date string to ISO 8601 format.
-
-        For slash-separated dates (DD/MM/YYYY or MM/DD/YYYY), the first
-        interpretation that yields a valid date is used.
-
-        For dash-separated dates (DD-MM-YYYY or MM-DD-YYYY), EU order
-        (day-first) is tried before US order (month-first) to match
-        common international invoice conventions.
-        """
+        """Normalize a date string to ISO 8601 format."""
         raw = raw.strip()
         sep = raw[2] if len(raw) > 2 else "-"
 
         if sep == "/":
-            # Slash-separated: try DD/MM/YYYY first, then MM/DD/YYYY
             for fmt in ("%d/%m/%Y", "%m/%d/%Y", "%d/%m/%y", "%m/%d/%y"):
                 try:
                     dt = datetime.strptime(raw, fmt)
@@ -115,7 +185,6 @@ class ParseInvoice(Skill):
                 except ValueError:
                     continue
         else:
-            # Dash-separated: try EU (day-first) before US (month-first)
             for fmt in ("%d-%m-%Y", "%m-%d-%Y", "%d-%m-%y", "%m-%d-%y"):
                 try:
                     dt = datetime.strptime(raw, fmt)
@@ -123,7 +192,6 @@ class ParseInvoice(Skill):
                 except ValueError:
                     continue
 
-        # Already ISO 8601 or standard format
         for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
             try:
                 dt = datetime.strptime(raw, fmt)
@@ -134,15 +202,7 @@ class ParseInvoice(Skill):
         return raw
 
     def _extract_line_items(self, text: str) -> list[dict[str, Any]]:
-        """Extract line items from invoice text.
-
-        Uses position-based heuristics: the last numeric token is the price,
-        the second-to-last is the quantity, and everything before is the
-        description. This avoids corrupting descriptions that contain numbers
-        (e.g. "Model 3 Adapter 10 $15.00").
-
-        Skips lines that look like totals, subtotals, or headers.
-        """
+        """Extract line items from invoice text."""
         items: list[dict[str, Any]] = []
 
         for line in text.split("\n"):
@@ -150,7 +210,6 @@ class ParseInvoice(Skill):
             if not line or len(line) < 10:
                 continue
 
-            # Skip lines that look like totals/summary/headers
             if self._is_summary_line(line):
                 continue
 
@@ -162,22 +221,15 @@ class ParseInvoice(Skill):
 
     @staticmethod
     def _is_summary_line(line: str) -> bool:
-        """Check if a line looks like a summary/total line rather than a line item.
-
-        Uses word-boundary matching to avoid filtering legitimate line items
-        whose descriptions contain keywords like "total" (e.g. "Total Care Plan 3").
-        """
+        """Check if a line looks like a summary/total line."""
         line_lower = line.lower()
-        # Match keywords only at word boundaries (start or preceded by non-alpha)
         _SUMMARY_KEYWORDS = ["total", "subtotal", "amount due", "grand total", "net total"]
         for kw in _SUMMARY_KEYWORDS:
             idx = line_lower.find(kw)
             if idx == -1:
                 continue
-            # Check word boundary: keyword must be at start or preceded by non-alpha
             if idx > 0 and line_lower[idx - 1].isalpha():
                 continue
-            # Check word boundary: keyword must be at end or followed by non-alpha
             end = idx + len(kw)
             if end < len(line_lower) and line_lower[end].isalpha():
                 continue
@@ -186,14 +238,7 @@ class ParseInvoice(Skill):
 
     @staticmethod
     def _try_parse_line_item(line: str) -> dict[str, Any] | None:
-        """Try to parse a single line as a line item.
-
-        Strategy:
-        1. Tab-separated: split on tabs, last 2 tokens are qty/price.
-        2. Double-space split: last token is price, second-to-last is qty.
-        3. Fallback: find the last two numeric tokens from the right.
-        """
-        # Try tab-separated first (most reliable)
+        """Try to parse a single line as a line item."""
         if "\t" in line:
             parts = [p.strip() for p in line.split("\t")]
             if len(parts) >= 3:
@@ -210,10 +255,8 @@ class ParseInvoice(Skill):
                 except (ValueError, IndexError):
                     pass
 
-        # Try double-space or multi-space split
         parts = re.split(r"\s{2,}", line.strip())
         if len(parts) >= 3:
-            # Last token is price, second-to-last is quantity
             try:
                 price = ParseInvoice._try_parse_number(parts[-1])
                 qty = ParseInvoice._try_parse_number(parts[-2])
@@ -227,8 +270,6 @@ class ParseInvoice(Skill):
             except (ValueError, TypeError):
                 pass
 
-        # Fallback: walk from the right to find two numeric tokens
-        # The rightmost numeric token is the price, the one to its left is quantity
         tokens = line.split()
         if len(tokens) >= 3:
             numeric_from_right: list[tuple[int, float]] = []
@@ -240,7 +281,6 @@ class ParseInvoice(Skill):
                         break
 
             if len(numeric_from_right) == 2:
-                # First found (rightmost) = price, second found (left of it) = quantity
                 price_idx, price = numeric_from_right[0]
                 qty_idx, qty = numeric_from_right[1]
                 if qty_idx < price_idx:
@@ -252,7 +292,32 @@ class ParseInvoice(Skill):
                             "unit_price": round(price, 2),
                         }
 
+        compact_item = ParseInvoice._try_parse_compact_line_item(line)
+        if compact_item is not None:
+            return compact_item
+
         return None
+
+    @staticmethod
+    def _try_parse_compact_line_item(line: str) -> dict[str, Any] | None:
+        """Parse line items where PDF extraction collapsed tabs into 'n' glyphs."""
+        match = ParseInvoice._COMPACT_LINE_ITEM_RE.match(line.strip())
+        if match is None:
+            return None
+
+        desc = match.group("desc").strip()
+        qty = ParseInvoice._try_parse_number(match.group("qty"))
+        price = ParseInvoice._try_parse_number(
+            f"{match.group('price') or ''}{match.group('amount')}"
+        )
+        if not desc or qty is None or price is None:
+            return None
+
+        return {
+            "description": desc,
+            "quantity": qty,
+            "unit_price": round(price, 2),
+        }
 
     @staticmethod
     def _try_parse_number(s: str) -> float | None:
@@ -268,25 +333,16 @@ class ParseInvoice(Skill):
 
     @staticmethod
     def _detect_currency(text: str) -> str:
-        """Detect currency symbol from invoice text.
-
-        Scans the total string first (most reliable), then falls back
-        to scanning specific invoice regions (total line, vendor block)
-        rather than the entire document to avoid false positives from
-        currency symbols in vendor names or descriptions.
-        """
-        # Try to detect from the total value first
+        """Detect currency symbol from invoice text."""
         total_match = ParseInvoice._TOTAL_RE.search(text)
         if total_match:
             total_str = total_match.group(1)
-            # Check R$ before $ to avoid false positive
             for symbol in ["€", "£", "¥", "R$", "$"]:
                 if symbol in total_str:
                     if symbol == "R$":
                         return "BRL"
                     return symbol
 
-        # Fallback: scan specific invoice regions, not the entire document
         for line in text.split("\n"):
             line_lower = line.lower().strip()
             if any(kw in line_lower for kw in [

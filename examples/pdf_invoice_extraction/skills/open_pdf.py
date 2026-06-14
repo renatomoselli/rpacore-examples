@@ -3,27 +3,35 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from rpacore import ProcessContext, Skill, SystemException, get_logger
 
 logger = get_logger(__name__)
 
-
 class OpenPdf(Skill):
     """Open a PDF file and extract all text content.
 
-    Expected input keys in ctx.data:
-        - file_path: str — Path to the PDF file
+    Expected input keys in ctx.state:
+        - file_path: str — Path to the PDF file (seeded from QueueItem.payload)
 
-    Sets on ctx.data:
+    Sets on ctx.state:
         - pdf_text: str — Extracted text from the PDF
+        - pdf_pages: int — Number of pages processed
     """
 
     def execute(self, ctx: ProcessContext) -> None:
-        file_path = ctx.data.get("file_path")
-        if file_path is None:
+        file_path = ctx.require_state("file_path", str, action=self.name)
+        pdf_path = Path(file_path)
+
+        if not pdf_path.exists():
             raise SystemException(
-                "No file_path in context — scan_inbox must run first",
+                f"PDF file not found: {file_path}",
+                action=self.name,
+            )
+        if not pdf_path.is_file():
+            raise SystemException(
+                f"PDF path is not a file: {file_path}",
                 action=self.name,
             )
 
@@ -40,8 +48,8 @@ class OpenPdf(Skill):
                     if page_text:
                         text_parts.append(page_text)
 
-                ctx.data["pdf_text"] = "\n".join(text_parts)
-                ctx.data["pdf_pages"] = page_count
+                ctx.state["pdf_text"] = "\n".join(text_parts)
+                ctx.state["pdf_pages"] = page_count
 
         except FileNotFoundError as exc:
             raise SystemException(
@@ -62,6 +70,6 @@ class OpenPdf(Skill):
         logger.info(
             "Opened PDF: %s (%d pages, %d characters)",
             file_path,
-            ctx.data.get("pdf_pages", 0),
-            len(ctx.data.get("pdf_text", "")),
+            ctx.state.get("pdf_pages", 0),
+            len(ctx.state.get("pdf_text", "")),
         )

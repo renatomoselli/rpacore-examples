@@ -2,49 +2,35 @@
 
 from __future__ import annotations
 
-from rpacore import BusinessException, ProcessContext, Skill, SystemException, get_logger
+from rpacore import ProcessContext, Skill, Status, SystemException, get_logger
 
 logger = get_logger(__name__)
-
 
 class NormalizeRecord(Skill):
     """Normalize parsed invoice data for consistent CSV output.
 
-    Checks for validation failures first (short-circuit pattern):
-    if validate_invoice set validation_failed=True, this skill raises
-    SystemException to stop execution.
+    Checks for validation failures first (defensive backstop):
+    if validate_invoice set validation_failed=True, this skill
+    sets self.status = Status.SKIPPED and returns.
 
     Normalization steps:
     - Defaults currency to USD if not detected
     - Rounds monetary values to 2 decimal places
     - Standardizes line item format (numeric types, lowercase description)
     - Uppercases vendor and invoice number for consistency
-
-    Expected input keys in ctx.data:
-        - parsed_invoice: dict — Parsed invoice fields from parse_invoice
-        - validation_failed: bool (optional) — Set by validate_invoice
-
-    Sets on ctx.data:
-        - normalized_record: dict — Normalized invoice record ready for CSV
     """
 
     def execute(self, ctx: ProcessContext) -> None:
-        parsed_invoice = ctx.data.get("parsed_invoice")
-        if parsed_invoice is None:
-            raise SystemException(
-                "No parsed_invoice in context — parse_invoice must run first",
-                action=self.name,
-            )
+        parsed_invoice = ctx.require_state("parsed_invoice", dict, action=self.name)
 
-        # Short-circuit on validation failure (validation_failed flag pattern)
-        if ctx.data.get("validation_failed", False):
-            raise BusinessException(
-                "Validation failed — skipping normalization",
-                action=self.name,
-            )
+        # Defensive backstop on validation failure (BusinessException(stop=True)
+        # should already have halted the Engine, but guard for edge cases)
+        if ctx.optional_state("validation_failed", bool, False, action=self.name):
+            self.status = Status.SKIPPED
+            return
 
         record = self._normalize(parsed_invoice)
-        ctx.data["normalized_record"] = record
+        ctx.state["normalized_record"] = record
         logger.info(
             "Normalized invoice: %s",
             record.get("invoice_number", "unknown"),
@@ -53,14 +39,13 @@ class NormalizeRecord(Skill):
     def _normalize(self, invoice: dict) -> dict:
         """Apply normalization rules to a parsed invoice."""
         # Default currency to USD if not detected
-        currency = invoice.get("currency") or "USD"
+        currency = self._normalize_currency(invoice.get("currency") or "USD")
 
         # Handle None values for total/subtotal — preserve as None
         raw_total = invoice.get("total")
         raw_subtotal = invoice.get("subtotal")
 
         # Strip currency symbols before numeric conversion
-        # (parse_invoice stores totals as strings like "$275.00")
         _CURRENCY_SYMBOLS = ["$", "€", "£", "¥", "R$"]
 
         def _to_float(val: str | float | int | None) -> float | None:
@@ -106,3 +91,27 @@ class NormalizeRecord(Skill):
             "total": total,
             "currency": currency,
         }
+
+    @staticmethod
+    def _normalize_currency(currency: object) -> str:
+        """Normalize currency symbols to ISO 4217-style codes."""
+        mapping = {
+            "$": "USD",
+            "USD": "USD",
+            "R$": "BRL",
+            "BRL": "BRL",
+            "€": "EUR",
+            "â‚¬": "EUR",
+            "EUR": "EUR",
+            "£": "GBP",
+            "Â£": "GBP",
+            "GBP": "GBP",
+            "¥": "JPY",
+            "Â¥": "JPY",
+            "JPY": "JPY",
+        }
+        raw_value = str(currency).strip()
+        if raw_value in mapping:
+            return mapping[raw_value]
+        value = raw_value.upper()
+        return mapping.get(value, value or "USD")

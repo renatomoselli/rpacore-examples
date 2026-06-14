@@ -7,7 +7,6 @@ from pathlib import Path
 from rpacore import (
     Engine,
     EnvCredentialProvider,
-    ProcessContext,
     QueueItem,
     SqliteQueue,
     SystemException,
@@ -23,17 +22,24 @@ from skills.parse_invoice import ParseInvoice
 from skills.validate_invoice import ValidateInvoice
 from skills.normalize_record import NormalizeRecord
 from skills.write_output import WriteOutput
-from skills.scan_inbox import ScanInbox
 
 logger = get_logger(__name__)
 
+def _has_sample_pdfs(sample_data_dir: str) -> bool:
+    """Return True when the sample area already contains PDF files."""
+    sample_path = Path(sample_data_dir)
+    # Include done/ and failed/ so a completed demo run does not regenerate inputs.
+    return sample_path.exists() and any(
+        pdf_file.is_file() and not pdf_file.name.startswith(".")
+        for pdf_file in sample_path.rglob("*.pdf")
+    )
 
 def _validate_config(config: dict) -> None:
     """Validate config has required keys with correct types and ranges."""
     for key, expected_type in (
         ("max_retries", int),
         ("log_level", str),
-        ("db_path", str),
+        ("transaction_db_path", str),
         ("sample_data_dir", str),
         ("results_dir", str),
         ("output_csv", str),
@@ -51,14 +57,80 @@ def _validate_config(config: dict) -> None:
             f"Config key 'max_retries' must be >= 0, got {config['max_retries']}",
             action="main",
         )
-    for dir_key in ("sample_data_dir", "results_dir"):
-        dir_path = config[dir_key]
-        if not isinstance(dir_path, str) or not dir_path:
+
+    queue_config = config.get("queue")
+    if not isinstance(queue_config, dict):
+        raise SystemException("Missing required [queue] config section", action="main")
+
+    for key in ("db_path", "lease_timeout", "max_retries"):
+        if key not in queue_config:
             raise SystemException(
-                f"Config key '{dir_key}' must be a non-empty string",
-                action="main",
+                f"Missing required [queue] config key: {key}", action="main"
             )
 
+    if not isinstance(queue_config["db_path"], str) or not queue_config["db_path"]:
+        raise SystemException(
+            "Config key 'queue.db_path' must be a non-empty string", action="main"
+        )
+    if not isinstance(queue_config["lease_timeout"], int) or queue_config["lease_timeout"] <= 0:
+        raise SystemException(
+            f"Config key 'queue.lease_timeout' must be a positive int, got {queue_config['lease_timeout']!r}",
+            action="main",
+        )
+    if not isinstance(queue_config["max_retries"], int) or queue_config["max_retries"] < 0:
+        raise SystemException(
+            f"Config key 'queue.max_retries' must be a non-negative int, got {queue_config['max_retries']!r}",
+            action="main",
+        )
+
+def ensure_sample_data(config: dict) -> None:
+    """Generate demo invoices when a fresh checkout has no input PDFs."""
+    sample_data_dir = str(config["sample_data_dir"])
+    if _has_sample_pdfs(sample_data_dir):
+        return
+
+    logger.info("No sample PDFs found in %s; generating demo invoices.", sample_data_dir)
+    from generate_sample_data import generate_sample_data
+
+    generate_sample_data(sample_data_dir)
+
+def scan_inbox(config: dict, queue: SqliteQueue) -> int:
+    """Add new PDF files in the sample_data directory as queue items."""
+    sample_data_dir = str(config.get("sample_data_dir", "sample_data"))
+    inbox_path = Path(sample_data_dir)
+
+    if not inbox_path.exists():
+        raise SystemException(
+            f"Inbox directory does not exist: {sample_data_dir}",
+            action="scan_inbox",
+        )
+
+    pdf_files = sorted(inbox_path.glob("*.pdf"))
+    # Skip hidden files
+    pdf_files = [f for f in pdf_files if not f.name.startswith(".")]
+
+    if not pdf_files:
+        logger.warning("No PDF files found in %s. Nothing to queue.", sample_data_dir)
+        return 0
+
+    count = 0
+    for pdf_file in pdf_files:
+        reference = pdf_file.stem
+        added = queue.add_once(
+            QueueItem(
+                reference=reference,
+                payload={
+                    "file_path": str(pdf_file),
+                    "original_name": pdf_file.name,
+                },
+            ),
+        )
+        if added:
+            count += 1
+            logger.info("Queued: %s", pdf_file.name)
+
+    logger.info("Queued %d PDF files from %s", count, sample_data_dir)
+    return count
 
 def build_transaction(item: QueueItem) -> Transaction:
     """Build a transaction for each queued PDF invoice."""
@@ -73,45 +145,37 @@ def build_transaction(item: QueueItem) -> Transaction:
         ],
     )
 
-
 def main() -> None:
     config = load_config("config.toml")
     _validate_config(config)
     configure_logger(level=str(config["log_level"]))
 
     engine = Engine(max_retries=int(config["max_retries"]))
-    queue = SqliteQueue(config)
+    queue = SqliteQueue(config["queue"])
+
+    ensure_sample_data(config)
 
     # Setup: scan inbox and populate queue
-    scan_ctx = ProcessContext(
-        transaction=Transaction(reference="scan-inbox", skills=[]),
-        config=config,
-        data={},
-    )
-    scan_skill = ScanInbox(
-        name="scan_inbox",
-        execution_order=1,
-        arguments={"queue": queue},
-    )
-    scan_skill.execute(scan_ctx)
-    scanned = scan_ctx.data.get("scanned_count", 0)
+    scanned = scan_inbox(config, queue)
     logger.info("Scanned %d PDF files from %s", scanned, config["sample_data_dir"])
 
-    if scanned == 0:
-        logger.warning("No PDF files to process. Exiting.")
-        return
-
-    # Drain queue via run_queue_loop
-    run_queue_loop(
+    # Drain queue via run_queue_loop. Even when scan_inbox adds no new items,
+    # existing pending work may already be present from an earlier interrupted run.
+    summary = run_queue_loop(
         queue=queue,
         engine=engine,
         build_transaction=build_transaction,
         config=config,
         credentials=EnvCredentialProvider(),
+        transaction_db_path=str(config["transaction_db_path"]),
     )
 
-    logger.info("Queue processing complete.")
-
+    logger.info(
+        "Queue processing complete: processed=%d completed=%d failed=%d",
+        summary.processed,
+        summary.completed,
+        summary.failed,
+    )
 
 if __name__ == "__main__":
     main()

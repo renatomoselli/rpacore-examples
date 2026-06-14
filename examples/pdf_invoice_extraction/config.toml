@@ -1,7 +1,12 @@
 max_retries = 2
 log_level = "INFO"
-db_path = "queue.db"
+transaction_db_path = "rpacore.db"
 sample_data_dir = "sample_data"
 results_dir = "results"
 output_csv = "results/output.csv"
 max_pages = 100
+
+[queue]
+db_path = "queue.db"
+lease_timeout = 30
+max_retries = 0

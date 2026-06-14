@@ -20,52 +20,16 @@ from rpacore import (
     run_queue_loop,
 )
 
+from main import scan_inbox, build_transaction
 from skills.open_pdf import OpenPdf
 from skills.parse_invoice import ParseInvoice
 from skills.validate_invoice import ValidateInvoice
 from skills.normalize_record import NormalizeRecord
 from skills.write_output import WriteOutput
-from skills.scan_inbox import ScanInbox
-
 
 def _create_sample_pdf(pdf_path: Path, text: str) -> None:
-    """Create a sample PDF with extractable text using reportlab.
-
-    Each line of ``text`` is drawn at a separate Y position so pdfplumber
-    can extract them as distinct lines.
-    """
-    try:
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas
-
-        c = canvas.Canvas(str(pdf_path), pagesize=letter)
-        width, height = letter
-        y = height - 50
-        for line in text.split("\n"):
-            c.drawString(100, y, line)
-            y -= 20
-            if y < 50:
-                c.showPage()
-                y = height - 50
-        c.save()
-    except ImportError:
-        # Fallback: create a minimal PDF
-        pdf_path.write_bytes(b"%PDF-1.0\n%%EOF\n")
-
-
-def _build_transaction(item: QueueItem) -> Transaction:
-    """Build a transaction for each queued PDF invoice."""
-    return Transaction(
-        reference=f"invoice-{item.payload.get('original_name', 'unknown')}",
-        skills=[
-            OpenPdf(name="open_pdf", execution_order=1),
-            ParseInvoice(name="parse_invoice", execution_order=2),
-            ValidateInvoice(name="validate_invoice", execution_order=3),
-            NormalizeRecord(name="normalize_record", execution_order=4),
-            WriteOutput(name="write_output", execution_order=5),
-        ],
-    )
-
+    """Create a deterministic text-backed PDF fixture."""
+    pdf_path.write_text(text, encoding="utf-8")
 
 # Invoice texts with line items so validation passes
 _INVOICE_001 = (
@@ -93,6 +57,26 @@ _INVOICE_003 = (
     "Total: $300.00"
 )
 
+def _make_config(tmp_env: str, **overrides) -> dict:
+    """Build a test config dict with migrated keys."""
+    sample_data_dir = str(tmp_env / "sample_data")
+    results_dir = str(tmp_env / "results")
+    config = {
+        "max_retries": 2,
+        "log_level": "WARNING",
+        "transaction_db_path": str(tmp_env / "rpacore.db"),
+        "sample_data_dir": sample_data_dir,
+        "results_dir": results_dir,
+        "output_csv": os.path.join(results_dir, "output.csv"),
+        "max_pages": 100,
+        "queue": {
+            "db_path": str(tmp_env / "queue.db"),
+            "lease_timeout": 30,
+            "max_retries": 0,
+        },
+    }
+    config.update(overrides)
+    return config
 
 class TestFullWorkflow:
     """Integration tests for the full queue-driven workflow."""
@@ -105,51 +89,28 @@ class TestFullWorkflow:
         os.makedirs(sample_data_dir, exist_ok=True)
         os.makedirs(results_dir, exist_ok=True)
 
-        # Create a sample PDF with invoice text including line items
         pdf_path = Path(sample_data_dir) / "invoice_001.pdf"
         _create_sample_pdf(pdf_path, _INVOICE_001)
 
-        # Initialize queue
-        config = {
-            "max_retries": 2,
-            "log_level": "WARNING",
-            "db_path": str(tmp_env / "queue.db"),
-            "sample_data_dir": sample_data_dir,
-            "results_dir": results_dir,
-            "output_csv": output_csv,
-            "max_pages": 100,
-        }
-        queue = SqliteQueue(config)
+        config = _make_config(tmp_env)
+        queue = SqliteQueue(config["queue"])
         engine = Engine(max_retries=2)
 
-        # Scan inbox
-        scan_ctx = ProcessContext(
-            transaction=Transaction(reference="scan-inbox", skills=[]),
-            config=config,
-            data={},
-        )
-        scan_skill = ScanInbox(
-            name="scan_inbox",
-            execution_order=1,
-            arguments={"queue": queue},
-        )
-        scan_skill.execute(scan_ctx)
-        assert scan_ctx.data["scanned_count"] == 1
+        scanned = scan_inbox(config, queue)
+        assert scanned == 1
 
-        # Run queue loop
         result = run_queue_loop(
             queue=queue,
             engine=engine,
-            build_transaction=_build_transaction,
+            build_transaction=build_transaction,
             config=config,
             credentials=EnvCredentialProvider(),
+            transaction_db_path=str(config["transaction_db_path"]),
         )
 
-        # Verify results
         assert result.completed == 1
         assert result.failed == 0
 
-        # Verify CSV output
         assert os.path.exists(output_csv)
         with open(output_csv, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
@@ -159,7 +120,6 @@ class TestFullWorkflow:
             assert rows[0]["vendor"] == "ACME CORP"
             assert rows[0]["total"] == "250.00"
 
-        # Verify file moved to done/
         done_path = Path(sample_data_dir) / "done" / "invoice_001.pdf"
         assert done_path.exists()
 
@@ -170,148 +130,77 @@ class TestFullWorkflow:
         os.makedirs(sample_data_dir, exist_ok=True)
         os.makedirs(results_dir, exist_ok=True)
 
-        config = {
-            "max_retries": 2,
-            "log_level": "WARNING",
-            "db_path": str(tmp_env / "queue.db"),
-            "sample_data_dir": sample_data_dir,
-            "results_dir": results_dir,
-            "output_csv": os.path.join(results_dir, "output.csv"),
-            "max_pages": 100,
-        }
-        queue = SqliteQueue(config)
+        config = _make_config(tmp_env)
+        queue = SqliteQueue(config["queue"])
         engine = Engine(max_retries=2)
 
-        scan_ctx = ProcessContext(
-            transaction=Transaction(reference="scan-inbox", skills=[]),
-            config=config,
-            data={},
-        )
-        scan_skill = ScanInbox(
-            name="scan_inbox",
-            execution_order=1,
-            arguments={"queue": queue},
-        )
-        scan_skill.execute(scan_ctx)
-
-        assert scan_ctx.data["scanned_count"] == 0
+        scanned = scan_inbox(config, queue)
+        assert scanned == 0
 
         result = run_queue_loop(
             queue=queue,
             engine=engine,
-            build_transaction=_build_transaction,
+            build_transaction=build_transaction,
             config=config,
             credentials=EnvCredentialProvider(),
+            transaction_db_path=str(config["transaction_db_path"]),
         )
 
         assert result.completed == 0
         assert result.failed == 0
 
     def test_full_workflow_failed_validation(self, tmp_env: str):
-        """Test that validation failures are handled correctly.
-
-        An empty PDF (no extractable text) should fail validation and the
-        source PDF should remain in sample_data/ (no failed/ folder disposition).
-        """
+        """Test that validation failures are handled correctly."""
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
         output_csv = os.path.join(results_dir, "output.csv")
         os.makedirs(sample_data_dir, exist_ok=True)
         os.makedirs(results_dir, exist_ok=True)
 
-        # Create an empty PDF that will fail validation (no text -> no invoice data)
         pdf_path = Path(sample_data_dir) / "empty.pdf"
         pdf_path.write_bytes(b"%PDF-1.0\n%%EOF\n")
 
-        config = {
-            "max_retries": 2,
-            "log_level": "WARNING",
-            "db_path": str(tmp_env / "queue.db"),
-            "sample_data_dir": sample_data_dir,
-            "results_dir": results_dir,
-            "output_csv": output_csv,
-            "max_pages": 100,
-        }
-        queue = SqliteQueue(config)
+        config = _make_config(tmp_env)
+        queue = SqliteQueue(config["queue"])
         engine = Engine(max_retries=2)
 
-        scan_ctx = ProcessContext(
-            transaction=Transaction(reference="scan-inbox", skills=[]),
-            config=config,
-            data={},
-        )
-        scan_skill = ScanInbox(
-            name="scan_inbox",
-            execution_order=1,
-            arguments={"queue": queue},
-        )
-        scan_skill.execute(scan_ctx)
-        assert scan_ctx.data["scanned_count"] == 1
+        scanned = scan_inbox(config, queue)
+        assert scanned == 1
 
         result = run_queue_loop(
             queue=queue,
             engine=engine,
-            build_transaction=_build_transaction,
+            build_transaction=build_transaction,
             config=config,
             credentials=EnvCredentialProvider(),
+            transaction_db_path=str(config["transaction_db_path"]),
         )
 
-        # The empty PDF should fail (no text to parse)
-        # With max_retries=2, the engine retries twice, so failed >= 1
         assert result.failed >= 1
-
-        # Source PDF should remain in sample_data/ (no failed/ disposition)
         assert pdf_path.exists()
-
-        # No CSV output should be written
         assert not os.path.exists(output_csv)
 
     def test_full_workflow_retry_on_system_exception(self, tmp_env: str):
-        """Test that transient failures are retried.
-
-        Uses a skill that fails once then succeeds, verifying that
-        SystemException triggers retry and the transaction eventually completes.
-        """
+        """Test that transient failures are retried."""
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
         output_csv = os.path.join(results_dir, "output.csv")
         os.makedirs(sample_data_dir, exist_ok=True)
         os.makedirs(results_dir, exist_ok=True)
 
-        # Create a valid PDF with line items
         pdf_path = Path(sample_data_dir) / "invoice_001.pdf"
         _create_sample_pdf(pdf_path, _INVOICE_001)
 
-        config = {
-            "max_retries": 2,
-            "log_level": "WARNING",
-            "db_path": str(tmp_env / "queue.db"),
-            "sample_data_dir": sample_data_dir,
-            "results_dir": results_dir,
-            "output_csv": output_csv,
-            "max_pages": 100,
-        }
-        queue = SqliteQueue(config)
+        config = _make_config(tmp_env)
+        queue = SqliteQueue(config["queue"])
         engine = Engine(max_retries=2)
 
-        scan_ctx = ProcessContext(
-            transaction=Transaction(reference="scan-inbox", skills=[]),
-            config=config,
-            data={},
-        )
-        scan_skill = ScanInbox(
-            name="scan_inbox",
-            execution_order=1,
-            arguments={"queue": queue},
-        )
-        scan_skill.execute(scan_ctx)
+        scanned = scan_inbox(config, queue)
+        assert scanned == 1
 
-        # Track retry count
         retry_count = [0]
 
         class FailingOpenPdf(OpenPdf):
-            """OpenPdf that fails on first attempt, succeeds on retry."""
-
             def execute(self, ctx: ProcessContext) -> None:
                 retry_count[0] += 1
                 if retry_count[0] == 1:
@@ -336,12 +225,12 @@ class TestFullWorkflow:
             build_transaction=build_transaction_with_retry,
             config=config,
             credentials=EnvCredentialProvider(),
+            transaction_db_path=str(config["transaction_db_path"]),
         )
 
-        # Should succeed after retry
         assert result.completed == 1
         assert result.failed == 0
-        assert retry_count[0] == 2  # Failed once, succeeded on retry
+        assert retry_count[0] == 2
 
     def test_full_workflow_multiple_invoices(self, tmp_env: str):
         """Test processing multiple invoices in a single run."""
@@ -361,43 +250,25 @@ class TestFullWorkflow:
             pdf_path = Path(sample_data_dir) / name
             _create_sample_pdf(pdf_path, text)
 
-        config = {
-            "max_retries": 2,
-            "log_level": "WARNING",
-            "db_path": str(tmp_env / "queue.db"),
-            "sample_data_dir": sample_data_dir,
-            "results_dir": results_dir,
-            "output_csv": output_csv,
-            "max_pages": 100,
-        }
-        queue = SqliteQueue(config)
+        config = _make_config(tmp_env)
+        queue = SqliteQueue(config["queue"])
         engine = Engine(max_retries=2)
 
-        scan_ctx = ProcessContext(
-            transaction=Transaction(reference="scan-inbox", skills=[]),
-            config=config,
-            data={},
-        )
-        scan_skill = ScanInbox(
-            name="scan_inbox",
-            execution_order=1,
-            arguments={"queue": queue},
-        )
-        scan_skill.execute(scan_ctx)
-        assert scan_ctx.data["scanned_count"] == 3
+        scanned = scan_inbox(config, queue)
+        assert scanned == 3
 
         result = run_queue_loop(
             queue=queue,
             engine=engine,
-            build_transaction=_build_transaction,
+            build_transaction=build_transaction,
             config=config,
             credentials=EnvCredentialProvider(),
+            transaction_db_path=str(config["transaction_db_path"]),
         )
 
         assert result.completed == 3
         assert result.failed == 0
 
-        # Verify CSV has 3 records
         with open(output_csv, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             rows = list(reader)
