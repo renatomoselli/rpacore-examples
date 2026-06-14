@@ -14,8 +14,8 @@ class LoadBankStatement(Skill):
     """Load bank statement entries from CSV."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        csv_path = ctx.config.get("bank_statement_csv")
-        if not isinstance(csv_path, str) or not csv_path:
+        csv_path = ctx.require_config("bank_statement_csv", str, action=self.name)
+        if not csv_path:
             raise SystemException(
                 "Config key 'bank_statement_csv' must be a non-empty string",
                 action=self.name,
@@ -25,7 +25,11 @@ class LoadBankStatement(Skill):
         by_reference: dict[str, list[dict[str, object]]] = {}
 
         for index, row in enumerate(rows, start=2):
-            missing = [column for column in REQUIRED_COLUMNS if not row.get(column)]
+            missing = [
+                column
+                for column in REQUIRED_COLUMNS
+                if not str(row.get(column, "")).strip()
+            ]
             if missing:
                 raise SystemException(
                     f"Bank statement row {index} missing required column(s): {', '.join(missing)}",
@@ -42,9 +46,9 @@ class LoadBankStatement(Skill):
             entry = {
                 "posted_date": row["posted_date"],
                 "reference": row["reference"],
-                "amount": amount,
+                "amount": str(amount),
                 "description": row["description"],
             }
             by_reference.setdefault(row["reference"], []).append(entry)
 
-        ctx.data["bank_by_reference"] = by_reference
+        ctx.state["bank_by_reference"] = by_reference

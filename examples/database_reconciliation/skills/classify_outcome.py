@@ -9,33 +9,43 @@ class ClassifyOutcome(Skill):
     """Classify the current payment as matched, missing, or amount mismatch."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        payment = ctx.data.get("current_payment")
-        candidates = ctx.data.get("bank_candidates")
-        if not isinstance(payment, dict):
-            raise SystemException("No current_payment in context", action=self.name)
-        if not isinstance(candidates, list):
-            raise SystemException("No bank_candidates in context", action=self.name)
+        payment = ctx.require_state("current_payment", dict, action=self.name)
+        candidates = ctx.require_state("bank_candidates", list, action=self.name)
 
         if not candidates:
-            ctx.data["reconciliation_result"] = _result(payment, "missing_from_bank", None)
+            ctx.state["reconciliation_result"] = _result(payment, "missing_from_bank", None)
             raise BusinessException(
                 f"Payment {payment.get('payment_id')} missing from bank statement",
                 action=self.name,
             )
 
-        expected_amount = payment.get("amount")
-        if not isinstance(expected_amount, Decimal):
-            raise SystemException("Current payment amount has unexpected type", action=self.name)
+        expected_amount_str = payment.get("amount")
+        if not isinstance(expected_amount_str, str):
+            raise SystemException(
+                f"Current payment amount must be str, got {expected_amount_str!r}",
+                action=self.name,
+            )
+        expected_amount = Decimal(expected_amount_str)
 
+        closest_candidate: dict | None = None
+        closest_difference: Decimal | None = None
         for candidate in candidates:
-            candidate_amount = candidate.get("amount")
-            if not isinstance(candidate_amount, Decimal):
-                raise SystemException("Bank candidate amount has unexpected type", action=self.name)
+            candidate_amount_str = candidate.get("amount")
+            if not isinstance(candidate_amount_str, str):
+                raise SystemException(
+                    f"Bank candidate amount must be str, got {candidate_amount_str!r}",
+                    action=self.name,
+                )
+            candidate_amount = Decimal(candidate_amount_str)
             if candidate_amount == expected_amount:
-                ctx.data["reconciliation_result"] = _result(payment, "matched", candidate)
+                ctx.state["reconciliation_result"] = _result(payment, "matched", candidate)
                 return
+            difference = abs(candidate_amount - expected_amount)
+            if closest_difference is None or difference < closest_difference:
+                closest_candidate = candidate
+                closest_difference = difference
 
-        ctx.data["reconciliation_result"] = _result(payment, "amount_mismatch", candidates[0])
+        ctx.state["reconciliation_result"] = _result(payment, "amount_mismatch", closest_candidate)
         raise BusinessException(
             f"Payment {payment.get('payment_id')} amount mismatch for reference {payment.get('reference')}",
             action=self.name,

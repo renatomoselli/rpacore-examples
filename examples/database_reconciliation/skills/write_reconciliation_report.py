@@ -23,12 +23,9 @@ class WriteReconciliationReport(Skill):
     """Write a deterministic reconciliation summary CSV."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        results = ctx.data.get("reconciliation_results")
-        if not isinstance(results, list):
-            raise SystemException("No reconciliation_results in context", action=self.name)
-
-        report_file = ctx.config.get("report_file")
-        if not isinstance(report_file, str) or not report_file:
+        results = ctx.require_state("reconciliation_results", list, action=self.name)
+        report_file = ctx.require_config("report_file", str, action=self.name)
+        if not report_file:
             raise SystemException("Config key 'report_file' must be a non-empty string", action=self.name)
 
         path = Path(report_file)
@@ -56,4 +53,16 @@ class WriteReconciliationReport(Skill):
                 temp_path.unlink(missing_ok=True)
             raise SystemException(f"Unable to write reconciliation report {path}: {exc}", action=self.name) from exc
 
-        ctx.data["report_file"] = str(path)
+        ctx.add_artifact(
+            name="reconciliation_report",
+            path=str(path),
+            kind="csv",
+            metadata={
+                "record_count": len(results),
+                "status_counts": {
+                    "matched": sum(1 for r in results if r.get("status") == "matched"),
+                    "missing_from_bank": sum(1 for r in results if r.get("status") == "missing_from_bank"),
+                    "amount_mismatch": sum(1 for r in results if r.get("status") == "amount_mismatch"),
+                },
+            },
+        )

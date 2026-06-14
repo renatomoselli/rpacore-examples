@@ -249,8 +249,8 @@ coverage_html/
 # AI Agent Workspaces
 # ============================================================================
 
-# Pi agent workspace
-AGENTS.md
+# Public agent instructions are tracked in AGENTS.md.
+# Personal agent workspaces stay ignored.
 CLAUDE.md
 .pi/
 .pi

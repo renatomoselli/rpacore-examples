@@ -5,9 +5,10 @@ from pathlib import Path
 
 from rpacore import Engine, ProcessContext, Status, Transaction, save_transaction
 
-from main import build_payment_transaction
+from skills.classify_outcome import ClassifyOutcome
 from skills.load_bank_statement import LoadBankStatement
 from skills.load_internal_records import LoadInternalRecords
+from skills.match_transaction import MatchTransaction
 from skills.write_reconciliation_report import WriteReconciliationReport
 
 
@@ -44,47 +45,58 @@ def test_full_workflow_writes_reconciliation_report(tmp_path):
     config = {
         "max_retries": 0,
         "log_level": "WARNING",
-        "db_path": str(db_path),
+        "transaction_db_path": str(db_path),
         "internal_records_csv": str(internal_csv),
         "bank_statement_csv": str(bank_csv),
         "report_file": str(report_file),
     }
-    shared_data = {"reconciliation_results": []}
     engine = Engine(max_retries=0)
 
     setup_tx = Transaction(
         reference="load-reconciliation-inputs",
+        state={},
         skills=[
             LoadInternalRecords(name="load_internal_records", execution_order=1),
             LoadBankStatement(name="load_bank_statement", execution_order=2),
         ],
     )
-    engine.run(ProcessContext(transaction=setup_tx, config=config, data=shared_data))
+    engine.run(ProcessContext(transaction=setup_tx, config=config))
     save_transaction(setup_tx, db_path=str(db_path))
 
     assert setup_tx.status == Status.SUCCESSFUL
 
-    statuses = []
-    for payment in shared_data["internal_records"]:
-        shared_data["current_payment"] = payment
-        shared_data.pop("bank_candidates", None)
-        shared_data.pop("reconciliation_result", None)
+    internal_records = setup_tx.state["internal_records"]
+    bank_by_reference = setup_tx.state["bank_by_reference"]
 
-        tx = build_payment_transaction(payment)
-        engine.run(ProcessContext(transaction=tx, config=config, data=shared_data))
-        save_transaction(tx, db_path=str(db_path))
-        statuses.append(tx.status)
-        result = shared_data.get("reconciliation_result")
+    reconciliation_results = []
+    statuses = []
+    for payment in internal_records:
+        payment_tx = Transaction(
+            reference=f"payment-{payment.get('payment_id')}",
+            state={
+                "current_payment": payment,
+                "bank_by_reference": bank_by_reference,
+            },
+            skills=[
+                MatchTransaction(name="match_transaction", execution_order=1),
+                ClassifyOutcome(name="classify_outcome", execution_order=2),
+            ],
+        )
+        engine.run(ProcessContext(transaction=payment_tx, config=config))
+        save_transaction(payment_tx, db_path=str(db_path))
+        statuses.append(payment_tx.status)
+        result = payment_tx.state.get("reconciliation_result")
         if isinstance(result, dict):
-            shared_data["reconciliation_results"].append(result)
+            reconciliation_results.append(result)
 
     report_tx = Transaction(
         reference="write-reconciliation-report",
+        state={"reconciliation_results": reconciliation_results},
         skills=[
             WriteReconciliationReport(name="write_reconciliation_report", execution_order=1),
         ],
     )
-    engine.run(ProcessContext(transaction=report_tx, config=config, data=shared_data))
+    engine.run(ProcessContext(transaction=report_tx, config=config))
     save_transaction(report_tx, db_path=str(db_path))
 
     assert statuses == [Status.SUCCESSFUL, Status.FAILED, Status.FAILED]

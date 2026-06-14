@@ -14,8 +14,8 @@ class LoadInternalRecords(Skill):
     """Load ERP/accounting payment records from CSV."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        csv_path = ctx.config.get("internal_records_csv")
-        if not isinstance(csv_path, str) or not csv_path:
+        csv_path = ctx.require_config("internal_records_csv", str, action=self.name)
+        if not csv_path:
             raise SystemException(
                 "Config key 'internal_records_csv' must be a non-empty string",
                 action=self.name,
@@ -24,7 +24,11 @@ class LoadInternalRecords(Skill):
         rows = read_csv(Path(csv_path), REQUIRED_COLUMNS, self.name)
         records = []
         for index, row in enumerate(rows, start=2):
-            missing = [column for column in REQUIRED_COLUMNS if not row.get(column)]
+            missing = [
+                column
+                for column in REQUIRED_COLUMNS
+                if not str(row.get(column, "")).strip()
+            ]
             if missing:
                 raise SystemException(
                     f"Internal record row {index} missing required column(s): {', '.join(missing)}",
@@ -43,9 +47,9 @@ class LoadInternalRecords(Skill):
                     "payment_id": row["payment_id"],
                     "date": row["date"],
                     "reference": row["reference"],
-                    "amount": amount,
+                    "amount": str(amount),
                     "vendor": row["vendor"],
                 }
             )
 
-        ctx.data["internal_records"] = records
+        ctx.state["internal_records"] = records
