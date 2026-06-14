@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Integration tests for the full RPA workflow.
 
@@ -5,8 +7,8 @@ These tests verify that all skills work together correctly.
 """
 
 import io
-import os
 import sys
+import urllib.error
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -16,7 +18,7 @@ import pytest
 # Add the parent directory to the path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from rpacore import ProcessContext, Transaction
+from rpacore import ProcessContext, Transaction, SystemException
 from skills.setup import (
     OpenChallengePage,
     DownloadInputData,
@@ -26,16 +28,7 @@ from skills.setup import (
 from skills.row import FillRow, SubmitRow
 from skills.score import RecordScore
 
-
-def test_skip_in_ci():
-    """
-    Mark this test as requiring special conditions.
-    Adjust based on your CI configuration.
-    """
-    if os.environ.get("CI", "").lower() in ["true", "1"]:
-        pytest.skip("Skipping integration test in CI environment")
-    if not Path(__file__).parent.parent.exists():
-        pytest.skip("Running outside RPA Core examples directory")
+pytestmark = pytest.mark.integration
 
 
 class TestFullWorkflow:
@@ -56,10 +49,9 @@ class TestFullWorkflow:
         buf.seek(0)
         return buf.getvalue()
 
-    def test_workflow_executes_all_skills_in_order(self):
-        """Test that all skills execute in the correct order."""
-        test_excel = self._create_test_excel_bytes()
-        mock_tx = Mock(spec=Transaction, reference="test-workflow")
+    def test_download_input_data_populates_state(self):
+        """Test that downloaded workbook rows are stored in durable state."""
+        mock_tx = Mock(spec=Transaction, reference="test-workflow", state={})
 
         # Mock the browser and download
         mock_page = Mock()
@@ -69,7 +61,7 @@ class TestFullWorkflow:
         with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve, \
              patch("skills.setup.openpyxl.load_workbook") as mock_load_wb:
 
-            mock_urlretrieve.return_value = ("/tmp/test.xlsx", Mock())
+            mock_urlretrieve.return_value = ("test.xlsx", Mock())
 
             # Mock Excel parsing
             mock_wb = Mock()
@@ -86,28 +78,32 @@ class TestFullWorkflow:
 
             ctx = ProcessContext(
                 transaction=mock_tx,
-                data={"page": mock_page, "_pw": mock_pw},
-                config={"xlsx_url": "http://test.example.com/data.xlsx"}
+                resources={"page": mock_page, "_pw": mock_pw},
+                config={
+                    "xlsx_url": "http://test.example.com/data.xlsx",
+                    "xlsx_allowed_hosts": ["test.example.com"],
+                },
             )
 
-            # Execute DownloadInputData (OpenChallengePage needs sync_playwright mock)
             skill2 = DownloadInputData("download_input_data", 2)
             skill2.execute(ctx)
 
-            # Verify DownloadInputData executed successfully
-            assert ctx.data.get("page") == mock_page
+            assert ctx.resources.get("page") == mock_page
+            # Verify DownloadInputData populated durable state
+            assert ctx.state.get("rows") is not None
+            assert len(ctx.state["rows"]) == 2
 
     def test_workflow_uses_custom_config(self):
         """Test that workflow respects custom configuration."""
-        mock_tx = Mock(spec=Transaction, reference="test-config")
+        mock_tx = Mock(spec=Transaction, reference="test-config", state={})
         mock_page = Mock()
         mock_pw = Mock()
 
         with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve, \
              patch("pathlib.Path.unlink"), \
-             patch("tempfile.mkstemp", return_value=(123, "/tmp/test.xlsx")), \
+             patch("tempfile.mkstemp", return_value=(123, "test.xlsx")), \
              patch("skills.setup.openpyxl.load_workbook") as mock_load_wb:
-            mock_urlretrieve.side_effect = Exception("Network error")
+            mock_urlretrieve.side_effect = urllib.error.URLError("Network error")
             # Mock the browser download fallback via expect_download context manager
             mock_download = Mock()
             mock_download.save_as = Mock()
@@ -130,8 +126,11 @@ class TestFullWorkflow:
 
             ctx = ProcessContext(
                 transaction=mock_tx,
-                data={"page": mock_page, "_pw": mock_pw},
-                config={"xlsx_url": "http://custom-test-url.com/data.xlsx"}
+                resources={"page": mock_page, "_pw": mock_pw},
+                config={
+                    "xlsx_url": "http://custom-test-url.com/data.xlsx",
+                    "xlsx_allowed_hosts": ["custom-test-url.com"],
+                },
             )
 
             # Skill should use custom URL from config
@@ -147,13 +146,13 @@ class TestFullWorkflow:
 
     def test_workflow_handles_parse_errors(self):
         """Test that workflow handles Excel parse errors."""
-        mock_tx = Mock(spec=Transaction, reference="test-errors")
+        mock_tx = Mock(spec=Transaction, reference="test-errors", state={})
         mock_page = Mock()
 
         with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve, \
              patch("skills.setup.openpyxl.load_workbook") as mock_load_wb:
 
-            mock_urlretrieve.return_value = ("/tmp/test.xlsx", Mock())
+            mock_urlretrieve.return_value = ("test.xlsx", Mock())
             mock_wb = Mock()
             mock_wb.active = Mock()
             mock_wb.active.iter_rows.side_effect = Exception("Parse error")
@@ -161,24 +160,16 @@ class TestFullWorkflow:
 
             ctx = ProcessContext(
                 transaction=mock_tx,
-                data={"page": mock_page},
-                config={"xlsx_url": "http://test.example.com/data.xlsx"}
+                resources={"page": mock_page},
+                config={
+                    "xlsx_url": "http://test.example.com/data.xlsx",
+                    "xlsx_allowed_hosts": ["test.example.com"],
+                },
             )
 
             # Download should raise an exception on parse failure
-            with pytest.raises(Exception):
+            with pytest.raises(SystemException) as exc_info:
                 skill = DownloadInputData("download_input_data", 2)
                 skill.execute(ctx)
 
-    def test_downloads_raw_bytes(self):
-        """Test that downloaded content can be read as raw bytes."""
-        with patch("skills.setup.urllib.request.urlopen") as mock_urlopen:
-            test_data = self._create_test_excel_bytes()
-            mock_response = Mock()
-            mock_response.read.return_value = test_data
-            mock_urlopen.return_value = mock_response
-
-            with patch("skills.setup.openpyxl.load_workbook") as mock_load_wb:
-                # Verify we can parse the downloaded file from bytes
-                wb = openpyxl.load_workbook(io.BytesIO(test_data))
-                assert wb is not None
+            assert "Failed to parse Excel file" in str(exc_info.value)

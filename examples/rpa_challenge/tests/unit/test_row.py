@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Unit tests for row.py skills (FillRow, SubmitRow).
 
@@ -9,57 +11,103 @@ from unittest.mock import Mock, call, patch
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from rpacore import ProcessContext, Transaction, SystemException, BusinessException
 
-from skills.row import FillRow, SubmitRow, _FIELDS, _find_row_value
+from skills.row import FillRow, SubmitRow, _FIELDS
+from skills._utils import (
+    DEFAULT_TIMEOUTS,
+    find_row_value as _find_row_value,
+    get_timeout,
+    missing_required_fields,
+)
+
+pytestmark = pytest.mark.unit
+
+DEFAULT_CONFIG = {f"timeout_{key}": value for key, value in DEFAULT_TIMEOUTS.items()}
 
 
 class TestFindRowValue:
     """Test the _find_row_value helper function."""
 
     def test_finds_exact_match(self):
-        """Test finding a field with exact match."""
         row = {"First Name": "John"}
         result = _find_row_value(row, "First Name")
         assert result == "John"
 
     def test_finds_case_insensitive(self):
-        """Test case-insensitive lookup."""
-        row = {"first name": "john"}  # lowercase key
+        row = {"first name": "john"}
         result = _find_row_value(row, "First Name")
         assert result == "john"
 
     def test_handles_none_value(self):
-        """Test handling None as value."""
         row = {"First Name": None}
         result = _find_row_value(row, "First Name")
         assert result == ""
 
+    def test_preserves_numeric_zero_value(self):
+        row = {"Phone Number": 0}
+        result = _find_row_value(row, "Phone Number")
+        assert result == "0"
+
     def test_returns_empty_when_not_found(self):
-        """Test returning empty string when field not found."""
         row = {"Last Name": "Doe"}
         result = _find_row_value(row, "First Name")
         assert result == ""
 
     def test_handles_mixed_case_key(self):
-        """Test handling mixed-case keys in row dict."""
         row = {"FIRST NAME": "JANE"}
         result = _find_row_value(row, "first name")
         assert result == "JANE"
+
+
+class TestMissingRequiredFields:
+    def test_uses_default_required_fields(self):
+        row = {
+            "First Name": "Jane",
+            "Last Name": "Doe",
+            "Company Name": "ACME",
+            "Role in Company": "Engineer",
+            "Address": "1 Test St",
+            "Email": "",
+            "Phone Number": "555-0100",
+        }
+
+        assert missing_required_fields(row) == ["Email"]
+
+    def test_accepts_custom_field_list(self):
+        row = {"Email": "jane@example.com", "Phone Number": ""}
+
+        assert missing_required_fields(row, fields=["Email", "Phone Number"]) == ["Phone Number"]
+
+
+class TestGetTimeout:
+    def test_uses_config_override(self):
+        assert get_timeout({"timeout_click": 1234}, "click") == 1234
+
+    def test_raises_clear_error_for_unknown_timeout_key(self):
+        with pytest.raises(KeyError) as exc_info:
+            get_timeout({}, "not_a_timeout")
+
+        assert "Unknown timeout key" in str(exc_info.value)
+
+    def test_raises_clear_error_for_invalid_timeout_value(self):
+        with pytest.raises(SystemException) as exc_info:
+            get_timeout({"timeout_click": "fast"}, "click")
+
+        assert "timeout_click" in str(exc_info.value)
 
 
 class TestFillRow:
     """Test the FillRow skill with mocked browser."""
 
     def setup_method(self):
-        """Set up test fixtures."""
         self.mock_page = Mock()
-        self.mock_tx = Mock(spec=Transaction, reference="fill-row")
+        self.mock_tx = Mock(spec=Transaction, reference="fill-row", state={})
         self.mock_ctx = ProcessContext(
             transaction=self.mock_tx,
-            data={"page": self.mock_page, "_pw": Mock()}
+            resources={"page": self.mock_page, "_pw": Mock()},
+            config=DEFAULT_CONFIG,
         )
 
     def test_fills_all_fields(self):
-        """Test that FillRow fills all 7 fields via JS evaluate."""
         row = {
             "First Name": "John", "Last Name": "Doe",
             "Company Name": "ACME", "Role in Company": "Engineer",
@@ -76,11 +124,9 @@ class TestFillRow:
         skill = FillRow("fill_row", 1, arguments={"row": row})
         skill.execute(self.mock_ctx)
 
-        # Verify evaluate was called (for label map + JS filling)
         assert self.mock_page.evaluate.call_count >= 1
 
     def test_fills_with_correct_values(self):
-        """Test that fields are filled with correct values via JS."""
         row = {
             "Email": "test@example.com",
             "First Name": "Test",
@@ -95,23 +141,39 @@ class TestFillRow:
         skill = FillRow("fill_row", 1, arguments={"row": row})
         skill.execute(self.mock_ctx)
 
-        # Verify evaluate was called to fill fields
         self.mock_page.evaluate.assert_called()
 
+    def test_fills_values_containing_percent_sign(self):
+        row = {
+            "Email": "test@example.com",
+            "First Name": "Test",
+            "Last Name": "User",
+            "Company Name": "100% Quality Co",
+            "Role in Company": "Tester",
+            "Address": "1 Test St",
+            "Phone Number": "123-456-7890"
+        }
+        self.mock_page.evaluate.return_value = {f: f"input-{i}" for i, f in enumerate(_FIELDS)}
+
+        skill = FillRow("fill_row", 1, arguments={"row": row})
+        skill.execute(self.mock_ctx)
+
+        js_code = self.mock_page.evaluate.call_args.args[0]
+        assert "100% Quality Co" in js_code
+
     def test_raises_business_exception_on_missing_fields(self):
-        """Test that missing required fields raises BusinessException."""
-        skill = FillRow("fill_row", 1, arguments={"row": {"First Name": "John"}})  # Only 1 of 7 fields
+        skill = FillRow("fill_row", 1, arguments={"row": {"First Name": "John"}})
 
         with pytest.raises(BusinessException) as exc_info:
             skill.execute(self.mock_ctx)
 
         assert "missing required fields" in str(exc_info.value)
+        assert "row_validation_failed" not in self.mock_ctx.state
 
     def test_raises_business_exception_for_empty_required_field(self):
-        """Test that empty required field raises BusinessException."""
         row = {
             "First Name": "John",
-            "Last Name": "",  # Empty string — FillRow rejects empty required fields
+            "Last Name": "",
             "Company Name": "ACME",
             "Role in Company": "Engineer",
             "Address": "123 Main St",
@@ -128,8 +190,6 @@ class TestFillRow:
         assert "Last Name" in str(exc_info.value)
 
     def test_uses_case_insensitive_lookup(self):
-        """Test that FillRow handles case-insensitive header lookup."""
-        # Row with lowercase headers (as might come from some Excel configs)
         row = {
             "email": "john@example.com",
             "first name": "John",
@@ -144,11 +204,9 @@ class TestFillRow:
         skill = FillRow("fill_row", 1, arguments={"row": row})
         skill.execute(self.mock_ctx)
 
-        # All fields should still be filled correctly
         self.mock_page.evaluate.assert_called()
 
     def test_raises_system_exception_on_js_failure(self):
-        """Test that JS filling failure raises SystemException."""
         row = {
             "First Name": "John", "Last Name": "Doe",
             "Company Name": "ACME", "Role in Company": "Engineer",
@@ -164,69 +222,48 @@ class TestFillRow:
 
         assert "Failed to fill field in row" in str(exc_info.value)
 
-
 class TestSubmitRow:
     """Test the SubmitRow skill with mocked browser."""
 
     def setup_method(self):
-        """Set up test fixtures."""
         self.mock_page = Mock()
-        self.mock_tx = Mock(spec=Transaction, reference="submit-row")
+        self.mock_tx = Mock(spec=Transaction, reference="submit-row", state={})
         self.mock_ctx = ProcessContext(
             transaction=self.mock_tx,
-            data={"page": self.mock_page}
+            resources={"page": self.mock_page},
+            config=DEFAULT_CONFIG,
         )
 
     def test_submits_button(self):
-        """Test that SubmitRow clicks the submit button inside the form."""
         mock_locator = Mock()
         self.mock_page.locator.return_value = mock_locator
 
         skill = SubmitRow("submit_row", 1)
         skill.execute(self.mock_ctx)
 
-        # Verify locator uses the correct form input selector
         self.mock_page.locator.assert_called_with('form input[type="submit"]')
-        mock_locator.click.assert_called_with(timeout=10_000)
+        mock_locator.click.assert_called_with(timeout=DEFAULT_TIMEOUTS["click"])
 
     def test_waits_for_congratulations_on_last_row(self):
-        """Test that SubmitRow waits for congratulations on the last row."""
         mock_locator = Mock()
         self.mock_page.locator.return_value = mock_locator
 
         skill = SubmitRow("submit_row", 1)
         skill.execute(self.mock_ctx)
 
-        # Verify wait_for_selector was called for .congratulations
-        self.mock_page.wait_for_selector.assert_called_with(".congratulations", timeout=5_000)
+        self.mock_page.wait_for_selector.assert_called_with(".congratulations", timeout=DEFAULT_TIMEOUTS["congratulations_check"])
 
     def test_waits_for_form_re_render_on_intermediate_rows(self):
-        """Test that SubmitRow waits for form re-render on intermediate rows."""
         mock_locator = Mock()
         self.mock_page.locator.return_value = mock_locator
-        # Make wait_for_selector raise TimeoutError to simulate intermediate row
         self.mock_page.wait_for_selector.side_effect = PlaywrightTimeoutError("Not found")
 
         skill = SubmitRow("submit_row", 1)
         skill.execute(self.mock_ctx)
 
-        # Verify wait_for_function was called as fallback
         self.mock_page.wait_for_function.assert_called_once()
 
-    def test_skips_submission_after_row_validation_failure(self):
-        """Test that SubmitRow stops when FillRow already marked validation failure."""
-        self.mock_ctx.data["row_validation_failed"] = True
-
-        skill = SubmitRow("submit_row", 1)
-
-        with pytest.raises(SystemException) as exc_info:
-            skill.execute(self.mock_ctx)
-
-        assert "Row validation failed" in str(exc_info.value)
-        self.mock_page.locator.assert_not_called()
-
     def test_raises_system_exception_on_click_failure(self):
-        """Test that click failure raises SystemException."""
         self.mock_page.locator.side_effect = Exception("Button not found")
 
         skill = SubmitRow("submit_row", 1)

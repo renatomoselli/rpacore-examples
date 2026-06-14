@@ -1,27 +1,29 @@
 # RPA Challenge Web Automation
 
-Public benchmark challenge demonstrating robust label-based browser automation.
+Public benchmark challenge demonstrating browser automation with RPA Core transaction state, runtime resources, retries, and transaction persistence.
 
 ## What It Does
 
-Downloads employee data from Excel (10 rows), then fills a web form with randomized field positions using label-based selectors.
+Downloads the challenge workbook, opens the RPA Challenge website, starts the challenge, submits each employee row through a randomized web form, and records the final score.
 
-**Key learning:** Uses `get_by_label()` selectors to handle randomized field positions that would break position-based automation.
+**Key learning:** Playwright browser/page handles live in `ctx.resources`, while durable row data and final score live in `ctx.state`. The form fill step builds a label-to-input map from the live DOM and dispatches Angular-compatible input events so randomized field positions do not break the automation.
 
 ## Quick Start
 
 ```bash
+cd examples/rpa_challenge
+
 # Install runtime dependencies
 pip install -r requirements.txt
 playwright install chromium
 
 # Run the automation
-cd examples/rpa_challenge
 python main.py
 ```
 
 Expected output:
-```
+
+```text
 INFO | transaction_started | Transaction started | transaction_reference=rpa-challenge-setup
 INFO | skill_started | Skill started | skill_name=open_challenge_page
 INFO | skill_completed | Skill completed | skill_name=open_challenge_page skill_status=successful
@@ -48,126 +50,82 @@ Final score: 100%
 
 ```bash
 # Check dependencies are installed
-pip list | grep -E "playwright|openpyxl"
+pip list | grep -E "rpacore|playwright|openpyxl"
 
 # Verify browser installation
 playwright install chromium
-
-# Test browser is working
-playwright-cli open https://www.rpachallenge.com --headed
 ```
-
----
 
 ## Dependencies
 
-### Runtime
-
 | Package | Purpose |
 |---------|---------|
-| `playwright` | Browser automation for web form filling |
-| `openpyxl` | Parsing the challenge.xlsx input file |
-
-### Dev Tools (Optional)
-
-| Tool | Purpose |
-|------|---------|
-| `playwright-cli` | Selector debugging and verification |
-
----
+| `rpacore` | Transaction engine, skills, state/resources, persistence |
+| `playwright` | Browser automation |
+| `openpyxl` | Parsing the challenge workbook |
 
 ## Architecture
 
 ### Transactions
 
-```
-setup:    [OpenChallengePage] → [DownloadInputData] → [StartChallenge]
-
-row×10:   [FillRow] → [SubmitRow]
-
-score:    [RecordScore]
+```text
+setup:  [OpenChallengePage] -> [DownloadInputData] -> [StartChallenge]
+row x10:[FillRow] -> [SubmitRow]
+score:  [RecordScore]
 ```
 
-Each run submits all rows in the active browser session. Row transactions are
-persisted for traceability, but row-level resume is intentionally disabled
-because the challenge site's progress is not restored across fresh sessions.
+Each run submits all rows in one active browser session. Row transactions are persisted for traceability, but row-level resume is intentionally disabled because the challenge site's progress is not restored across fresh sessions. If the browser crashes or the challenge page is closed mid-run, restart the example to begin a fresh challenge session.
 
 ### Skills
 
 | Skill | Purpose |
 |-------|---------|
-| `OpenChallengePage` | Launch browser, navigate to challenge site |
-| `DownloadInputData` | Download & parse challenge.xlsx |
-| `StartChallenge` | Click Start button to begin (checks for button presence first) |
-| `FillRow` | Fill 7 form fields (label-based) |
-| `SubmitRow` | Submit each row |
-| `RecordScore` | Read final score and close browser |
-
----
+| `OpenChallengePage` | Launch Playwright, navigate to the challenge site, and store runtime handles in `ctx.resources` |
+| `DownloadInputData` | Download and parse the workbook, then store JSON-safe rows in `ctx.state` |
+| `StartChallenge` | Click the Start button and wait for the randomized form |
+| `FillRow` | Map visible labels to input IDs and fill one row |
+| `SubmitRow` | Submit one row and wait for the next round or results page |
+| `RecordScore` | Parse and persist the final score in `ctx.state` |
 
 ## External Dependencies
 
 | Item | Reason |
 |------|--------|
-| [RPACHallenge](https://www.rpachallenge.com/) | Challenge website (internet required) |
-
----
+| [RPACHallenge](https://www.rpachallenge.com/) | Challenge website and workbook download |
 
 ## Verification
 
 ```bash
-# 1. Run automation
+# Deterministic tests with mocked browser/network dependencies
+pytest tests/unit/
+pytest tests/integration/
+
+# Live browser run against the public website
 python main.py
 
-# 2. Check transaction log
+# Optional transaction log check
 sqlite3 rpacore.db "SELECT reference, status FROM transactions ORDER BY rowid;"
-
-# 3. Expected: 12 successful transactions
 ```
 
-## Risks & Maintenance
-
-| Risk | Mitigation |
-|------|-----------|
-| Field labels change | Use `playwright-cli snapshot` to verify |
-| Download URL changes | Graceful error handling in `DownloadInputData` |
-
----
+The live run should create 12 successful transactions: one setup transaction, ten row transactions, and one score transaction.
 
 ## Running Tests
 
-### Setup
-
 ```bash
-# Install test dependencies
 pip install -r requirements-test.txt
 
-# Install Playwright browsers (if not already done)
-playwright install
-```
-
-### Run Tests
-
-```bash
-# All tests
-pytest
-
-# Unit tests only (fast, no network)
+# Mocked tests, no live browser/site dependency
 pytest tests/unit/
-
-# Integration tests only (requires network)
 pytest tests/integration/
 
-# With coverage
-pytest --cov=. --cov-report=html
+# Optional live validation is the actual example run
+playwright install chromium
+python main.py
 ```
 
-See `tests/README.md` for full documentation.
-
----
+See `tests/README.md` for the test layout.
 
 ## Related
 
-- [RPA Core framework](https://github.com/oref-org/oref)
+- [RPA Core](https://github.com/renatomoselli/rpacore)
 - [RPACHallenge](https://www.rpachallenge.com/)
-

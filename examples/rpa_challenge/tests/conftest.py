@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Pytest fixtures for RPA Challenge tests.
 
@@ -12,6 +14,9 @@ from unittest.mock import Mock
 
 import pytest
 
+from rpacore import ProcessContext, Transaction
+from skills._utils import find_row_value
+
 # Add parent directory to path for importing skills
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -21,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 def mock_page() -> Mock:
     """Create a mock Playwright page object."""
     mock_page = Mock()
-    mock_page.get_by_label = Mock()
     mock_page.get_by_role = Mock()
     mock_page.locator = Mock()
     mock_page.fill = Mock()
@@ -40,15 +44,13 @@ def mock_browser() -> Mock:
 
 
 @pytest.fixture
-def mock_context() -> Dict[str, Any]:
-    """Create a mock ProcessContext with data."""
-    return {
-        "data": {
-            "page": Mock(),
-            "_pw": Mock()
-        },
-        "arguments": {}
-    }
+def mock_context() -> ProcessContext:
+    """Create a mock ProcessContext with resources."""
+    return ProcessContext(
+        transaction=Mock(spec=Transaction, state={}),
+        resources={"page": Mock(), "_pw": Mock()},
+        config={},
+    )
 
 
 # Fixtures for integration tests
@@ -114,8 +116,4 @@ def incomplete_excel_rows() -> list[Dict[str, str]]:
 # Helper functions
 def get_field_value(row: Dict[str, Any], field: str) -> str:
     """Helper to look up field value case-insensitively."""
-    lower = field.lower()
-    for key, val in row.items():
-        if str(key).strip().lower() == lower:
-            return str(val or "")
-    return ""
+    return find_row_value(row, field)

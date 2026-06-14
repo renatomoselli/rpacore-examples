@@ -1,93 +1,47 @@
 # RPA Challenge Tests
 
-This directory contains automated tests for the RPA Challenge automation.
+This directory contains deterministic tests for the RPA Challenge automation.
 
 ## Test Structure
 
-```
+```text
 tests/
-├── conftest.py              # Pytest fixtures and configuration
-├── unit/                    # Unit tests with mocked dependencies
-│   ├── test_setup.py       # OpenChallengePage, DownloadInputData, StartChallenge
-│   ├── test_row.py         # FillRow, SubmitRow
-│   └── test_score.py       # RecordScore
-└── integration/            # Integration tests with real browser
-    └── test_full_workflow.py
+|-- conftest.py
+|-- unit/
+|   |-- test_main.py
+|   |-- test_setup.py
+|   |-- test_row.py
+|   `-- test_score.py
+`-- integration/
+    `-- test_full_workflow.py
 ```
 
 ## Running Tests
 
-### Quick Setup
-
 ```bash
-# Install test dependencies
 pip install -r requirements-test.txt
 
-# Install Playwright browsers
-playwright install
-```
-
-### Run All Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage report
-pytest --cov=. --cov-report=html
-
-# Run only unit tests
+# Unit tests with mocked Playwright/page objects
 pytest tests/unit/
 
-# Run only integration tests
+# Mocked workflow-level tests
 pytest tests/integration/
-```
 
-### Run Specific Test Categories
-
-```bash
-# Run smoke tests only (fast)
-pytest -m smoke
-
-# Run integration tests only (requires network)
-pytest -m integration
-
-# Run tests with verbose output and stack traces
-pytest -v --tb=long
-```
-
-### Parallel Execution
-
-```bash
-# Run tests in parallel (faster)
-pytest -n auto
-
-# Run with specific workers
-pytest -n 4
+# Full deterministic suite
+pytest tests/unit/ tests/integration/
 ```
 
 ## Test Types
 
-| Type | Description | Network Required | Speed |
-|------|-------------|------------------|-------|
-| Unit | Mock-based, tests individual skills | No | Fast |
-| Integration | Real browser, tests full workflow | Yes | Slow |
+| Type | Description | Network Required |
+|------|-------------|------------------|
+| Unit | Individual skills and helpers with mocks | No |
+| Integration | Multi-skill workflow behavior with mocked browser/downloads | No |
+| Live | Actual browser run against rpachallenge.com via `python main.py` | Yes |
 
-## CI/CD Integration
+Run the live validation only when Playwright browsers are installed and the public site is stable:
 
-Add to your CI pipeline:
-
-```yaml
-# Example GitHub Actions
-- name: Run tests
-  run: |
-    pip install -r requirements-test.txt
-    playwright install
-    pytest --cov=. --cov-report=xml
+```bash
+playwright install chromium
+python main.py
 ```
-
-## Notes
-
-- Integration tests may be skipped in CI environments without network
-- Unit tests are preferred for fast feedback in development
-- Use `-m integration -n auto --timeout=300` for parallel integration tests with 5min timeout

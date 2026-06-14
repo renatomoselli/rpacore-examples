@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 import re
 
 from rpacore import ProcessContext, Skill, SystemException
@@ -10,11 +9,8 @@ from skills._utils import get_timeout
 
 class RecordScore(Skill):
     def execute(self, ctx: ProcessContext) -> None:
-        page = ctx.data["page"]
+        page = ctx.resources["page"]
         try:
-            # Brief pause for the page to finish updating after the last submission.
-            time.sleep(2)
-
             # Wait for the results page to appear ("Congratulations" message)
             # The results page shows a .congratulations div after all 10 rounds are complete.
             # Use the specific CSS class selector — more reliable than checking body text,
@@ -25,20 +21,23 @@ class RecordScore(Skill):
             body_text = page.text_content("body")
 
             score_match = re.search(
-                r"success rate is ([\d.]+)%", body_text, re.IGNORECASE
+                r"success rate is (\d+(?:\.\d+)?)%?", body_text, re.IGNORECASE
             )
             if score_match:
-                ctx.data["score"] = f"{score_match.group(1)}%"
+                ctx.state["score"] = f"{score_match.group(1)}%"
             else:
-                # Fallback: capture the full congratulations message
+                # Fallback: extract a percent from alternate congratulations copy.
                 congrats_match = re.search(
-                    r"Congratulations!([^.]*\.\s*)", body_text, re.IGNORECASE
+                    r"Congratulations!.*?(\d+(?:\.\d+)?)%?",
+                    body_text,
+                    re.IGNORECASE | re.DOTALL,
                 )
-                ctx.data["score"] = (
-                    congrats_match.group(0).strip()
-                    if congrats_match
-                    else "unknown"
-                )
+                if not congrats_match:
+                    raise SystemException(
+                        "Final page did not contain a parseable score or congratulations message.",
+                        action=self.name,
+                    )
+                ctx.state["score"] = f"{congrats_match.group(1)}%"
         except Exception as exc:
             raise SystemException(
                 f"Failed to read final score: {exc}",

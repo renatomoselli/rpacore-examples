@@ -6,19 +6,10 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from rpacore import BusinessException, ProcessContext, Skill, SystemException
 
-from skills._utils import find_row_value as _find_row_value
-from skills._utils import get_timeout
+from skills._utils import REQUIRED_FIELDS, find_row_value as _find_row_value
+from skills._utils import get_timeout, missing_required_fields
 
-_FIELDS = [
-    "First Name",
-    "Last Name",
-    "Company Name",
-    "Role in Company",
-    "Address",
-    "Email",
-    "Phone Number",
-]
-
+_FIELDS = REQUIRED_FIELDS
 
 
 def _build_label_to_input_map(page) -> dict[str, str]:
@@ -51,10 +42,12 @@ def _fill_fields_via_js(page, label_map: dict[str, str], row: dict) -> None:
     validation. We must set values directly and dispatch input/change/blur events.
     """
     data = {f: _find_row_value(row, f) for f in _FIELDS}
-    js_code = (
-        """() => {
-            const data = %s;
-            const map = %s;
+    data_json = json.dumps(data)
+    label_map_json = json.dumps(label_map)
+    js_code = """
+        () => {
+            const data = __DATA__;
+            const map = __LABEL_MAP__;
             for (const [field, value] of Object.entries(data)) {
                 const inputId = map[field];
                 if (inputId) {
@@ -65,23 +58,22 @@ def _fill_fields_via_js(page, label_map: dict[str, str], row: dict) -> None:
                     input.dispatchEvent(new Event('blur', { bubbles: true }));
                 }
             }
-        }"""
-        % (json.dumps(data), json.dumps(label_map))
-    )
+        }
+    """.replace("__DATA__", data_json).replace("__LABEL_MAP__", label_map_json)
     page.evaluate(js_code)
 
 
 class FillRow(Skill):
     def execute(self, ctx: ProcessContext) -> None:
-        page = ctx.data["page"]
+        page = ctx.resources["page"]
         row: dict = self.arguments["row"]
 
-        missing = [f for f in _FIELDS if not _find_row_value(row, f).strip()]
+        missing = missing_required_fields(row)
         if missing:
-            ctx.data["row_validation_failed"] = True
             raise BusinessException(
                 f"Row is missing required fields: {missing}",
                 action=self.name,
+                stop=True,
             )
 
         try:
@@ -94,17 +86,11 @@ class FillRow(Skill):
                 f"Failed to fill field in row: {exc}",
                 action=self.name,
             ) from exc
-        ctx.data["row_validation_failed"] = False
 
 
 class SubmitRow(Skill):
     def execute(self, ctx: ProcessContext) -> None:
-        page = ctx.data["page"]
-        if ctx.data.get("row_validation_failed"):
-            raise SystemException(
-                "Row validation failed; skipping browser submission",
-                action=self.name,
-            )
+        page = ctx.resources["page"]
 
         try:
             # Click the submit INPUT inside the form (the button outside the form

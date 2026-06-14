@@ -3,19 +3,17 @@ max_retries = 2
 log_level = "INFO"
 
 # Database for transaction persistence
-db_path = "rpacore.db"
+transaction_db_path = "rpacore.db"
 
 # Screenshots for debugging (empty string disables)
 screenshot_dir = "screenshots"
 
 # XLSX file URL - can be overridden for testing
 xlsx_url = "https://www.rpachallenge.com/assets/downloadFiles/challenge.xlsx"
+xlsx_allowed_hosts = ["www.rpachallenge.com"]
 
 # Page load retry settings (also used in OpenChallengePage)
 max_page_load_retries = 3
-
-# Credential provider for headless mode (if needed)
-credential_provider = "env"
 
 # Headless mode — set to false to see the browser during development
 headless = true

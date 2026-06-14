@@ -1,6 +1,8 @@
-"""Shared utilities for RPA Challenge skills."""
-
 from __future__ import annotations
+
+from rpacore import SystemException
+
+"""Shared utilities for RPA Challenge skills."""
 
 
 # Default timeouts (milliseconds) — overridable via config.toml
@@ -11,6 +13,16 @@ DEFAULT_TIMEOUTS = {
     "congratulations_check": 5_000,
     "score_extraction": 15_000,
 }
+
+REQUIRED_FIELDS = [
+    "First Name",
+    "Last Name",
+    "Company Name",
+    "Role in Company",
+    "Address",
+    "Email",
+    "Phone Number",
+]
 
 
 def get_timeout(config: dict, key: str) -> int:
@@ -23,7 +35,18 @@ def get_timeout(config: dict, key: str) -> int:
     Returns:
         Timeout in milliseconds.
     """
-    return int(config.get(f"timeout_{key}", DEFAULT_TIMEOUTS[key]))
+    default = DEFAULT_TIMEOUTS.get(key)
+    if default is None:
+        raise KeyError(f"Unknown timeout key: {key}")
+    config_key = f"timeout_{key}"
+    raw_value = config.get(config_key, default)
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise SystemException(
+            f"Config key '{config_key}' must be an integer, got {raw_value!r}",
+            action="config",
+        ) from exc
 
 
 def find_row_value(row: dict, field: str) -> str:
@@ -42,5 +65,11 @@ def find_row_value(row: dict, field: str) -> str:
     lower = field.lower()
     for key, val in row.items():
         if str(key).strip().lower() == lower:
-            return str(val) if val else ""
+            return str(val) if val is not None else ""
     return ""
+
+
+def missing_required_fields(row: dict, fields: list[str] | None = None) -> list[str]:
+    """Return required field names that are missing or blank in a row."""
+    required = REQUIRED_FIELDS if fields is None else fields
+    return [field for field in required if not find_row_value(row, field).strip()]

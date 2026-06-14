@@ -1,15 +1,12 @@
 # Test dependencies for RPA Challenge
 
+# Runtime dependencies
+-r requirements.txt
+
 # Testing framework
 pytest>=7.0.0
 pytest-cov>=4.0.0
 pytest-mock>=3.10.0
-
-# Playwright for integration tests
-playwright>=1.35.0
-
-# Excel parsing
-openpyxl>=3.1.0
 
 # Optional: for more comprehensive testing
 pytest-xdist>=3.0.0  # Parallel test execution
