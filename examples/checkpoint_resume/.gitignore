@@ -1,0 +1,11 @@
+# Runtime-generated files
+checkpoint.json
+rpacore.db
+
+# Python bytecode and test caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Virtual environments
+.venv/

@@ -1,0 +1,7 @@
+# Test dependencies for Checkpoint Resume
+
+# Runtime dependencies
+-r requirements.txt
+
+# Testing framework
+pytest>=7.0,<10

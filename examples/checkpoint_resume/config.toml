@@ -1,0 +1,5 @@
+max_retries = 0
+log_level = "INFO"
+transaction_db_path = "rpacore.db"
+checkpoint_path = "checkpoint.json"
+fail_on_first_run = true
