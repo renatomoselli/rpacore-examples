@@ -52,6 +52,28 @@ def test_load_internal_records_parses_valid_rows(tmp_path):
     assert tx.state["internal_records"][0]["amount"] == "100.00"
 
 
+def test_load_internal_records_strips_reference_whitespace(tmp_path):
+    internal_csv = tmp_path / "internal.csv"
+    internal_csv.write_text(
+        "\n".join(
+            [
+                "payment_id,date,reference,amount,vendor",
+                "PAY-1,2024-04-01, INV-1 ,100.00,Vendor A",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    tx = _run_skill(
+        LoadInternalRecords(name="load_internal_records", execution_order=1),
+        {"internal_records_csv": str(internal_csv)},
+    )
+
+    assert tx.status == Status.SUCCESSFUL
+    assert tx.state["internal_records"][0]["reference"] == "INV-1"
+
+
 def test_load_internal_records_rejects_invalid_amount(tmp_path):
     internal_csv = tmp_path / "internal.csv"
     internal_csv.write_text(
@@ -136,6 +158,29 @@ def test_load_bank_statement_indexes_entries_by_reference(tmp_path):
         "100.00",
         "125.00",
     ]
+
+
+def test_load_bank_statement_strips_reference_whitespace_for_index(tmp_path):
+    bank_csv = tmp_path / "bank.csv"
+    bank_csv.write_text(
+        "\n".join(
+            [
+                "posted_date,reference,amount,description",
+                "2024-04-01, INV-1 ,100.00,ACH Vendor A",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    tx = _run_skill(
+        LoadBankStatement(name="load_bank_statement", execution_order=1),
+        {"bank_statement_csv": str(bank_csv)},
+    )
+
+    assert tx.status == Status.SUCCESSFUL
+    assert list(tx.state["bank_by_reference"]) == ["INV-1"]
+    assert tx.state["bank_by_reference"]["INV-1"][0]["reference"] == "INV-1"
 
 
 def test_load_bank_statement_rejects_invalid_amount(tmp_path):

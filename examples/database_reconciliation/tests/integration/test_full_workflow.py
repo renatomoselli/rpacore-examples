@@ -113,3 +113,67 @@ def test_full_workflow_writes_reconciliation_report(tmp_path):
     ]
     assert rows[1]["reason_code"] == "amount_mismatch"
     assert rows[2]["reason_code"] == "missing_from_bank"
+
+
+def test_workflow_matches_references_with_surrounding_whitespace(tmp_path):
+    internal_csv = tmp_path / "internal.csv"
+    bank_csv = tmp_path / "bank.csv"
+    report_file = tmp_path / "output" / "report.csv"
+    db_path = tmp_path / "rpacore.db"
+
+    internal_csv.write_text(
+        "\n".join(
+            [
+                "payment_id,date,reference,amount,vendor",
+                "PAY-1,2024-04-01, INV-1 ,100.00,Vendor A",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    bank_csv.write_text(
+        "\n".join(
+            [
+                "posted_date,reference,amount,description",
+                "2024-04-01,INV-1,100.00,ACH Vendor A",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    config = {
+        "max_retries": 0,
+        "log_level": "WARNING",
+        "transaction_db_path": str(db_path),
+        "internal_records_csv": str(internal_csv),
+        "bank_statement_csv": str(bank_csv),
+        "report_file": str(report_file),
+    }
+    engine = Engine(max_retries=0)
+
+    setup_tx = Transaction(
+        reference="load-reconciliation-inputs",
+        state={},
+        skills=[
+            LoadInternalRecords(name="load_internal_records", execution_order=1),
+            LoadBankStatement(name="load_bank_statement", execution_order=2),
+        ],
+    )
+    engine.run(ProcessContext(transaction=setup_tx, config=config))
+
+    payment_tx = Transaction(
+        reference="payment-PAY-1",
+        state={
+            "current_payment": setup_tx.state["internal_records"][0],
+            "bank_by_reference": setup_tx.state["bank_by_reference"],
+        },
+        skills=[
+            MatchTransaction(name="match_transaction", execution_order=1),
+            ClassifyOutcome(name="classify_outcome", execution_order=2),
+        ],
+    )
+    engine.run(ProcessContext(transaction=payment_tx, config=config))
+
+    assert payment_tx.status == Status.SUCCESSFUL
+    assert payment_tx.state["reconciliation_result"]["status"] == "matched"

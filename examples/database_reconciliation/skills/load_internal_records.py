@@ -46,7 +46,7 @@ class LoadInternalRecords(Skill):
                 {
                     "payment_id": row["payment_id"],
                     "date": row["date"],
-                    "reference": row["reference"],
+                    "reference": row["reference"].strip(),
                     "amount": str(amount),
                     "vendor": row["vendor"],
                 }

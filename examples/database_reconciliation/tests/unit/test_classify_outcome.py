@@ -141,6 +141,7 @@ def test_classify_outcome_rejects_non_string_payment_amount():
     )
 
     assert tx.status == Status.FAILED
+    assert tx.state["reconciliation_result"]["status"] == "type_error"
     assert "Current payment amount must be str, got 1250" in str(
         tx.failed_skills()[0].exceptions[-1]
     )
@@ -168,6 +169,36 @@ def test_classify_outcome_rejects_non_string_bank_amount():
     )
 
     assert tx.status == Status.FAILED
+    assert tx.state["reconciliation_result"]["status"] == "type_error"
+    assert tx.state["reconciliation_result"]["bank_amount"] == 1250
     assert "Bank candidate amount must be str, got 1250" in str(
         tx.failed_skills()[0].exceptions[-1]
     )
+
+
+def test_result_helper_uses_defaults_for_missing_bank_entry():
+    from skills.classify_outcome import _result
+
+    result = _result(
+        {
+            "payment_id": "PAY-1",
+            "date": "2024-04-01",
+            "reference": "INV-1",
+            "amount": "100.00",
+            "vendor": "Vendor A",
+        },
+        "missing_from_bank",
+        None,
+    )
+
+    assert result == {
+        "payment_id": "PAY-1",
+        "date": "2024-04-01",
+        "reference": "INV-1",
+        "vendor": "Vendor A",
+        "internal_amount": "100.00",
+        "bank_amount": "",
+        "bank_date": "",
+        "status": "missing_from_bank",
+        "reason_code": "missing_from_bank",
+    }

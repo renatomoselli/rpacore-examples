@@ -6,6 +6,7 @@ from rpacore import list_transactions
 
 import main as reconciliation_main
 from skills.classify_outcome import ClassifyOutcome
+from skills.match_transaction import MatchTransaction
 
 
 def _valid_config(tmp_path):
@@ -63,6 +64,45 @@ def test_validate_config_rejects_unknown_log_level(tmp_path):
         reconciliation_main._validate_config(config)
 
 
+def test_last_failure_message_uses_exception_text():
+    tx = reconciliation_main.Transaction(
+        reference="failed",
+        skills=[ClassifyOutcome(name="classify_outcome", execution_order=1)],
+    )
+    tx.status = reconciliation_main.Status.FAILED
+    tx.skills[0].status = reconciliation_main.Status.FAILED
+    tx.skills[0].exceptions.append(RuntimeError("boom"))
+
+    assert reconciliation_main._last_failure_message(tx) == "boom"
+
+
+def test_last_failure_message_falls_back_to_status():
+    tx = reconciliation_main.Transaction(reference="failed", skills=[])
+    tx.status = reconciliation_main.Status.FAILED
+
+    assert reconciliation_main._last_failure_message(tx) == "failed"
+
+
+def test_missing_result_message_identifies_match_failure():
+    tx = reconciliation_main.Transaction(
+        reference="payment-PAY-1",
+        skills=[
+            MatchTransaction(name="match_transaction", execution_order=1),
+            ClassifyOutcome(name="classify_outcome", execution_order=2),
+        ],
+    )
+    tx.status = reconciliation_main.Status.FAILED
+    tx.skills[0].status = reconciliation_main.Status.FAILED
+    tx.skills[0].exceptions.append(RuntimeError("missing reference"))
+
+    message = reconciliation_main._missing_result_message({"payment_id": "PAY-1"}, tx)
+
+    assert message == (
+        "Payment PAY-1 matching failed before classification could produce a "
+        "reconciliation result: missing reference"
+    )
+
+
 def test_main_fails_before_report_when_payment_produces_no_result(tmp_path, monkeypatch):
     internal_csv = tmp_path / "internal.csv"
     bank_csv = tmp_path / "bank.csv"
@@ -108,6 +148,60 @@ def test_main_fails_before_report_when_payment_produces_no_result(tmp_path, monk
     with pytest.raises(
         reconciliation_main.SystemException,
         match="did not produce a reconciliation result",
+    ):
+        reconciliation_main.main()
+
+    assert not report_file.exists()
+
+
+def test_main_reports_match_failure_before_classification(tmp_path, monkeypatch):
+    internal_csv = tmp_path / "internal.csv"
+    bank_csv = tmp_path / "bank.csv"
+    report_file = tmp_path / "output" / "report.csv"
+    db_path = tmp_path / "rpacore.db"
+
+    internal_csv.write_text(
+        "\n".join(
+            [
+                "payment_id,date,reference,amount,vendor",
+                "PAY-1,2024-04-01,INV-1,100.00,Vendor A",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    bank_csv.write_text(
+        "\n".join(
+            [
+                "posted_date,reference,amount,description",
+                "2024-04-01,INV-1,100.00,ACH Vendor A",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        reconciliation_main,
+        "load_config",
+        lambda _path: {
+            "max_retries": 0,
+            "log_level": "WARNING",
+            "transaction_db_path": str(db_path),
+            "internal_records_csv": str(internal_csv),
+            "bank_statement_csv": str(bank_csv),
+            "report_file": str(report_file),
+        },
+    )
+
+    def fail_match(self, ctx):
+        raise reconciliation_main.SystemException("missing reference", action=self.name)
+
+    monkeypatch.setattr(MatchTransaction, "execute", fail_match)
+
+    with pytest.raises(
+        reconciliation_main.SystemException,
+        match="matching failed before classification",
     ):
         reconciliation_main.main()
 

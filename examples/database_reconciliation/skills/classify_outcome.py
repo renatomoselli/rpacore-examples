@@ -21,6 +21,7 @@ class ClassifyOutcome(Skill):
 
         expected_amount_str = payment.get("amount")
         if not isinstance(expected_amount_str, str):
+            ctx.state["reconciliation_result"] = _result(payment, "type_error", None)
             raise SystemException(
                 f"Current payment amount must be str, got {expected_amount_str!r}",
                 action=self.name,
@@ -32,6 +33,7 @@ class ClassifyOutcome(Skill):
         for candidate in candidates:
             candidate_amount_str = candidate.get("amount")
             if not isinstance(candidate_amount_str, str):
+                ctx.state["reconciliation_result"] = _result(payment, "type_error", candidate)
                 raise SystemException(
                     f"Bank candidate amount must be str, got {candidate_amount_str!r}",
                     action=self.name,

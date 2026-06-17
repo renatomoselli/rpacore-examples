@@ -43,12 +43,13 @@ class LoadBankStatement(Skill):
                     action=self.name,
                 ) from exc
 
+            reference = row["reference"].strip()
             entry = {
                 "posted_date": row["posted_date"],
-                "reference": row["reference"],
+                "reference": reference,
                 "amount": str(amount),
                 "description": row["description"],
             }
-            by_reference.setdefault(row["reference"], []).append(entry)
+            by_reference.setdefault(reference, []).append(entry)
 
         ctx.state["bank_by_reference"] = by_reference

@@ -43,6 +43,24 @@ def _last_failure_message(tx: Transaction) -> str:
     return str(exceptions[-1])
 
 
+def _missing_result_message(payment: dict, payment_tx: Transaction) -> str:
+    details = _last_failure_message(payment_tx)
+    failed_skill_names = {skill.name for skill in payment_tx.failed_skills()}
+    payment_id = payment.get("payment_id")
+
+    if "match_transaction" in failed_skill_names:
+        return (
+            f"Payment {payment_id} matching failed before classification could "
+            f"produce a reconciliation result: {details}"
+        )
+    if "classify_outcome" in failed_skill_names:
+        return (
+            f"Payment {payment_id} classification failed without producing a "
+            f"reconciliation result: {details}"
+        )
+    return f"Payment {payment_id} did not produce a reconciliation result: {details}"
+
+
 def _validate_config(config: dict) -> None:
     """Validate config and resolve path values to absolute paths under PROJECT_ROOT."""
     if "transaction_db_path" not in config and "db_path" in config:
@@ -169,9 +187,8 @@ def main() -> None:
         if isinstance(result, dict):
             reconciliation_results.append(result)
         else:
-            details = _last_failure_message(payment_tx)
             raise SystemException(
-                f"Payment {payment.get('payment_id')} did not produce a reconciliation result: {details}",
+                _missing_result_message(payment, payment_tx),
                 action="main",
             )
 
