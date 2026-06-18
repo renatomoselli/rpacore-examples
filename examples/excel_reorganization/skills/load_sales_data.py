@@ -21,11 +21,6 @@ class LoadSalesData(Skill):
     def execute(self, ctx: ProcessContext) -> None:
         """Load CSV file, validate schema, and store data in context."""
         csv_path = ctx.require_config("csv_path", str, action=self.name)
-        if csv_path is None:
-            raise BusinessException(
-                "No csv_path in context — main.py must set this before running skill",
-                action=self.name,
-            )
 
         csv_path = str(Path(csv_path).resolve())
 
@@ -33,11 +28,14 @@ class LoadSalesData(Skill):
             with open(csv_path, "r", newline="", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 # Filter empty rows and strip whitespace
-                rows = [
-                    {k: v.strip() for k, v in row.items()}
-                    for row in reader
-                    if any(v for v in row.values() if v.strip())
-                ]
+                rows = []
+                for row in reader:
+                    normalized_row = {
+                        key: value.strip() if isinstance(value, str) else ""
+                        for key, value in row.items()
+                    }
+                    if any(value for value in normalized_row.values()):
+                        rows.append(normalized_row)
         except FileNotFoundError as exc:
             raise SystemException(f"CSV file not found: {csv_path}", action=self.name) from exc
         except csv.Error as exc:
@@ -90,6 +88,11 @@ class LoadSalesData(Skill):
                 value = row.get(column)
                 if value is None:
                     continue
+                if expected_type is str and value == "":
+                    raise BusinessException(
+                        f"Row {i + 1} missing required value for column '{column}'",
+                        action=self.name,
+                    )
 
                 try:
                     if isinstance(expected_type, tuple):
@@ -131,6 +134,7 @@ class LoadSalesData(Skill):
                 raise BusinessException(
                     f"Row {i + 1} missing date field",
                     action=self.name,
+                    stop=True,
                 )
             try:
                 datetime.datetime.strptime(date_str, "%Y-%m-%d")
@@ -138,4 +142,5 @@ class LoadSalesData(Skill):
                 raise BusinessException(
                     f"Row {i + 1} has invalid date format: {date_str!r} (expected YYYY-MM-DD)",
                     action=self.name,
+                    stop=True,
                 ) from exc

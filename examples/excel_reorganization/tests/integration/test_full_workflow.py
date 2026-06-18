@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 from openpyxl import load_workbook
 
 from skills import BuildOutputSheets, GroupByMonth, LoadSalesData, VerifyOutput
@@ -33,7 +31,6 @@ def test_full_excel_reorganization_workflow(tmp_path):
     GroupByMonth(name="group_by_month", execution_order=2).execute(ctx)
     BuildOutputSheets(name="build_output_sheets", execution_order=3).execute(ctx)
     VerifyOutput(name="verify_output", execution_order=4).execute(ctx)
-    json.dumps(ctx.transaction.state)
 
     output_path = output_dir / "sales_report_2024-01.xlsx"
     workbook = load_workbook(output_path)

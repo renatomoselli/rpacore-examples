@@ -86,6 +86,18 @@ def _validate_config(config: dict) -> None:
         config[key] = str(resolved)
 
 
+def _cleanup_failed_output(tx: Transaction, logger) -> None:
+    """Remove generated output when a later skill fails the transaction."""
+    output_path = tx.state.get("output_path")
+    if not isinstance(output_path, str):
+        return
+
+    try:
+        Path(output_path).unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("Failed to clean output after workflow failure: %s", exc)
+
+
 def main() -> None:
     """Run the Excel reorganization workflow."""
     config = load_config("config.toml")
@@ -104,8 +116,6 @@ def main() -> None:
     tx = Transaction(
         reference="excel-reorganization",
         state={
-            "csv_path": csv_path,
-            "output_dir": output_dir,
             "output_filename": output_filename,
         },
         metadata={
@@ -123,13 +133,19 @@ def main() -> None:
     # Run transaction
     engine = Engine(max_retries=config["max_retries"])
     engine.run(ProcessContext(transaction=tx, config=config))
-    save_transaction(tx, db_path=config["transaction_db_path"])
 
     if tx.status is not Status.SUCCESSFUL:
         failed = tx.failed_skills()
         details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed)
         logger.error("Workflow failed (%s). Failed skill(s): %s", tx.status, details)
+        _cleanup_failed_output(tx, logger)
         sys.exit(1)
+
+    try:
+        save_transaction(tx, db_path=config["transaction_db_path"])
+    except Exception as exc:
+        _cleanup_failed_output(tx, logger)
+        raise SystemException(f"Failed to persist transaction: {exc}", action="save_transaction") from exc
 
     logger.info("Excel reorganization completed successfully")
 

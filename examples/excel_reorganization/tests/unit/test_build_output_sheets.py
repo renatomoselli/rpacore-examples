@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from openpyxl import load_workbook
+import skills.build_output_sheets as build_output_sheets
 from rpacore import BusinessException, SystemException
 
 from skills.build_output_sheets import BuildOutputSheets
@@ -91,4 +92,95 @@ def test_build_output_sheets_rejects_output_filename_escape(tmp_path):
     )
 
     with pytest.raises(SystemException, match="escapes output_dir"):
+        BuildOutputSheets(name="build_output_sheets", execution_order=1).execute(ctx)
+
+
+def test_build_output_sheets_formats_subtotal_when_employee_name_matches_label(tmp_path):
+    grouped_data = {
+        "2024-01": [
+            {"employee_name": "Subtotal", "date": "2024-01-05", "amount": 10.0, "country": "USA"},
+            {"employee_name": "Zoe", "date": "2024-01-10", "amount": 15.5, "country": "UK"},
+        ],
+    }
+    ctx = make_context(
+        state={
+            "grouped_data": grouped_data,
+            "output_filename": "custom.xlsx",
+        },
+        config={
+            "output_dir": str(tmp_path),
+        },
+    )
+
+    BuildOutputSheets(name="build_output_sheets", execution_order=1).execute(ctx)
+
+    workbook = load_workbook(tmp_path / "custom.xlsx")
+    assert workbook["2024-01"]["A2"].value == "Subtotal"
+    assert workbook["2024-01"]["A2"].font.bold is False
+    assert workbook["2024-01"]["A4"].value == "Subtotal"
+    assert workbook["2024-01"]["A4"].font.bold is True
+
+
+def test_build_output_sheets_cleans_temp_file_when_reload_fails(tmp_path, monkeypatch):
+    ctx = make_context(
+        state={
+            "grouped_data": _grouped_data(),
+            "output_filename": "custom.xlsx",
+        },
+        config={
+            "output_dir": str(tmp_path),
+        },
+    )
+
+    def fail_load_workbook(_path):
+        raise OSError("cannot reload")
+
+    monkeypatch.setattr(build_output_sheets, "load_workbook", fail_load_workbook)
+
+    with pytest.raises(SystemException, match="Failed to build Excel workbook"):
+        BuildOutputSheets(name="build_output_sheets", execution_order=1).execute(ctx)
+
+    assert not (tmp_path / "custom.xlsx").exists()
+    assert list(tmp_path.glob(".custom-*.xlsx")) == []
+
+
+def test_build_output_sheets_cleans_temp_file_when_replace_fails(tmp_path, monkeypatch):
+    ctx = make_context(
+        state={
+            "grouped_data": _grouped_data(),
+            "output_filename": "custom.xlsx",
+        },
+        config={
+            "output_dir": str(tmp_path),
+        },
+    )
+
+    def fail_replace(_src, _dst):
+        raise OSError("cannot replace")
+
+    monkeypatch.setattr(build_output_sheets.os, "replace", fail_replace)
+
+    with pytest.raises(SystemException, match="Failed to build Excel workbook"):
+        BuildOutputSheets(name="build_output_sheets", execution_order=1).execute(ctx)
+
+    assert not (tmp_path / "custom.xlsx").exists()
+    assert list(tmp_path.glob(".custom-*.xlsx")) == []
+
+
+def test_build_output_sheets_rejects_empty_employee_name(tmp_path):
+    ctx = make_context(
+        state={
+            "grouped_data": {
+                "2024-01": [
+                    {"employee_name": "", "date": "2024-01-05", "amount": 10.0, "country": "USA"},
+                ],
+            },
+            "output_filename": "custom.xlsx",
+        },
+        config={
+            "output_dir": str(tmp_path),
+        },
+    )
+
+    with pytest.raises(BusinessException, match="empty employee name"):
         BuildOutputSheets(name="build_output_sheets", execution_order=1).execute(ctx)

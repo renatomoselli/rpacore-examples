@@ -8,6 +8,8 @@ Pattern: Follows examples/json_event_log_processor/skills/write_output.py:39-45
 """
 
 from __future__ import annotations
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -28,6 +30,14 @@ class BuildOutputSheets(Skill):
 
         if not grouped_data:
             raise BusinessException("No grouped data available.", action=self.name)
+
+        for month_data in grouped_data.values():
+            for row in month_data:
+                if not row.get("employee_name"):
+                    raise BusinessException(
+                        "Row has empty employee name",
+                        action=self.name,
+                    )
 
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -58,13 +68,7 @@ class BuildOutputSheets(Skill):
 
             # Write data rows
             for row in month_data:
-                # Validate employee name is not empty
                 emp_name = row.get("employee_name")
-                if not emp_name:
-                    raise BusinessException(
-                        f"Row has empty employee name",
-                        action=self.name,
-                    )
                 ws.append([
                     emp_name,
                     row.get("date"),
@@ -73,27 +77,37 @@ class BuildOutputSheets(Skill):
                 ])
 
             # Calculate and write subtotal (verify amounts are numeric)
-            if not month_data:
-                continue  # Skip if no data
             subtotal = sum(float(row["amount"]) for row in month_data)
             ws.append(["Subtotal", "", subtotal, ""])
 
+        tmp_path: Path | None = None
         try:
+            tmp_handle = tempfile.NamedTemporaryFile(
+                suffix=output_path.suffix,
+                prefix=f".{output_path.stem}-",
+                dir=output_dir_resolved,
+                delete=False,
+            )
+            tmp_path = Path(tmp_handle.name)
+            tmp_handle.close()
+
             # Save workbook with write_only mode.
-            workbook.save(output_path)
+            workbook.save(tmp_path)
 
             # Load the workbook again to apply formatting. This is necessary because
             # WriteOnlyWorksheet doesn't support cell() method.
-            workbook = load_workbook(output_path)
+            workbook = load_workbook(tmp_path)
 
             for sheet_name in workbook.sheetnames:
                 ws = workbook[sheet_name]
-                self._apply_sheet_formatting(ws)
+                self._apply_sheet_formatting(ws, data_row_count=len(grouped_data[sheet_name]))
 
-            workbook.save(output_path)
+            workbook.save(tmp_path)
+            os.replace(tmp_path, output_path)
+            tmp_path = None
         except Exception as exc:
-            if output_path.exists():
-                output_path.unlink()
+            if tmp_path is not None and tmp_path.exists():
+                tmp_path.unlink()
             raise SystemException(f"Failed to build Excel workbook: {exc}", action=self.name) from exc
 
         logger.info("Created Excel workbook: %s", output_path)
@@ -130,7 +144,7 @@ class BuildOutputSheets(Skill):
         tx.metadata["employee_count"] = unique_employees
         tx.metadata["generated_at"] = generated_at
 
-    def _apply_sheet_formatting(self, ws: Any) -> None:
+    def _apply_sheet_formatting(self, ws: Any, *, data_row_count: int) -> None:
         """Apply basic formatting to worksheet."""
         # Header row formatting
         header_font = Font(bold=True, color="FFFFFF")
@@ -145,13 +159,10 @@ class BuildOutputSheets(Skill):
 
         # Subtotal row formatting
         subtotal_font = Font(bold=True)
-        # Count actual data rows (excluding header and subtotal)
-        data_rows = [row for row in ws.iter_rows(values_only=True) 
-                     if row[0] not in ["Employee Name", "Subtotal"]]
-        
+
         # Subtotal is at header + data rows + 1.
-        subtotal_row = len(data_rows) + 2
-        
+        subtotal_row = data_row_count + 2
+
         for col_idx in range(1, 5):
             cell = ws.cell(row=subtotal_row, column=col_idx)
             cell.font = subtotal_font
