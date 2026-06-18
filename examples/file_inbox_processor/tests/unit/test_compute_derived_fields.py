@@ -60,6 +60,40 @@ def test_missing_validated_report_raises():
     assert "validated_report" in str(tx.failed_skills()[0].exceptions[-1])
 
 
+def test_wrong_validated_report_types_have_specific_error():
+    tx = _run(
+        {
+            "validated_report": {
+                "branch_id": 101,
+                "date": "2024-03-01",
+                "revenue": 100,
+                "headcount": "5",
+            }
+        }
+    )
+    assert tx.status == Status.FAILED
+    message = str(tx.failed_skills()[0].exceptions[-1])
+    assert "revenue must be str" in message
+    assert "headcount must be int" in message
+
+
+def test_invalid_decimal_revenue_has_specific_error():
+    tx = _run(
+        {
+            "validated_report": {
+                "branch_id": 101,
+                "date": "2024-03-01",
+                "revenue": "not-a-decimal",
+                "headcount": 5,
+            }
+        }
+    )
+    assert tx.status == Status.FAILED
+    message = str(tx.failed_skills()[0].exceptions[-1])
+    assert "invalid revenue value" in message
+    assert "unexpected types" not in message
+
+
 def test_zero_revenue_yields_zero_per_headcount():
     tx = _run(
         {

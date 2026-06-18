@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from rpacore import ProcessContext, Skill, Status, SystemException
 
@@ -20,7 +20,10 @@ class ComputeDerivedFields(Skill):
         revenue = report["revenue"]
         headcount = report["headcount"]
         if not isinstance(revenue, str) or not isinstance(headcount, int):
-            raise SystemException("Validated report has unexpected types", action=self.name)
+            raise SystemException(
+                "Validated report has unexpected types: revenue must be str and headcount must be int",
+                action=self.name,
+            )
         if headcount == 0:
             raise SystemException(
                 "headcount must be greater than zero for revenue_per_headcount calculation",
@@ -29,8 +32,11 @@ class ComputeDerivedFields(Skill):
 
         try:
             revenue_amount = Decimal(revenue)
-        except Exception as exc:
-            raise SystemException("Validated report has unexpected types", action=self.name) from exc
+        except (InvalidOperation, ValueError) as exc:
+            raise SystemException(
+                f"Validated report has invalid revenue value: {revenue!r}",
+                action=self.name,
+            ) from exc
 
         revenue_per_headcount = (revenue_amount / Decimal(headcount)).quantize(
             Decimal("0.01"),

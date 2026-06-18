@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from rpacore import Engine, ProcessContext, Status, Transaction
+from rpacore import Engine, ProcessContext, Status, SystemException, Transaction
 
 from skills.append_to_master import AppendToMaster
 
@@ -63,6 +63,7 @@ def test_appends_header_only_once(tmp_path):
         lines = f.readlines()
     headers = [line for line in lines if line.startswith("source_file")]
     assert len(headers) == 1
+    assert not (master.parent / "master.csv.lock").exists()
 
 
 def test_idempotent_by_source_file(tmp_path):
@@ -71,6 +72,36 @@ def test_idempotent_by_source_file(tmp_path):
         tx = _run(_make_report("same.csv"), {"master_csv": str(master)})
         assert tx.status == Status.SUCCESSFUL
 
+    with master.open(encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 1
+
+
+def test_master_read_error_fails_instead_of_appending_duplicate(tmp_path, monkeypatch):
+    master = tmp_path / "master.csv"
+    master.write_text(
+        "source_file,branch_id,date,revenue,headcount,revenue_per_headcount\n"
+        "same.csv,101,2024-03-01,12450.75,23,541.34\n",
+        encoding="utf-8",
+    )
+    original_open = Path.open
+
+    def fail_master_read(self, *args, **kwargs):
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if self == master and mode == "r":
+            raise OSError("master is temporarily unavailable")
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fail_master_read)
+
+    tx = _run(_make_report("same.csv"), {"master_csv": str(master)})
+
+    assert tx.status == Status.FAILED
+    failed = tx.failed_skills()[0]
+    assert isinstance(failed.exceptions[-1], SystemException)
+    assert "Unable to inspect master CSV" in str(failed.exceptions[-1])
+
+    monkeypatch.undo()
     with master.open(encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     assert len(rows) == 1

@@ -18,6 +18,7 @@ from rpacore import (
 )
 
 from skills.append_to_master import AppendToMaster
+from skills._path_utils import validate_contained_path
 from skills.compute_derived_fields import ComputeDerivedFields
 from skills.move_file import MoveFile
 from skills.read_report_file import ReadReportFile
@@ -108,30 +109,18 @@ def build_transaction(item: QueueItem) -> Transaction:
     )
 
 
-def _safe_resolve(file_path: str, allowed_base: str) -> Path | None:
-    """Resolve *file_path* and return it only if it lives under *allowed_base*.
-
-    Returns ``None`` when the path is outside the allowed directory or when
-    *allowed_base* is empty.
-    """
-    if not allowed_base:
-        return None
-    resolved = Path(file_path).resolve()
-    if resolved.is_relative_to(Path(allowed_base).resolve()):
-        return resolved
-    return None
-
-
 def _move_failed_file(item: QueueItem, config: dict) -> None:
     file_path = item.payload.get("file_path")
     failed_dir = config.get("failed_dir")
     if not isinstance(file_path, str) or not isinstance(failed_dir, str):
+        logger.warning("Cannot move failed file: file_path=%r, failed_dir=%r", file_path, failed_dir)
         return
 
     inbox_dir = config.get("inbox_dir")
-    if isinstance(inbox_dir, str):
-        src = _safe_resolve(file_path, inbox_dir)
-        if src is None:
+    if isinstance(inbox_dir, str) and inbox_dir:
+        try:
+            src = validate_contained_path(file_path, inbox_dir, action="move_failed_file")
+        except SystemException:
             logger.warning("Invalid source file path: %s", file_path)
             return
     else:
@@ -143,6 +132,13 @@ def _move_failed_file(item: QueueItem, config: dict) -> None:
     dst_dir = Path(failed_dir)
     dst_dir.mkdir(parents=True, exist_ok=True)
     shutil.move(str(src), str(dst_dir / src.name))
+
+
+def _move_failed_file_safely(item: QueueItem, config: dict) -> None:
+    try:
+        _move_failed_file(item, config)
+    except Exception:
+        logger.exception("Unable to move failed file for queue item %s", item.id)
 
 
 def main() -> None:
@@ -168,9 +164,9 @@ def main() -> None:
     def after_item(item: QueueItem, transaction: Transaction | None, error: Exception | None) -> None:
         if transaction is not None:
             if transaction.status is not Status.SUCCESSFUL:
-                _move_failed_file(item, config)
+                _move_failed_file_safely(item, config)
         elif error is not None:
-            _move_failed_file(item, config)
+            _move_failed_file_safely(item, config)
 
     summary = run_queue_loop(
         queue,

@@ -15,9 +15,18 @@ class ValidateSchema(Skill):
         rows = ctx.require_state("report_rows", action=self.name)
         if rows is None:
             raise SystemException("No report rows in context", action=self.name)
-        if not isinstance(rows, list) or not rows:
+        if not isinstance(rows, list):
+            raise SystemException(
+                f"Expected report_rows to be a list, got {type(rows).__name__}",
+                action=self.name,
+            )
+        if not rows:
             ctx.state["validation_failed"] = True
-            raise BusinessException("Report must contain exactly one data row", action=self.name, stop=True)
+            raise BusinessException(
+                "Report must contain exactly one data row, got 0 rows",
+                action=self.name,
+                stop=True,
+            )
         if len(rows) != 1:
             ctx.state["validation_failed"] = True
             raise BusinessException(

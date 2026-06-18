@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from rpacore import Engine, ProcessContext, Status, Transaction
+from rpacore import Engine, ProcessContext, Status, SystemException, Transaction
 
 from skills.validate_schema import ValidateSchema
 
@@ -62,6 +62,16 @@ def test_rejects_empty_rows():
     tx = _run([])
     assert tx.status == Status.FAILED
     assert tx.state["validation_failed"] is True
+    assert "got 0 rows" in str(tx.failed_skills()[0].exceptions[-1])
+
+
+def test_non_list_rows_is_system_error():
+    tx = _run({"branch_id": "101"})
+    assert tx.status == Status.FAILED
+    assert "validation_failed" not in tx.state
+    failed = tx.failed_skills()[0]
+    assert isinstance(failed.exceptions[-1], SystemException)
+    assert "Expected report_rows to be a list" in str(failed.exceptions[-1])
 
 
 def test_rejects_multiple_rows():
