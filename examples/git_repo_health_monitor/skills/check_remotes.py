@@ -36,7 +36,7 @@ class CheckRemotes(Skill):
                 f"git remote timed out after 30s: {exc}",
                 action=self.name,
             ) from exc
-        except subprocess.SubprocessError as exc:
+        except OSError as exc:
             raise SystemException(
                 f"git remote failed: {exc}",
                 action=self.name,

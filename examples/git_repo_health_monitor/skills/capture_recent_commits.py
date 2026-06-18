@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import subprocess
-from datetime import datetime, timezone
 
 from rpacore import ProcessContext, Skill, SystemException, get_logger
 
-logger = get_logger(__name__)
+from skills.git_utils import parse_git_datetime
 
+logger = get_logger(__name__)
 
 class CaptureRecentCommits(Skill):
     """Capture the 10 most recent commits via `git log --oneline -10`.
@@ -36,7 +36,7 @@ class CaptureRecentCommits(Skill):
                 f"git log timed out after 30s: {exc}",
                 action=self.name,
             ) from exc
-        except subprocess.SubprocessError as exc:
+        except OSError as exc:
             raise SystemException(
                 f"git log failed: {exc}",
                 action=self.name,
@@ -57,8 +57,8 @@ class CaptureRecentCommits(Skill):
             if len(parts) == 3:
                 commit_hash, subject, commit_date = parts
                 try:
-                    ts = datetime.fromisoformat(commit_date).astimezone(timezone.utc).isoformat()
-                except (ValueError, AttributeError):
+                    ts = parse_git_datetime(commit_date).isoformat()
+                except ValueError:
                     logger.warning(
                         "Could not parse commit date %r for commit %s, setting to 'unknown'",
                         commit_date,

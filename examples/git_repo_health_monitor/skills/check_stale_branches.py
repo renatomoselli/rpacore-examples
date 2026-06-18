@@ -5,6 +5,8 @@ from datetime import datetime, timezone, timedelta
 
 from rpacore import ProcessContext, Skill, SystemException, get_logger
 
+from skills.git_utils import parse_git_datetime
+
 logger = get_logger(__name__)
 
 class CheckStaleBranches(Skill):
@@ -42,7 +44,7 @@ class CheckStaleBranches(Skill):
                 f"git branch timed out after 30s: {exc}",
                 action=self.name,
             ) from exc
-        except subprocess.SubprocessError as exc:
+        except OSError as exc:
             raise SystemException(
                 f"git branch failed: {exc}",
                 action=self.name,
@@ -74,9 +76,7 @@ class CheckStaleBranches(Skill):
 
         # Use git for-each-ref to get all branches with their last commit dates in one call
         stale_branches = []
-        cutoff = datetime.now(timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        ) - timedelta(days=stale_branch_days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=stale_branch_days)
 
         try:
             result = subprocess.run(
@@ -96,7 +96,7 @@ class CheckStaleBranches(Skill):
                 f"git for-each-ref timed out after 30s: {exc}",
                 action=self.name,
             ) from exc
-        except subprocess.SubprocessError as exc:
+        except OSError as exc:
             raise SystemException(
                 f"git for-each-ref failed: {exc}",
                 action=self.name,
@@ -116,7 +116,7 @@ class CheckStaleBranches(Skill):
             if len(parts) == 2:
                 commit_date_str, branch = parts
                 try:
-                    commit_date = datetime.fromisoformat(commit_date_str).astimezone(timezone.utc)
+                    commit_date = parse_git_datetime(commit_date_str)
                     if commit_date < cutoff:
                         stale_branches.append(branch.strip())
                 except ValueError:

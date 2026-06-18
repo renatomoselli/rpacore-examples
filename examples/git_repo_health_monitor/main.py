@@ -59,13 +59,13 @@ def _failed_repo_record(repo_path: str, repo_tx: Transaction) -> dict[str, objec
     failed_skills = repo_tx.failed_skills()
     failed_skill = failed_skills[-1] if failed_skills else None
     exception = failed_skill.exceptions[-1] if failed_skill and failed_skill.exceptions else None
-    health_status = "system_failed" if isinstance(exception, SystemException) else "failed"
     return {
         "repository": repo_path,
         "repo_name": Path(repo_path).name,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "health_status": health_status,
+        "health_status": "failed",
         "failure_type": _exception_kind(exception),
+        "classification": "technical_failure",
         "failed_skill": failed_skill.name if failed_skill else "",
         "error": str(exception) if exception is not None else str(repo_tx.status),
         "uncommitted_changes": len(repo_tx.state.get("uncommitted_changes", [])),
@@ -76,7 +76,7 @@ def _failed_repo_record(repo_path: str, repo_tx: Transaction) -> dict[str, objec
         "last_commit": None,
     }
 
-def _validate_config(config: dict) -> dict:
+def _validate_config(config: dict, *, allow_missing_repos: bool = False) -> dict:
     """Validate config and resolve path values to absolute paths under PROJECT_ROOT."""
     if "transaction_db_path" not in config and "db_path" in config:
         logger.warning("Config key 'db_path' is deprecated; using it as 'transaction_db_path'.")
@@ -130,7 +130,7 @@ def _validate_config(config: dict) -> dict:
                 action="main",
             )
         resolved_repo_path = _resolve_repo_path(repo_path)
-        if not Path(resolved_repo_path).is_dir():
+        if not allow_missing_repos and not Path(resolved_repo_path).is_dir():
             raise SystemException(
                 f"Config key 'repos' path does not exist or is not a directory: {repo_path!r}",
                 action="main",
@@ -141,15 +141,17 @@ def _validate_config(config: dict) -> dict:
         config,
         ["output_file", "transaction_db_path"],
         base_dir=PROJECT_ROOT,
+        root=PROJECT_ROOT,
     )
     config["repos"] = resolved_repos
     return config
 
 def main() -> None:
     config = load_config("config.toml")
-    if _uses_default_sample_repos(config):
+    uses_default_sample_repos = _uses_default_sample_repos(config)
+    config = _validate_config(config, allow_missing_repos=uses_default_sample_repos)
+    if uses_default_sample_repos:
         prepare_sample_repos(PROJECT_ROOT / "sample_repos")
-    config = _validate_config(config)
     configure_logger(level=str(config["log_level"]))
 
     engine = Engine(max_retries=int(config["max_retries"]))
@@ -161,21 +163,11 @@ def main() -> None:
     # Cross-repo accumulator (lives in main() scope, not in Transaction.state)
     repo_health_records: list[dict] = []
 
-    if not repos:
-        logger.warning("No repos configured in 'repos'. Exiting.")
-        summary_tx = Transaction(
-            reference="summary-report",
-            state={"repo_health_records": [], "output_file": output_file},
-            metadata={"example": "git_repo_health_monitor", "run_id": run_id},
-            skills=[WriteSummary(name="write_summary", execution_order=1)],
-        )
-        engine.run(ProcessContext(transaction=summary_tx, config=config))
-        save_transaction(summary_tx, db_path=db_path)
-        return
-
     # --- One transaction per repo ---
     successful = 0
     failed = 0
+    persisted = 0
+    persistence_failures: list[str] = []
 
     for repo_path in repos:
         repo_tx = Transaction(
@@ -197,19 +189,12 @@ def main() -> None:
             ],
         )
         engine.run(ProcessContext(transaction=repo_tx, config=config))
-        try:
-            save_transaction(repo_tx, db_path=db_path)
-        except (OSError, sqlite3.Error) as exc:
-            raise SystemException(
-                f"Could not persist transaction for {repo_path}: {exc}",
-                action="main",
-            ) from exc
 
         if "health_report" in repo_tx.state:
             health = repo_tx.state["health_report"]
             repo_health_records.append(health)
             logger.info("Repo %s: %s", Path(repo_path).name, health.get("health_status", "unknown"))
-        elif repo_tx.status == Status.FAILED:
+        else:
             health = _failed_repo_record(repo_path, repo_tx)
             repo_health_records.append(health)
             logger.warning(
@@ -217,6 +202,20 @@ def main() -> None:
                 Path(repo_path).name,
                 health["health_status"],
                 health["failed_skill"],
+            )
+
+        try:
+            save_transaction(repo_tx, db_path=db_path)
+            persisted += 1
+            health["persistence_status"] = "saved"
+        except (OSError, sqlite3.Error) as exc:
+            persistence_failures.append(repo_path)
+            health["persistence_status"] = "failed"
+            health["persistence_error"] = str(exc)
+            logger.warning(
+                "Could not persist transaction for %s: %s",
+                repo_path,
+                exc,
             )
 
         if repo_tx.status == Status.SUCCESSFUL:
@@ -245,23 +244,26 @@ def main() -> None:
             WriteSummary(name="write_summary", execution_order=1),
         ],
     )
+    engine.run(ProcessContext(transaction=summary_tx, config=config))
     try:
-        engine.run(ProcessContext(transaction=summary_tx, config=config))
         save_transaction(summary_tx, db_path=db_path)
-    except Exception as exc:
-        logger.error("Summary transaction failed: %s", exc)
-        jsonl_path = Path(output_file)
-        summary_path = Path(output_file).with_suffix(".summary.json")
-        if jsonl_path.exists():
-            jsonl_path.unlink()
-        if summary_path.exists():
-            summary_path.unlink()
-        raise
+        persisted += 1
+    except (OSError, sqlite3.Error) as exc:
+        logger.warning(
+            "Could not persist summary transaction: %s",
+            exc,
+        )
 
     logger.info(
-        "Health check complete. %d successful, %d failed out of %d repos. Output: %s",
-        successful, failed, len(repos), output_file,
+        "Health check complete. %d successful, %d failed out of %d repos. "
+        "Persisted %d/%d transactions. Output: %s",
+        successful, failed, len(repos), persisted, len(repos) + 1, output_file,
     )
+    if persistence_failures:
+        logger.warning(
+            "Transactions not persisted for repos: %s",
+            ", ".join(persistence_failures),
+        )
 
 if __name__ == "__main__":
     main()

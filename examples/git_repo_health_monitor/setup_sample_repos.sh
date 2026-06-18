@@ -26,7 +26,9 @@ git commit -m "Initial commit"
 git checkout -b feature-old
 echo "Old feature" > old_feature.txt
 git add old_feature.txt
-git commit -m "Old feature work"
+GIT_AUTHOR_DATE="2023-01-15T12:00:00+00:00" \
+GIT_COMMITTER_DATE="2023-01-15T12:00:00+00:00" \
+  git commit -m "Old feature work"
 
 # Go back to main, leave a stale branch
 git checkout -

@@ -55,6 +55,12 @@ class WriteRepoReport(Skill):
         last_commit = None
         if recent_commits:
             last_commit = recent_commits[0].get("timestamp")
+            if last_commit is None:
+                logger.warning(
+                    "Most recent commit for %s is missing a timestamp",
+                    Path(repo_path).name,
+                )
+                last_commit = "unknown"
 
         health_report = {
             "repository": repo_path,

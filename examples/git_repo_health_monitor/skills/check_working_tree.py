@@ -34,7 +34,7 @@ class CheckWorkingTree(Skill):
                 f"git status timed out after 30s: {exc}",
                 action=self.name,
             ) from exc
-        except subprocess.SubprocessError as exc:
+        except OSError as exc:
             raise SystemException(
                 f"git status failed: {exc}",
                 action=self.name,
@@ -49,10 +49,12 @@ class CheckWorkingTree(Skill):
 
         # Parse porcelain output: each line is "XY filename"
         changed_files = []
-        for line in result.stdout.strip().splitlines():
+        for line in result.stdout.splitlines():
             if line:
                 # Format: "XY filename" where X=status_index, Y=status_working_tree
-                filename = line[2:].lstrip(" ")
+                filename = line[3:]
+                if line[:2].strip().startswith(("R", "C")) and " -> " in filename:
+                    filename = filename.split(" -> ", 1)[1]
                 changed_files.append(filename)
 
         ctx.state["uncommitted_changes"] = changed_files

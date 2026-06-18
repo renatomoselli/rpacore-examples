@@ -76,3 +76,19 @@ class TestCheckRemotes:
             skill = CheckRemotes("check_remotes", 3)
             with pytest.raises(SystemException, match="timed out"):
                 skill.execute(self.ctx)
+
+    def test_raises_on_os_error(self):
+        with patch("subprocess.run", side_effect=PermissionError("denied")):
+            skill = CheckRemotes("check_remotes", 3)
+            with pytest.raises(SystemException, match="git remote failed"):
+                skill.execute(self.ctx)
+
+    def test_raises_on_nonzero_git_exit(self):
+        mock_result = Mock()
+        mock_result.returncode = 128
+        mock_result.stderr = "fatal: not a git repository"
+
+        with patch("subprocess.run", return_value=mock_result):
+            skill = CheckRemotes("check_remotes", 3)
+            with pytest.raises(SystemException, match="git remote returned exit code 128"):
+                skill.execute(self.ctx)

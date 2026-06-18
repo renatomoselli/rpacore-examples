@@ -44,6 +44,17 @@ class TestCaptureRecentCommits:
         assert len(self.ctx.state["recent_commits"]) == 1
         assert self.ctx.state["recent_commits"][0]["subject"] == "Feature | Add new endpoint"
 
+    def test_parses_git_log_space_separated_timezone(self):
+        mock_result = Mock()
+        mock_result.stdout = "abc123\x00Initial commit\x002024-01-15 10:30:00 +0000\n"
+        mock_result.returncode = 0
+
+        with patch("subprocess.run", return_value=mock_result):
+            skill = CaptureRecentCommits("capture_recent_commits", 2)
+            skill.execute(self.ctx)
+
+        assert self.ctx.state["recent_commits"][0]["timestamp"] == "2024-01-15T10:30:00+00:00"
+
     def test_handles_empty_log(self):
         mock_result = Mock()
         mock_result.stdout = ""
@@ -83,4 +94,20 @@ class TestCaptureRecentCommits:
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("git", 30)):
             skill = CaptureRecentCommits("capture_recent_commits", 2)
             with pytest.raises(SystemException, match="timed out"):
+                skill.execute(self.ctx)
+
+    def test_raises_on_os_error(self):
+        with patch("subprocess.run", side_effect=PermissionError("denied")):
+            skill = CaptureRecentCommits("capture_recent_commits", 2)
+            with pytest.raises(SystemException, match="git log failed"):
+                skill.execute(self.ctx)
+
+    def test_raises_on_nonzero_git_exit(self):
+        mock_result = Mock()
+        mock_result.returncode = 128
+        mock_result.stderr = "fatal: not a git repository"
+
+        with patch("subprocess.run", return_value=mock_result):
+            skill = CaptureRecentCommits("capture_recent_commits", 2)
+            with pytest.raises(SystemException, match="git log returned exit code 128"):
                 skill.execute(self.ctx)

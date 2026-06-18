@@ -17,7 +17,7 @@ class TestCheckWorkingTree:
 
     def test_detects_uncommitted_changes(self):
         mock_result = Mock()
-        mock_result.stdout = " M README.md\nA src/main.py\n D docs/guide.md\n"
+        mock_result.stdout = " M README.md\nA  src/main.py\n D docs/guide.md\n"
         mock_result.returncode = 0
 
         with patch("subprocess.run", return_value=mock_result) as mock_run:
@@ -43,7 +43,7 @@ class TestCheckWorkingTree:
 
         assert self.ctx.state["uncommitted_changes"] == []
 
-    def test_strips_leading_spaces_after_prefix(self):
+    def test_preserves_leading_spaces_in_filename(self):
         mock_result = Mock()
         mock_result.stdout = " M   file_with_spaces\n"
         mock_result.returncode = 0
@@ -52,7 +52,29 @@ class TestCheckWorkingTree:
             skill = CheckWorkingTree("check_working_tree", 1)
             skill.execute(self.ctx)
 
-        assert self.ctx.state["uncommitted_changes"] == ["file_with_spaces"]
+        assert self.ctx.state["uncommitted_changes"] == ["  file_with_spaces"]
+
+    def test_reports_rename_target_filename(self):
+        mock_result = Mock()
+        mock_result.stdout = "R  old_name.txt -> new_name.txt\n"
+        mock_result.returncode = 0
+
+        with patch("subprocess.run", return_value=mock_result):
+            skill = CheckWorkingTree("check_working_tree", 1)
+            skill.execute(self.ctx)
+
+        assert self.ctx.state["uncommitted_changes"] == ["new_name.txt"]
+
+    def test_reports_copy_target_filename(self):
+        mock_result = Mock()
+        mock_result.stdout = "C  source.txt -> copied.txt\n"
+        mock_result.returncode = 0
+
+        with patch("subprocess.run", return_value=mock_result):
+            skill = CheckWorkingTree("check_working_tree", 1)
+            skill.execute(self.ctx)
+
+        assert self.ctx.state["uncommitted_changes"] == ["copied.txt"]
 
     def test_raises_on_missing_current_repo(self):
         ctx = make_context()  # no state
@@ -72,6 +94,12 @@ class TestCheckWorkingTree:
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("git", 30)):
             skill = CheckWorkingTree("check_working_tree", 1)
             with pytest.raises(SystemException, match="timed out"):
+                skill.execute(self.ctx)
+
+    def test_raises_on_os_error(self):
+        with patch("subprocess.run", side_effect=PermissionError("denied")):
+            skill = CheckWorkingTree("check_working_tree", 1)
+            with pytest.raises(SystemException, match="git status failed"):
                 skill.execute(self.ctx)
 
     def test_raises_on_git_error(self):

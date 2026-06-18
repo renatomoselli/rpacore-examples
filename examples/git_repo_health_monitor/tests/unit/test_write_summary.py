@@ -2,6 +2,7 @@
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -46,8 +47,10 @@ class TestWriteSummary:
         assert summary["degraded"] == 1
         assert summary["unhealthy"] == 1
         assert summary["failed"] == 0
+        assert summary["business_violations"] == 2
         assert summary["business_failed"] == 0
         assert summary["system_failed"] == 0
+        assert summary["classification_counts"] == {}
         assert len(summary["repo_details"]) == 3
         assert list(tmp_path.glob(".jsonl_*.tmp")) == []
         assert list(tmp_path.glob(".summary_*.tmp")) == []
@@ -81,7 +84,10 @@ class TestWriteSummary:
         assert summary_artifact.metadata["total_repos"] == 1
         assert summary_artifact.metadata["healthy"] == 1
         assert summary_artifact.metadata["failed"] == 0
+        assert summary_artifact.metadata["business_violations"] == 0
+        assert summary_artifact.metadata["business_failed"] == 0
         assert summary_artifact.metadata["system_failed"] == 0
+        assert summary_artifact.metadata["classification_counts"] == {}
 
     def test_handles_empty_records(self, tmp_path):
         """Test that WriteSummary handles empty repo_health_records gracefully."""
@@ -103,16 +109,34 @@ class TestWriteSummary:
         assert summary["degraded"] == 0
         assert summary["unhealthy"] == 0
         assert summary["failed"] == 0
+        assert summary["business_violations"] == 0
         assert summary["business_failed"] == 0
         assert summary["system_failed"] == 0
+        assert summary["classification_counts"] == {}
         assert Path(output_file).read_text(encoding="utf-8") == ""
 
     def test_counts_business_and_system_failures(self, tmp_path):
         output_file = str(tmp_path / "health_report.jsonl")
         records = [
-            {"repository": "/tmp/alpha", "health_status": "healthy", "failure_type": "none"},
-            {"repository": "/tmp/beta", "health_status": "degraded", "failure_type": "business"},
-            {"repository": "/tmp/gamma", "health_status": "system_failed", "failure_type": "system"},
+            {"repository": "/tmp/alpha", "health_status": "healthy", "failure_type": "none", "classification": "healthy"},
+            {
+                "repository": "/tmp/beta",
+                "health_status": "degraded",
+                "failure_type": "business",
+                "classification": "attention_needed",
+            },
+            {
+                "repository": "/tmp/gamma",
+                "health_status": "failed",
+                "failure_type": "system",
+                "classification": "technical_failure",
+            },
+            {
+                "repository": "/tmp/delta",
+                "health_status": "failed",
+                "failure_type": "business",
+                "classification": "technical_failure",
+            },
         ]
         ctx = make_context(state={
             "repo_health_records": records,
@@ -124,10 +148,16 @@ class TestWriteSummary:
 
         summary_path = Path(output_file).with_suffix(".summary.json")
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
-        assert summary["total_repos"] == 3
-        assert summary["failed"] == 0
+        assert summary["total_repos"] == 4
+        assert summary["failed"] == 2
+        assert summary["business_violations"] == 1
         assert summary["business_failed"] == 1
         assert summary["system_failed"] == 1
+        assert summary["classification_counts"] == {
+            "healthy": 1,
+            "attention_needed": 1,
+            "technical_failure": 2,
+        }
 
     def test_raises_on_missing_repo_health_records(self):
         """Test that WriteSummary raises when repo_health_records is missing."""
@@ -162,11 +192,38 @@ class TestWriteSummary:
         assert list(tmp_path.glob(".jsonl_*.tmp")) == []
         assert list(tmp_path.glob(".summary_*.tmp")) == []
 
-    def test_second_replace_failure_leaves_no_partial_artifacts(self, tmp_path, monkeypatch):
-        """If summary publish fails after JSONL publish, no partial report remains."""
+    def test_second_temp_allocation_failure_cleans_first_temp(self, tmp_path, monkeypatch):
         output_file = str(tmp_path / "health_report.jsonl")
         ctx = make_context(state={
             "repo_health_records": [{"repository": "/tmp/test", "health_status": "healthy"}],
+            "output_file": output_file,
+        })
+
+        real_mkstemp = tempfile.mkstemp
+        calls = 0
+
+        def mock_mkstemp(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise OSError("No space left on device")
+            return real_mkstemp(*args, **kwargs)
+
+        monkeypatch.setattr(tempfile, "mkstemp", mock_mkstemp)
+
+        skill = WriteSummary("write_summary", 1)
+        with pytest.raises(SystemException, match="Failed to write reports"):
+            skill.execute(ctx)
+
+        assert list(tmp_path.glob(".jsonl_*.tmp")) == []
+        assert list(tmp_path.glob(".summary_*.tmp")) == []
+
+    def test_second_replace_failure_preserves_published_jsonl(self, tmp_path, monkeypatch):
+        """If summary publish fails after JSONL publish, keep the usable JSONL report."""
+        output_file = str(tmp_path / "health_report.jsonl")
+        records = [{"repository": "/tmp/test", "health_status": "healthy"}]
+        ctx = make_context(state={
+            "repo_health_records": records,
             "output_file": output_file,
         })
 
@@ -186,7 +243,7 @@ class TestWriteSummary:
         with pytest.raises(SystemException, match="Failed to write reports"):
             skill.execute(ctx)
 
-        assert not Path(output_file).exists()
+        assert [json.loads(line) for line in Path(output_file).read_text(encoding="utf-8").splitlines()] == records
         assert not Path(output_file).with_suffix(".summary.json").exists()
         assert ctx.transaction.artifacts == []
         assert list(tmp_path.glob(".jsonl_*.tmp")) == []

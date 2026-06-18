@@ -237,3 +237,9 @@ class TestFullWorkflow:
             assert summary["healthy"] == 1
             assert summary["degraded"] == 1
             assert summary["unhealthy"] == 0
+
+            with open(output_file, encoding="utf-8") as f:
+                jsonl_records = [json.loads(line) for line in f]
+
+            assert len(jsonl_records) == 2
+            assert [record["repo_name"] for record in jsonl_records] == ["alpha", "beta"]

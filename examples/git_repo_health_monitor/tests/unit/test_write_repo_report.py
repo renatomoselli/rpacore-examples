@@ -88,6 +88,20 @@ class TestWriteRepoReport:
 
         assert self.ctx.state["health_report"]["last_commit"] == "2024-01-15T10:00:00+00:00"
 
+    def test_sets_unknown_last_commit_when_timestamp_missing(self):
+        self.ctx.state["uncommitted_changes"] = []
+        self.ctx.state["recent_commits"] = [
+            {"commit_hash": "abc123", "subject": "Latest"},
+        ]
+        self.ctx.state["remotes"] = {"origin": "https://github.com/example/repo.git"}
+        self.ctx.state["stale_branches"] = []
+        self.ctx.state["all_branches"] = ["master"]
+
+        skill = WriteRepoReport("write_repo_report", 5)
+        skill.execute(self.ctx)
+
+        assert self.ctx.state["health_report"]["last_commit"] == "unknown"
+
     def test_does_not_accumulate_repo_health_records(self):
         """Test that WriteRepoReport no longer accumulates repo_health_records list."""
         self.ctx.state["uncommitted_changes"] = []

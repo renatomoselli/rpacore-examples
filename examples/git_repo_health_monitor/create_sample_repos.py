@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import stat
 import subprocess
 from pathlib import Path
@@ -84,8 +85,6 @@ def prepare_sample_repos(base: Path) -> None:
 
     # Clean up existing sample repos to allow re-runs
     if base.exists():
-        import shutil
-
         def _remove_readonly(func, path, excinfo):
             os.chmod(path, stat.S_IWRITE)
             func(path)
