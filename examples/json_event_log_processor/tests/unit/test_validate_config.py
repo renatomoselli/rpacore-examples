@@ -1,6 +1,6 @@
-"""Unit tests for JSON Event Log Processor config validation."""
-
 from __future__ import annotations
+
+"""Unit tests for JSON Event Log Processor config validation."""
 
 import pytest
 
@@ -76,9 +76,10 @@ def test_validate_config_rejects_invalid_log_level():
     assert "log_level" in str(exc_info.value)
 
 
-def test_validate_config_rejects_path_escape():
+@pytest.mark.parametrize("key", ["transaction_db_path", "inbox_dir", "results_dir"])
+def test_validate_config_rejects_path_escape(key):
     config = _valid_config()
-    config["inbox_dir"] = "../outside"
+    config[key] = "../outside"
 
     with pytest.raises(SystemException):
         _validate_config(config)

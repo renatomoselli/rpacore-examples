@@ -44,15 +44,26 @@ class WriteErrorReport(Skill):
 
         transactions = [
             tx for tx in transactions
-            if tx.metadata.get("run_id") == run_id and tx.reference != "error-report"
+            if tx.metadata.get("run_id") == run_id
+            and tx.metadata.get("transaction_kind") != "error-report"
         ]
 
-        failed_txs = [tx for tx in transactions if tx.status.name != "SUCCESSFUL"]
+        successful_count = sum(1 for tx in transactions if tx.status.name == "SUCCESSFUL")
+        failed_txs = [tx for tx in transactions if tx.status.name == "FAILED"]
+        unresolved_count = len(transactions) - successful_count - len(failed_txs)
+        persistence_errors = ctx.config.get("persistence_errors", [])
+        if not isinstance(persistence_errors, list):
+            persistence_errors = []
+        else:
+            persistence_errors = list(persistence_errors)
 
         report = {
             "total_transactions": len(transactions),
-            "successful": sum(1 for tx in transactions if tx.status.name == "SUCCESSFUL"),
+            "successful": successful_count,
             "failed": len(failed_txs),
+            "unresolved": unresolved_count,
+            "persistence_error_count": len(persistence_errors),
+            "persistence_errors": persistence_errors,
             "failures": [],
         }
 
@@ -75,10 +86,10 @@ class WriteErrorReport(Skill):
                         })
             report["failures"].append(tx_entry)
 
+        report_path = Path(results_dir) / "error_report.json"
+
         try:
             Path(results_dir).mkdir(parents=True, exist_ok=True)
-            report_path = Path(results_dir) / "error_report.json"
-
             results_resolved = Path(results_dir).resolve()
             report_resolved = report_path.resolve()
             if not report_resolved.is_relative_to(results_resolved):
@@ -102,11 +113,15 @@ class WriteErrorReport(Skill):
                     metadata={
                         "total_transactions": len(transactions),
                         "failed_count": len(failed_txs),
+                        "unresolved_count": unresolved_count,
+                        "persistence_error_count": len(persistence_errors),
                         "run_id": run_id,
                     },
                 )
                 ctx.transaction.metadata["run_id"] = run_id
                 ctx.transaction.metadata["error_count"] = len(failed_txs)
+                ctx.transaction.metadata["unresolved_count"] = unresolved_count
+                ctx.transaction.metadata["persistence_error_count"] = len(persistence_errors)
             except Exception:
                 try:
                     os.unlink(tmp_path)

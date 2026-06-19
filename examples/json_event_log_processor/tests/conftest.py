@@ -1,6 +1,6 @@
-"""Pytest fixtures for JSON Event Log Processor tests."""
-
 from __future__ import annotations
+
+"""Pytest fixtures for JSON Event Log Processor tests."""
 
 import sys
 from pathlib import Path

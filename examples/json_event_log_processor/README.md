@@ -24,15 +24,15 @@ inbox/                    # Input: JSON event log files
 
 results/                  # Output: normalized JSONL files
   ├── events_001_cleaned.jsonl
-  └── events_002_cleaned.jsonl
+  ├── events_002_cleaned.jsonl
+  └── error_report.json   # Summary of failed transactions and persistence errors
 
 rpacore.db                   # SQLite database tracking transaction status
-error_report.json         # Summary of failed transactions
 ```
 
 ## Prerequisites
 
-- Python 3.9+
+- Python 3.12+
 - `rpacore` package installed (`pip install rpacore`)
 
 ## Setup
@@ -58,7 +58,7 @@ This will:
 1. Process all `.json` files in the `inbox/` folder
 2. Output normalized JSONL files to the `results/` folder
 3. Write transaction history to `rpacore.db`
-4. Generate `results/error_report.json` with failure details
+4. Generate `results/error_report.json` with failed transaction and persistence details
 
 ## Expected Behavior
 
@@ -97,6 +97,9 @@ Each line in the JSONL output follows this schema:
   "total_transactions": 5,
   "successful": 2,
   "failed": 3,
+  "unresolved": 0,
+  "persistence_error_count": 0,
+  "persistence_errors": [],
   "failures": [
     {
       "transaction_id": 1,
@@ -115,6 +118,11 @@ Each line in the JSONL output follows this schema:
   ]
 }
 ```
+
+`failed` counts transactions that reached the terminal `FAILED` status. `unresolved`
+counts persisted transactions that are neither `SUCCESSFUL` nor `FAILED`. If a file
+is processed but its transaction cannot be written to `rpacore.db`, the batch
+continues and the persistence problem is listed in `persistence_errors`.
 
 ## Event Schema
 
@@ -161,10 +169,11 @@ python -m pytest tests/integration/ -v
 
 ## Key Design Decisions
 
-1. **Validation short-circuit**: Unlike the `rest_api_batch` example where `BusinessException` doesn't stop execution, this pipeline uses a `validation_failed` flag to stop processing on validation errors.
+1. **Validation short-circuit**: Unlike the `rest_api_batch` example where `BusinessException` doesn't stop execution, this pipeline raises validation errors with `stop=True` so downstream skills do not run for invalid files.
 2. **JSONL output**: Each normalized event is written as a single JSON line, suitable for streaming and log analysis tools.
 3. **Per-file transactions**: Each input file is processed as a separate RPA Core transaction, enabling partial failure handling.
-4. **UTC normalization**: All timestamps are normalized to UTC with timezone offset format.
+4. **Persistence error visibility**: Transaction-save failures are captured in the error report while the remaining files continue processing.
+5. **UTC normalization**: All timestamps are normalized to UTC with timezone offset format.
 
 ## License
 

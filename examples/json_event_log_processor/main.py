@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from rpacore import (
@@ -32,6 +33,58 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 
 LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 MAX_RETRIES_UPPER_BOUND = 10  # Upper bound for max_retries config
+
+
+def _record_persistence_error(config: dict[str, Any], tx: Transaction, exc: Exception) -> None:
+    errors = config.setdefault("persistence_errors", [])
+    if isinstance(errors, list):
+        errors.append({
+            "transaction_reference": tx.reference,
+            "transaction_id": tx.id,
+            "status": tx.status.name,
+            "exception_type": exc.__class__.__name__,
+            "message": str(exc),
+        })
+
+
+def _save_transaction_safely(tx: Transaction, db_path: str, config: dict[str, Any]) -> bool:
+    try:
+        save_transaction(tx, db_path=db_path)
+    except Exception as exc:
+        _record_persistence_error(config, tx, exc)
+        logger.exception(
+            "Failed to persist transaction %s; continuing batch",
+            tx.reference,
+        )
+        return False
+    return True
+
+
+def _make_error_report_tx(run_id: str, report_attempt: int = 1) -> Transaction:
+    return Transaction(
+        reference="error-report",
+        state={"run_id": run_id},
+        metadata={
+            "example": "json_event_log_processor",
+            "run_id": run_id,
+            "transaction_kind": "error-report",
+            "report_attempt": report_attempt,
+        },
+        skills=[
+            WriteErrorReport(name="write_error_report", execution_order=1),
+        ],
+    )
+
+
+def _run_error_report(engine: Engine, config: dict[str, Any], db_path: str, run_id: str) -> None:
+    error_tx = _make_error_report_tx(run_id, report_attempt=1)
+    engine.run(ProcessContext(transaction=error_tx, config=config))
+    if _save_transaction_safely(error_tx, db_path, config):
+        return
+
+    logger.warning("Refreshing error report after error-report transaction persistence failed")
+    refreshed_error_tx = _make_error_report_tx(run_id, report_attempt=2)
+    engine.run(ProcessContext(transaction=refreshed_error_tx, config=config))
 
 
 def _validate_config(config: dict) -> None:
@@ -130,27 +183,20 @@ def main() -> None:
     if not json_files:
         logger.warning("No JSON files found in %s. Nothing to process.", inbox_dir)
         # Still run error report (will be empty)
-        error_tx = Transaction(
-            reference="error-report",
-            state={"run_id": run_id},
-            metadata={"example": "json_event_log_processor", "run_id": run_id},
-            skills=[
-                WriteErrorReport(name="write_error_report", execution_order=1),
-            ],
-        )
-        engine.run(ProcessContext(transaction=error_tx, config=config))
-        save_transaction(error_tx, db_path=db_path)
+        _run_error_report(engine, config, db_path, run_id)
         logger.info("No files to process. Exiting.")
         return
 
     # --- One transaction per file ---
     successful = 0
+    persisted_successful = 0
     failed = 0
+    unresolved = 0
 
     for json_file in json_files:
         file_tx = Transaction(
             reference=f"json-file-{json_file.stem}",
-            state={"current_file": str(json_file), "results_dir": results_dir},
+            state={"current_file": str(json_file)},
             metadata={
                 "example": "json_event_log_processor",
                 "run_id": run_id,
@@ -171,34 +217,32 @@ def main() -> None:
         file_tx.metadata["error_count"] = sum(
             len(skill.exceptions) for skill in failed_skills
         )
-        save_transaction(file_tx, db_path=db_path)
+        persisted = _save_transaction_safely(file_tx, db_path, config)
 
         if file_tx.status == Status.SUCCESSFUL:
             successful += 1
-            logger.info("Processed: %s", json_file.name)
-        else:
+            if persisted:
+                persisted_successful += 1
+                logger.info("Processed: %s", json_file.name)
+            else:
+                logger.warning("Processed but could not persist: %s", json_file.name)
+        elif file_tx.status == Status.FAILED:
             failed += 1
             if failed_skills:
                 details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed_skills)
                 logger.warning("File %s failed: %s", json_file.name, details)
             else:
                 logger.warning("File %s: %s", json_file.name, file_tx.status)
+        else:
+            unresolved += 1
+            logger.warning("File %s unresolved: %s", json_file.name, file_tx.status)
 
     # --- Error report transaction ---
-    error_tx = Transaction(
-        reference="error-report",
-        state={"run_id": run_id},
-        metadata={"example": "json_event_log_processor", "run_id": run_id},
-        skills=[
-            WriteErrorReport(name="write_error_report", execution_order=1),
-        ],
-    )
-    engine.run(ProcessContext(transaction=error_tx, config=config))
-    save_transaction(error_tx, db_path=db_path)
+    _run_error_report(engine, config, db_path, run_id)
 
     logger.info(
-        "Batch complete. %d successful, %d failed out of %d files.",
-        successful, failed, len(json_files),
+        "Batch complete. %d successful (%d persisted), %d failed, %d unresolved out of %d files.",
+        successful, persisted_successful, failed, unresolved, len(json_files),
     )
 
 if __name__ == "__main__":

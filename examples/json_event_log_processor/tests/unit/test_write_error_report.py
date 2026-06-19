@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Unit tests for the WriteErrorReport skill."""
 
 import json
@@ -73,6 +75,7 @@ class TestWriteErrorReport:
         assert artifact.kind == "report"
         assert artifact.metadata["total_transactions"] == 2
         assert artifact.metadata["failed_count"] == 1
+        assert artifact.metadata["persistence_error_count"] == 0
 
     def test_handles_empty_transaction_list(self) -> None:
         results_dir = self.ctx.config["results_dir"]
@@ -87,6 +90,82 @@ class TestWriteErrorReport:
         report = json.loads(report_path.read_text(encoding="utf-8"))
         assert report["total_transactions"] == 0
         assert report["failed"] == 0
+        assert report["unresolved"] == 0
+        assert report["persistence_error_count"] == 0
+        assert report["persistence_errors"] == []
+
+    def test_includes_persistence_errors_from_current_run(self) -> None:
+        self.ctx.config["persistence_errors"] = [
+            {
+                "transaction_reference": "json-file-events_001",
+                "transaction_id": "tx-1",
+                "status": "SUCCESSFUL",
+                "exception_type": "OSError",
+                "message": "disk full",
+            },
+        ]
+
+        with patch("skills.write_error_report.list_transactions") as mock_list:
+            mock_list.return_value = []
+            skill = WriteErrorReport("write_error_report", 5)
+            skill.execute(self.ctx)
+
+        report_path = Path(self.ctx.config["results_dir"]) / "error_report.json"
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        assert report["total_transactions"] == 0
+        assert report["failed"] == 0
+        assert report["persistence_error_count"] == 1
+        assert report["persistence_errors"][0]["transaction_reference"] == "json-file-events_001"
+        assert self.transaction.metadata["persistence_error_count"] == 1
+
+    def test_non_list_persistence_errors_are_treated_as_empty(self) -> None:
+        self.ctx.config["persistence_errors"] = {"bad": "shape"}
+
+        with patch("skills.write_error_report.list_transactions") as mock_list:
+            mock_list.return_value = []
+            skill = WriteErrorReport("write_error_report", 5)
+            skill.execute(self.ctx)
+
+        report_path = Path(self.ctx.config["results_dir"]) / "error_report.json"
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        assert report["persistence_error_count"] == 0
+        assert report["persistence_errors"] == []
+        assert self.transaction.metadata["persistence_error_count"] == 0
+
+    def test_only_failed_status_counts_as_failed(self) -> None:
+        transactions = [
+            Transaction(reference="pending", status=Status.PENDING, metadata={"run_id": "test-run"}),
+            Transaction(reference="in-progress", status=Status.IN_PROGRESS, metadata={"run_id": "test-run"}),
+            Transaction(reference="failed", status=Status.FAILED, metadata={"run_id": "test-run"}),
+            Transaction(reference="ok", status=Status.SUCCESSFUL, metadata={"run_id": "test-run"}),
+        ]
+
+        with patch("skills.write_error_report.list_transactions") as mock_list:
+            mock_list.return_value = transactions
+            skill = WriteErrorReport("write_error_report", 5)
+            skill.execute(self.ctx)
+
+        report_path = Path(self.ctx.config["results_dir"]) / "error_report.json"
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        assert report["total_transactions"] == 4
+        assert report["successful"] == 1
+        assert report["failed"] == 1
+        assert report["unresolved"] == 2
+        assert [failure["transaction_reference"] for failure in report["failures"]] == ["failed"]
+        assert self.transaction.metadata["unresolved_count"] == 2
+
+    def test_write_failure_reports_target_path_without_name_error(self) -> None:
+        with patch("skills.write_error_report.Path.mkdir") as mock_mkdir:
+            mock_mkdir.side_effect = OSError("cannot create results")
+            with patch("skills.write_error_report.list_transactions") as mock_list:
+                mock_list.return_value = []
+                skill = WriteErrorReport("write_error_report", 5)
+                with pytest.raises(SystemException) as exc_info:
+                    skill.execute(self.ctx)
+
+        message = str(exc_info.value)
+        assert "error_report.json" in message
+        assert "cannot create results" in message
 
     def test_raises_on_db_read_failure(self) -> None:
         with patch("skills.write_error_report.list_transactions") as mock_list:
@@ -129,7 +208,7 @@ class TestWriteErrorReport:
             Transaction(
                 reference="error-report",
                 status=Status.SUCCESSFUL,
-                metadata={"run_id": "run-1"},
+                metadata={"run_id": "run-1", "transaction_kind": "error-report"},
             ),
             db_path=db_path,
         )
@@ -157,4 +236,5 @@ class TestWriteErrorReport:
         assert report["total_transactions"] == 1
         assert report["successful"] == 1
         assert report["failed"] == 0
+        assert report["unresolved"] == 0
         assert report["failures"] == []

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Unit tests for the ValidateEvents skill."""
 
 import pytest
@@ -25,14 +27,17 @@ class TestValidateEvents:
         skill = ValidateEvents("validate_events", 2)
         skill.execute(self.ctx)
 
-    def test_sets_validation_failed_true_on_missing_event_id(self) -> None:
+    def test_raises_on_missing_event_id(self) -> None:
         self.transaction.state["events"] = [
             {"event_type": "info", "timestamp": "2024-01-01T00:00:00Z", "source": "svc"},
         ]
+        self.transaction.metadata["event_count"] = 1
         skill = ValidateEvents("validate_events", 2)
         with pytest.raises(BusinessException) as exc_info:
             skill.execute(self.ctx)
         assert "missing required field: event_id" in str(exc_info.value)
+        assert "events" not in self.transaction.state
+        assert "event_count" not in self.transaction.metadata
 
     def test_raises_on_missing_event_type(self) -> None:
         self.transaction.state["events"] = [

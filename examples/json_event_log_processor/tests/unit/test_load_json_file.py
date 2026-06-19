@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Unit tests for the LoadJsonFile skill."""
 
 import json
@@ -35,6 +37,7 @@ class TestLoadJsonFile:
         assert len(self.ctx.state["events"]) == 2
         assert self.ctx.state["events"][0]["event_id"] == "1"
         assert self.ctx.state["events"][1]["event_id"] == "2"
+        assert self.ctx.transaction.metadata["event_count"] == 2
 
     def test_loads_valid_single_event_object(self, tmp_path: Path) -> None:
         event = {"event_id": "1", "event_type": "info", "timestamp": "2024-01-01T00:00:00Z", "source": "svc", "payload": {}}
@@ -63,6 +66,29 @@ class TestLoadJsonFile:
         with pytest.raises(SystemException) as exc_info:
             skill.execute(self.ctx)
         assert "Missing required state key: current_file" in str(exc_info.value)
+
+    def test_requires_inbox_dir_config(self) -> None:
+        self.ctx = ProcessContext(transaction=self.transaction, config={})
+        skill = LoadJsonFile("load_json_file", 1)
+        with pytest.raises(SystemException) as exc_info:
+            skill.execute(self.ctx)
+        assert "Missing required config key: inbox_dir" in str(exc_info.value)
+
+    def test_rejects_file_outside_inbox(self, tmp_path: Path) -> None:
+        outside_file = tmp_path / "outside.json"
+        outside_file.write_text("[]", encoding="utf-8")
+        inbox_dir = tmp_path / "inbox"
+        inbox_dir.mkdir()
+        self.transaction.state["current_file"] = str(outside_file)
+        self.ctx = ProcessContext(
+            transaction=self.transaction,
+            config={"inbox_dir": str(inbox_dir)},
+        )
+
+        skill = LoadJsonFile("load_json_file", 1)
+        with pytest.raises(SystemException) as exc_info:
+            skill.execute(self.ctx)
+        assert "escapes inbox directory" in str(exc_info.value)
 
     def test_passes_through_non_dict_list_items(self) -> None:
         self.test_file.write_text(json.dumps([1, 2, 3]), encoding="utf-8")

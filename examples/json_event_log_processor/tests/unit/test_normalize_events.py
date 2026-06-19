@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 """Unit tests for the NormalizeEvents skill."""
+
+from unittest.mock import patch
 
 import pytest
 
@@ -71,6 +75,25 @@ class TestNormalizeEvents:
         skill.execute(self.ctx)
         assert self.ctx.state["normalized_events"][0]["payload"] == {"key": "value", "nested": {"a": 1}}
 
+    def test_non_dict_payload_logs_warning_and_uses_empty_payload(self) -> None:
+        self.transaction.state["events"] = [
+            {
+                "event_id": "1",
+                "event_type": "info",
+                "timestamp": "2024-01-01T00:00:00Z",
+                "source": "svc",
+                "payload": "not-a-dict",
+            },
+        ]
+
+        with patch("skills.normalize_events.logger.warning") as mock_warning:
+            skill = NormalizeEvents("normalize_events", 3)
+            skill.execute(self.ctx)
+
+        assert self.ctx.state["normalized_events"][0]["payload"] == {}
+        mock_warning.assert_called_once()
+        assert "non-dict payload" in mock_warning.call_args.args[0]
+
     def test_raises_when_no_events_in_context(self) -> None:
         self.transaction.state = {}
         skill = NormalizeEvents("normalize_events", 3)
@@ -86,6 +109,28 @@ class TestNormalizeEvents:
         with pytest.raises(SystemException) as exc_info:
             skill.execute(self.ctx)
         assert "Failed to parse timestamp" in str(exc_info.value)
+
+    def test_raises_system_exception_for_unmapped_event_type(self) -> None:
+        self.transaction.state["events"] = [
+            {
+                "event_id": "1",
+                "event_type": "critical",
+                "timestamp": "2024-01-01T00:00:00Z",
+                "source": "svc",
+                "payload": {},
+            },
+        ]
+        skill = NormalizeEvents("normalize_events", 3)
+        with pytest.raises(SystemException) as exc_info:
+            skill.execute(self.ctx)
+        assert "Unsupported event_type" in str(exc_info.value)
+
+    def test_raises_system_exception_for_non_dict_event(self) -> None:
+        self.transaction.state["events"] = [1]
+        skill = NormalizeEvents("normalize_events", 3)
+        with pytest.raises(SystemException) as exc_info:
+            skill.execute(self.ctx)
+        assert "Expected event object" in str(exc_info.value)
 
     def test_handles_missing_current_file(self) -> None:
         self.transaction.state.pop("current_file", None)

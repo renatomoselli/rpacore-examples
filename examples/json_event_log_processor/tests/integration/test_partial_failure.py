@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Integration tests for partial failure scenarios."""
 
 import json
@@ -59,7 +61,6 @@ class TestPartialFailure:
 
             shared_data = {
                 "current_file": str(Path(inbox_dir) / "events_001.json"),
-                "results_dir": results_dir,
             }
 
             file_tx = Transaction(
@@ -133,7 +134,6 @@ class TestPartialFailure:
                 # Fresh shared_data per file — matches main.py pattern
                 shared_data = {
                     "current_file": str(json_file),
-                    "results_dir": results_dir,
                 }
 
                 file_tx = Transaction(

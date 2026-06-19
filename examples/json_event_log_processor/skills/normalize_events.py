@@ -24,6 +24,12 @@ class NormalizeEvents(Skill):
 
     def _normalize_event(self, event: dict) -> dict:
         """Normalize a single event: parse timestamp, map severity, add computed fields."""
+        if not isinstance(event, dict):
+            raise SystemException(
+                f"Expected event object, got {type(event).__name__}",
+                action=self.name,
+            )
+
         timestamp_str = event["timestamp"]
         try:
             normalized_ts_str = timestamp_str.replace("Z", "+00:00")
@@ -40,7 +46,12 @@ class NormalizeEvents(Skill):
             ) from exc
 
         event_type = event["event_type"]
-        severity = SEVERITY_MAP[event_type]
+        severity = SEVERITY_MAP.get(event_type)
+        if severity is None:
+            raise SystemException(
+                f"Unsupported event_type for severity mapping: {event_type!r}",
+                action=self.name,
+            )
 
         payload = event.get("payload")
         flattened_payload = {}

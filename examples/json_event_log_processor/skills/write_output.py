@@ -15,7 +15,7 @@ class WriteOutput(Skill):
     def execute(self, ctx: ProcessContext) -> None:
         normalized_events = ctx.require_state("normalized_events", list, action=self.name)
         current_file = ctx.require_state("current_file", str, action=self.name)
-        results_dir = ctx.require_state("results_dir", str, action=self.name)
+        results_dir = ctx.require_config("results_dir", str, action=self.name)
 
         stem = Path(current_file).stem
         output_file = Path(results_dir) / f"{stem}_cleaned.jsonl"

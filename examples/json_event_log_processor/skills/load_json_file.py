@@ -20,16 +20,13 @@ class LoadJsonFile(Skill):
             )
 
         # Trust-boundary check: resolved path must stay under inbox_dir [S2]
-        config = getattr(ctx, "config", None)
-        if isinstance(config, dict):
-            inbox_dir = config.get("inbox_dir")
-            if isinstance(inbox_dir, str) and inbox_dir:
-                resolved = Path(current_file).resolve()
-                if not resolved.is_relative_to(Path(inbox_dir).resolve()):
-                    raise SystemException(
-                        f"File escapes inbox directory: {current_file}",
-                        action=self.name,
-                    )
+        inbox_dir = ctx.require_config("inbox_dir", str, action=self.name)
+        resolved = Path(current_file).resolve()
+        if not resolved.is_relative_to(Path(inbox_dir).resolve()):
+            raise SystemException(
+                f"File escapes inbox directory: {current_file}",
+                action=self.name,
+            )
 
         try:
             with open(current_file, "r", encoding="utf-8") as f:
