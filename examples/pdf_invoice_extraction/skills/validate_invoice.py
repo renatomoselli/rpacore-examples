@@ -6,10 +6,13 @@ from datetime import date, datetime
 
 from rpacore import BusinessException, ProcessContext, Skill, get_logger
 
+from skills._currency import try_parse_currency_number
+
 logger = get_logger(__name__)
 
 # Business rules
 _TOLERANCE_PER_ITEM = 0.02
+_MAX_TOTAL_TOLERANCE = 1.00
 
 
 class ValidateInvoice(Skill):
@@ -34,15 +37,24 @@ class ValidateInvoice(Skill):
         subtotal_value = parsed_invoice.get("subtotal")
         line_items = parsed_invoice.get("line_items", [])
 
-        if total is not None and not line_items:
-            errors.append("Has total but no line items")
+        if not line_items:
+            errors.append("Has total but no line items" if total else "No line items")
+        if not total:
+            errors.append(
+                "Has line items but no total"
+                if line_items
+                else "Missing required field: total"
+            )
 
-        if line_items and total is not None:
+        if line_items and total:
             computed_subtotal = sum(
                 item.get("quantity", 0) * item.get("unit_price", 0)
                 for item in line_items
             )
-            tolerance = _TOLERANCE_PER_ITEM * len(line_items)
+            tolerance = min(
+                _TOLERANCE_PER_ITEM * len(line_items),
+                _MAX_TOTAL_TOLERANCE,
+            )
             try:
                 reported_total = self._parse_money(total)
                 if abs(computed_subtotal - reported_total) > tolerance:
@@ -75,25 +87,10 @@ class ValidateInvoice(Skill):
     @staticmethod
     def _parse_money(value: object) -> float:
         """Parse a money value after stripping supported currency symbols."""
-        return float(
-            str(value)
-            .replace(",", "")
-            .replace("$", "")
-            .replace("EUR", "")
-            .replace("GBP", "")
-            .replace("JPY", "")
-            .replace("BRL", "")
-            .replace("USD", "")
-            .replace("R$", "")
-            .replace("R", "")
-            .replace("€", "")
-            .replace("£", "")
-            .replace("¥", "")
-            .replace("â‚¬", "")
-            .replace("Â£", "")
-            .replace("Â¥", "")
-            .strip()
-        )
+        parsed = try_parse_currency_number(value)
+        if parsed is None:
+            raise ValueError(f"Invalid money value: {value!r}")
+        return parsed
 
     def _validate_date(self, date_str: str) -> bool:
         """Check that a date string is parseable and not in the future."""

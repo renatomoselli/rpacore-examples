@@ -8,14 +8,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from rpacore import SystemException
+from rpacore import QueueItem, SystemException
 
-from main import _validate_config, ensure_sample_data
+from main import _has_sample_pdfs, _validate_config, build_transaction, ensure_sample_data
 
 class TestValidateConfig:
     """Tests for config validation in main.py."""
 
-    def test_validate_config_valid(self, tmp_env: str):
+    def test_validate_config_valid(self, tmp_env: Path):
         """Test that valid config passes validation."""
         config = {
             "max_retries": 2,
@@ -33,7 +33,7 @@ class TestValidateConfig:
         }
         _validate_config(config)
 
-    def test_validate_config_missing_key(self, tmp_env: str):
+    def test_validate_config_missing_key(self, tmp_env: Path):
         """Test that missing required key raises SystemException."""
         config = {
             "max_retries": 2,
@@ -46,7 +46,7 @@ class TestValidateConfig:
         with pytest.raises(SystemException, match="Missing required config key"):
             _validate_config(config)
 
-    def test_validate_config_wrong_type(self, tmp_env: str):
+    def test_validate_config_wrong_type(self, tmp_env: Path):
         """Test that wrong type raises SystemException."""
         config = {
             "max_retries": "two",  # Should be int
@@ -59,7 +59,7 @@ class TestValidateConfig:
         with pytest.raises(SystemException, match="must be int"):
             _validate_config(config)
 
-    def test_validate_config_negative_retries(self, tmp_env: str):
+    def test_validate_config_negative_retries(self, tmp_env: Path):
         """Test that negative max_retries raises SystemException."""
         config = {
             "max_retries": -1,
@@ -74,7 +74,37 @@ class TestValidateConfig:
         with pytest.raises(SystemException, match="must be >= 0"):
             _validate_config(config)
 
-    def test_validate_config_missing_queue_section(self, tmp_env: str):
+    @pytest.mark.parametrize(
+        ("key", "value", "message"),
+        [
+            ("max_pages", 0, "must be >= 1"),
+            ("max_pages", -1, "must be >= 1"),
+            ("output_csv", "", "must be a non-empty string"),
+        ],
+    )
+    def test_validate_config_rejects_invalid_output_limits(
+        self, key, value, message
+    ):
+        config = {
+            "max_retries": 2,
+            "log_level": "INFO",
+            "transaction_db_path": "rpacore.db",
+            "sample_data_dir": "sample_data",
+            "results_dir": "results",
+            "output_csv": "results/output.csv",
+            "max_pages": 100,
+            "queue": {
+                "db_path": "queue.db",
+                "lease_timeout": 30,
+                "max_retries": 0,
+            },
+        }
+        config[key] = value
+
+        with pytest.raises(SystemException, match=message):
+            _validate_config(config)
+
+    def test_validate_config_missing_queue_section(self, tmp_env: Path):
         """Test that missing [queue] section raises SystemException."""
         config = {
             "max_retries": 2,
@@ -90,6 +120,20 @@ class TestValidateConfig:
 
 
 class TestMainRuntime:
+    def test_has_sample_pdfs_ignores_unprocessed_nested_folders(self, tmp_path):
+        sample_data_dir = tmp_path / "sample_data"
+        archive_dir = sample_data_dir / "archive"
+        archive_dir.mkdir(parents=True)
+        (archive_dir / "invoice.pdf").write_text("archived", encoding="utf-8")
+
+        assert _has_sample_pdfs(str(sample_data_dir)) is False
+
+    def test_build_transaction_requires_original_name(self):
+        item = QueueItem(reference="missing-name", payload={"file_path": "invoice.pdf"})
+
+        with pytest.raises(SystemException, match="original_name"):
+            build_transaction(item)
+
     def test_ensure_sample_data_generates_for_fresh_checkout(self, tmp_path, monkeypatch):
         """A fresh clone should get demo PDFs before scanning."""
         import main
@@ -149,25 +193,27 @@ class TestMainRuntime:
         import main
 
         calls = []
+        loaded_paths = []
+        monkeypatch.setattr(main, "PROJECT_ROOT", tmp_path)
 
-        monkeypatch.setattr(
-            main,
-            "load_config",
-            lambda _: {
+        def fake_load_config(path):
+            loaded_paths.append(path)
+            return {
                 "max_retries": 0,
                 "log_level": "WARNING",
-                "transaction_db_path": str(tmp_path / "rpacore.db"),
-                "sample_data_dir": str(tmp_path / "sample_data"),
-                "results_dir": str(tmp_path / "results"),
-                "output_csv": str(tmp_path / "results" / "output.csv"),
+                "transaction_db_path": "rpacore.db",
+                "sample_data_dir": "sample_data",
+                "results_dir": "results",
+                "output_csv": "results/output.csv",
                 "max_pages": 100,
                 "queue": {
-                    "db_path": str(tmp_path / "queue.db"),
+                    "db_path": "queue.db",
                     "lease_timeout": 30,
                     "max_retries": 0,
                 },
-            },
-        )
+            }
+
+        monkeypatch.setattr(main, "load_config", fake_load_config)
         monkeypatch.setattr(main, "ensure_sample_data", lambda config: None)
         monkeypatch.setattr(main, "scan_inbox", lambda config, queue: 0)
 
@@ -179,5 +225,9 @@ class TestMainRuntime:
 
         main.main()
 
+        assert loaded_paths == [str(tmp_path / "config.toml")]
         assert len(calls) == 1
         assert calls[0]["transaction_db_path"] == str(tmp_path / "rpacore.db")
+        assert calls[0]["config"]["output_csv"] == str(
+            tmp_path / "results" / "output.csv"
+        )

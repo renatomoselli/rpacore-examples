@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import csv
 import os
+import shutil
+import time
 
 import pytest
 
-from rpacore import BusinessException, ProcessContext, SystemException, Transaction
+from rpacore import BusinessException, ProcessContext, Status, SystemException, Transaction
 
-from skills.write_output import WriteOutput
+from skills.write_output import WriteOutput, _output_csv_lock
 
 class TestWriteOutput:
     """Tests for WriteOutput skill."""
@@ -44,7 +46,7 @@ class TestWriteOutput:
         skill.execute(ctx)
         return tx
 
-    def test_write_output_csv_writing(self, tmp_env: str):
+    def test_write_output_csv_writing(self, tmp_env: Path):
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
         output_csv = os.path.join(results_dir, "output.csv")
@@ -65,7 +67,7 @@ class TestWriteOutput:
             assert row["total"] == "250.00"
             assert row["currency"] == "USD"
 
-    def test_write_output_multiple_records(self, tmp_env: str):
+    def test_write_output_multiple_records(self, tmp_env: Path):
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
         output_csv = os.path.join(results_dir, "output.csv")
@@ -83,7 +85,27 @@ class TestWriteOutput:
             assert rows[0]["invoice_number"] == "INV-001"
             assert rows[1]["invoice_number"] == "INV-002"
 
-    def test_write_output_header_handling(self, tmp_env: str):
+    def test_write_output_holds_lock_during_csv_update(self, tmp_env: Path, monkeypatch):
+        output_csv = tmp_env / "results" / "output.csv"
+        original_write = WriteOutput._write_csv_record
+
+        def assert_locked(self, path, invoice, rows=None):
+            assert output_csv.with_name("output.csv.lock").exists()
+            return original_write(self, path, invoice, rows)
+
+        monkeypatch.setattr(WriteOutput, "_write_csv_record", assert_locked)
+        self._run_skill(
+            config={
+                "sample_data_dir": str(tmp_env / "sample_data"),
+                "results_dir": str(output_csv.parent),
+                "output_csv": str(output_csv),
+            }
+        )
+
+        assert output_csv.exists()
+        assert not output_csv.with_name("output.csv.lock").exists()
+
+    def test_write_output_header_handling(self, tmp_env: Path):
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
         output_csv = os.path.join(results_dir, "output.csv")
@@ -97,7 +119,7 @@ class TestWriteOutput:
             assert lines[0].strip() == "invoice_number,date,vendor,line_items_count,subtotal,total,currency"
             assert "INV-2024-001" in lines[1]
 
-    def test_write_output_decimal_formatting(self, tmp_env: str):
+    def test_write_output_decimal_formatting(self, tmp_env: Path):
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
         output_csv = os.path.join(results_dir, "output.csv")
@@ -115,7 +137,7 @@ class TestWriteOutput:
             assert row["total"] == "250.10"
             assert row["subtotal"] == "100.01"
 
-    def test_write_output_missing_normalized_record(self, tmp_env: str):
+    def test_write_output_missing_normalized_record(self, tmp_env: Path):
         tx = Transaction(reference="test", skills=[WriteOutput(name="write_output", execution_order=1)])
         tx.state["file_path"] = "/nonexistent/file.pdf"
         ctx = ProcessContext(transaction=tx, config={})
@@ -124,7 +146,7 @@ class TestWriteOutput:
         with pytest.raises(SystemException, match="normalized_record"):
             skill.execute(ctx)
 
-    def test_write_output_missing_file_path(self, tmp_env: str):
+    def test_write_output_missing_file_path(self, tmp_env: Path):
         tx = Transaction(reference="test", skills=[WriteOutput(name="write_output", execution_order=1)])
         tx.state["normalized_record"] = self._make_normalized_record()
         ctx = ProcessContext(transaction=tx, config={})
@@ -133,7 +155,7 @@ class TestWriteOutput:
         with pytest.raises(SystemException, match="file_path"):
             skill.execute(ctx)
 
-    def test_write_output_file_move_to_done(self, tmp_env: str):
+    def test_write_output_file_move_to_done(self, tmp_env: Path):
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
         output_csv = os.path.join(results_dir, "output.csv")
@@ -153,7 +175,7 @@ class TestWriteOutput:
         assert done_path.exists()
         assert not pdf_path.exists()
 
-    def test_write_output_duplicate_detection(self, tmp_env: str):
+    def test_write_output_duplicate_detection(self, tmp_env: Path):
         """Test that duplicate invoice numbers raise BusinessException."""
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
@@ -175,7 +197,7 @@ class TestWriteOutput:
         with pytest.raises(BusinessException, match="Duplicate invoice number"):
             skill.execute(ctx)
 
-    def test_write_output_blank_invoice_number_is_business_failure(self, tmp_env: str):
+    def test_write_output_blank_invoice_number_is_business_failure(self, tmp_env: Path):
         """Blank invoice numbers should not bypass duplicate protection."""
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
@@ -193,7 +215,7 @@ class TestWriteOutput:
                 },
             )
 
-    def test_write_output_move_failure_does_not_append_csv(self, tmp_env: str, monkeypatch):
+    def test_write_output_move_failure_does_not_append_csv(self, tmp_env: Path, monkeypatch):
         """A retryable move failure must not leave a duplicate CSV record behind."""
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
@@ -222,10 +244,10 @@ class TestWriteOutput:
         assert pdf_path.exists()
         assert not os.path.exists(output_csv)
 
-    def test_write_output_retry_after_csv_failure_keeps_source_pdf_artifact(
-        self, tmp_env: str, monkeypatch
+    def test_write_output_csv_failure_restores_source_pdf_for_retry(
+        self, tmp_env: Path, monkeypatch
     ):
-        """A moved PDF path is durable so retry can register the source artifact."""
+        """A CSV failure after moving the PDF restores the source for retry."""
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
         output_csv = os.path.join(results_dir, "output.csv")
@@ -248,26 +270,80 @@ class TestWriteOutput:
         )
         skill = WriteOutput(name="write_output", execution_order=1)
 
-        def fail_replace(output_csv, rows):
-            raise SystemException("csv unavailable", action=skill.name)
+        def fail_replace(source, destination):
+            raise OSError("csv unavailable")
 
-        monkeypatch.setattr(skill, "_replace_csv", fail_replace)
+        monkeypatch.setattr(os, "replace", fail_replace)
         with pytest.raises(SystemException, match="csv unavailable"):
             skill.execute(ctx)
 
-        done_path = tx.state["done_path"]
-        assert not pdf_path.exists()
-        assert os.path.exists(done_path)
+        assert pdf_path.exists()
+        assert "done_path" not in tx.state
+        assert not os.path.exists(output_csv)
 
         monkeypatch.undo()
         retry_skill = WriteOutput(name="write_output", execution_order=1)
         retry_skill.execute(ctx)
 
+        done_path = tx.state["done_path"]
         artifact_paths = [artifact.path for artifact in tx.artifacts]
         assert done_path in artifact_paths
 
-    def test_write_output_corrupt_csv_is_retryable(self, tmp_env: str):
-        """Malformed CSV output should not bypass duplicate detection."""
+    def test_write_output_failed_restore_retains_recoverable_done_path(
+        self, tmp_env: Path, monkeypatch
+    ):
+        sample_data_dir = tmp_env / "sample_data"
+        output_csv = tmp_env / "results" / "output.csv"
+        sample_data_dir.mkdir()
+        pdf_path = sample_data_dir / "invoice.pdf"
+        pdf_path.write_text("fake pdf content", encoding="utf-8")
+
+        tx = Transaction(reference="test", skills=[WriteOutput(name="write_output", execution_order=1)])
+        tx.state.update(
+            normalized_record=self._make_normalized_record(),
+            file_path=str(pdf_path),
+            original_name="invoice.pdf",
+        )
+        ctx = ProcessContext(
+            transaction=tx,
+            config={
+                "sample_data_dir": str(sample_data_dir),
+                "results_dir": str(output_csv.parent),
+                "output_csv": str(output_csv),
+            },
+        )
+        skill = WriteOutput(name="write_output", execution_order=1)
+        original_move = shutil.move
+        move_count = 0
+
+        def fail_restore(source, destination):
+            nonlocal move_count
+            move_count += 1
+            if move_count == 2:
+                raise OSError("restore locked")
+            return original_move(source, destination)
+
+        def fail_replace(source, destination):
+            raise OSError("csv unavailable")
+
+        monkeypatch.setattr("skills.write_output.shutil.move", fail_restore)
+        monkeypatch.setattr(os, "replace", fail_replace)
+
+        with pytest.raises(SystemException, match="Failed to restore PDF"):
+            skill.execute(ctx)
+
+        done_path = tx.state["done_path"]
+        assert os.path.exists(done_path)
+        assert not pdf_path.exists()
+
+        monkeypatch.undo()
+        WriteOutput(name="write_output", execution_order=1).execute(ctx)
+
+        assert output_csv.exists()
+        assert done_path in [artifact.path for artifact in tx.artifacts]
+
+    def test_write_output_corrupt_csv_is_permanent_business_failure(self, tmp_env: Path):
+        """Malformed CSV output should fail without technical retries."""
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
         output_csv = os.path.join(results_dir, "output.csv")
@@ -276,7 +352,7 @@ class TestWriteOutput:
         with open(output_csv, "w", encoding="utf-8", newline="") as f:
             f.write("not,the,expected,header\n")
 
-        with pytest.raises(SystemException, match="Could not read existing CSV"):
+        with pytest.raises(BusinessException, match="Unexpected CSV header"):
             self._run_skill(
                 config={
                     "sample_data_dir": sample_data_dir,
@@ -285,7 +361,7 @@ class TestWriteOutput:
                 }
             )
 
-    def test_write_output_validation_skip(self, tmp_env: str):
+    def test_write_output_validation_skip(self, tmp_env: Path):
         """Test that write_output skips if a validation backstop reaches it."""
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
@@ -300,5 +376,41 @@ class TestWriteOutput:
         ctx = ProcessContext(transaction=tx, config={"sample_data_dir": sample_data_dir, "results_dir": results_dir, "output_csv": output_csv})
         skill = WriteOutput(name="write_output", execution_order=1)
         skill.execute(ctx)
+        assert skill.status == Status.SKIPPED
         assert tx.state.get("output_written") is None
         assert not os.path.exists(output_csv)
+
+    def test_output_lock_close_failure_still_removes_sidecar(self, tmp_env: Path, monkeypatch):
+        output_csv = tmp_env / "results" / "output.csv"
+        output_csv.parent.mkdir()
+        real_close = os.close
+
+        def fail_close(fd):
+            real_close(fd)
+            raise OSError("bad fd")
+
+        monkeypatch.setattr("skills.write_output.os.close", fail_close)
+        with _output_csv_lock(output_csv, action="test"):
+            assert output_csv.with_name("output.csv.lock").exists()
+
+        assert not output_csv.with_name("output.csv.lock").exists()
+
+    def test_output_lock_recovers_stale_crash_sidecar(self, tmp_env: Path):
+        output_csv = tmp_env / "results" / "output.csv"
+        output_csv.parent.mkdir()
+        lock_path = output_csv.with_name("output.csv.lock")
+        lock_path.write_text("abandoned", encoding="utf-8")
+        stale_time = time.time() - 61
+        os.utime(lock_path, (stale_time, stale_time))
+
+        with _output_csv_lock(output_csv, action="test"):
+            assert lock_path.exists()
+            assert lock_path.read_text(encoding="utf-8") == ""
+
+        assert not lock_path.exists()
+
+    def test_find_unique_dest_has_bounded_collision_search(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(os.path, "exists", lambda path: True)
+
+        with pytest.raises(SystemException, match="after 1000 attempts"):
+            WriteOutput._find_unique_dest(str(tmp_path), "done", "invoice.pdf")

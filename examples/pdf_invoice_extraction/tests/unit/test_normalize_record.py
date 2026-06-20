@@ -6,6 +6,7 @@ import pytest
 
 from rpacore import ProcessContext, Status, SystemException, Transaction
 
+import skills.normalize_record as normalize_record_module
 from skills.normalize_record import NormalizeRecord
 
 class TestNormalizeRecord:
@@ -59,6 +60,9 @@ class TestNormalizeRecord:
             parsed_invoice=self._make_parsed_invoice(currency="R$")
         ).state["normalized_record"]["currency"] == "BRL"
         assert self._run_skill(
+            parsed_invoice=self._make_parsed_invoice(currency="R")
+        ).state["normalized_record"]["currency"] == "BRL"
+        assert self._run_skill(
             parsed_invoice=self._make_parsed_invoice(currency="€")
         ).state["normalized_record"]["currency"] == "EUR"
 
@@ -66,6 +70,34 @@ class TestNormalizeRecord:
         tx = self._run_skill(parsed_invoice=self._make_parsed_invoice(total=250.127, subtotal=250.123))
         assert tx.state["normalized_record"]["total"] == 250.13
         assert tx.state["normalized_record"]["subtotal"] == 250.12
+
+    @pytest.mark.parametrize("value", ["R100.00", "R$100.00", "100.00 BRL"])
+    def test_normalize_record_brl_money_affixes(self, value):
+        tx = self._run_skill(
+            parsed_invoice=self._make_parsed_invoice(total=value, subtotal=value)
+        )
+        assert tx.state["normalized_record"]["total"] == 100.00
+        assert tx.state["normalized_record"]["subtotal"] == 100.00
+
+    def test_normalize_record_derives_missing_subtotal_from_line_items(self):
+        tx = self._run_skill(
+            parsed_invoice=self._make_parsed_invoice(total=110.00, subtotal="")
+        )
+        assert tx.state["normalized_record"]["subtotal"] == 250.00
+
+    def test_normalize_record_logs_derived_subtotal(self, monkeypatch):
+        warnings = []
+        monkeypatch.setattr(
+            normalize_record_module.logger,
+            "warning",
+            lambda message, *args: warnings.append(message % args),
+        )
+
+        self._run_skill(
+            parsed_invoice=self._make_parsed_invoice(total=250.00, subtotal="")
+        )
+
+        assert warnings == ["Subtotal missing; deriving it from 2 parsed line items."]
 
     def test_normalize_record_validation_skip(self):
         """Validation failure causes Status.SKIPPED, not BusinessException."""

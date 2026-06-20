@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from rpacore import ProcessContext, SystemException, Transaction
+from rpacore import BusinessException, ProcessContext, SystemException, Transaction
 
+from skills.normalize_record import NormalizeRecord
 from skills.parse_invoice import ParseInvoice
+from skills.validate_invoice import ValidateInvoice
 
 class TestParseInvoice:
     """Tests for ParseInvoice skill."""
@@ -60,14 +62,39 @@ class TestParseInvoice:
             skill.execute(ctx)
             assert tx.state["parsed_invoice"]["currency"] == expected_currency
 
+    @pytest.mark.parametrize(
+        ("symbol", "expected_currency", "expected_iso"),
+        [("â‚¬", "â‚¬", "EUR"), ("Â£", "Â£", "GBP"), ("Â¥", "Â¥", "JPY")],
+    )
+    def test_parse_invoice_detects_mojibake_currency(
+        self, symbol, expected_currency, expected_iso
+    ):
+        text = (
+            "Invoice Number: INV-001\n"
+            "Date: 2024-01-15\n"
+            "Bill From: Test Corp\n"
+            f"Widget\t2\t{symbol}50.00\n"
+            f"Total: {symbol}100.00"
+        )
+        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx.state["pdf_text"] = text
+        ctx = ProcessContext(transaction=tx, config={})
+
+        ParseInvoice(name="parse_invoice", execution_order=1).execute(ctx)
+
+        assert tx.state["parsed_invoice"]["currency"] == expected_currency
+        ValidateInvoice(name="validate_invoice", execution_order=2).execute(ctx)
+        NormalizeRecord(name="normalize_record", execution_order=3).execute(ctx)
+        assert tx.state["normalized_record"]["currency"] == expected_iso
+
     def test_parse_invoice_empty_text(self):
-        """Test that empty text raises SystemException."""
+        """Test that empty text is a permanent business failure."""
         tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = ""
         ctx = ProcessContext(transaction=tx, config={})
         skill = ParseInvoice(name="parse_invoice", execution_order=1)
 
-        with pytest.raises(SystemException, match="No PDF text"):
+        with pytest.raises(BusinessException, match="No PDF text"):
             skill.execute(ctx)
 
     def test_parse_invoice_no_line_items(self):
@@ -162,6 +189,24 @@ class TestParseInvoice:
         assert "Adapter" in items[0]["description"]
         assert items[0]["quantity"] == 10
         assert items[0]["unit_price"] == 15.00
+
+    def test_parse_invoice_product_named_total_is_not_summary(self):
+        text = (
+            "Invoice Number: INV-001\n"
+            "Date: 2024-01-15\n"
+            "Bill From: Test Corp\n"
+            "Total  5  $20.00\n"
+            "Grand Total: $100.00"
+        )
+        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx.state["pdf_text"] = text
+        ctx = ProcessContext(transaction=tx, config={})
+
+        ParseInvoice(name="parse_invoice", execution_order=1).execute(ctx)
+
+        assert tx.state["parsed_invoice"]["line_items"] == [
+            {"description": "Total", "quantity": 5.0, "unit_price": 20.0}
+        ]
 
     def test_parse_invoice_compact_tab_glyph_line_items(self):
         """Recover line items when PDF extraction turns tabs into literal n glyphs."""
@@ -285,6 +330,17 @@ class TestParseInvoice:
 
         assert tx.state["parsed_invoice"]["currency"] == "BRL"
 
+    def test_parse_invoice_bare_r_currency_detection(self):
+        text = "INVOICE\nInvoice Number: INV-001\nDate: 2024-01-15\nBill From: Test Corp\nTotal: R100.00"
+        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx.state["pdf_text"] = text
+        ctx = ProcessContext(transaction=tx, config={})
+
+        ParseInvoice(name="parse_invoice", execution_order=1).execute(ctx)
+
+        assert tx.state["parsed_invoice"]["total"] == "R100.00"
+        assert tx.state["parsed_invoice"]["currency"] == "BRL"
+
     def test_parse_invoice_tab_separated_line_items(self):
         """Test that tab-separated line items are parsed correctly."""
         text = (
@@ -307,3 +363,29 @@ class TestParseInvoice:
         assert items[0]["description"] == "Widget"
         assert items[0]["quantity"] == 10
         assert items[0]["unit_price"] == 15.00
+
+    def test_parse_invoice_iso_currency_codes(self):
+        text = (
+            "Invoice Number: INV-001\n"
+            "Date: 2024-01-15\n"
+            "Bill From: Test Corp\n"
+            "Widget\t2\tUSD 150.00\n"
+            "Total: USD 300.00"
+        )
+        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx.state["pdf_text"] = text
+        ctx = ProcessContext(transaction=tx, config={})
+
+        ParseInvoice(name="parse_invoice", execution_order=1).execute(ctx)
+
+        parsed = tx.state["parsed_invoice"]
+        assert parsed["line_items"][0]["unit_price"] == 150.00
+        assert parsed["total"] == "USD 300.00"
+        assert parsed["currency"] == "USD"
+        ValidateInvoice(name="validate_invoice", execution_order=2).execute(ctx)
+        assert tx.state["validation_failed"] is False
+
+    @pytest.mark.parametrize("value", ["R100.00", "R$100.00", "$100.00", "100.00$"])
+    def test_try_parse_number_strips_only_currency_affixes(self, value):
+        assert ParseInvoice._try_parse_number(value) == 100.00
+        assert ParseInvoice._try_parse_number("1R00.00") is None

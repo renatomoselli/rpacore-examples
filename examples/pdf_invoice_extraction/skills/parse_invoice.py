@@ -8,7 +8,9 @@ import unicodedata
 from datetime import datetime
 from typing import Any
 
-from rpacore import ProcessContext, Skill, SystemException, get_logger
+from rpacore import BusinessException, ProcessContext, Skill, SystemException, get_logger
+
+from skills._currency import CURRENCY_TOKEN_PATTERN, try_parse_currency_number
 
 logger = get_logger(__name__)
 
@@ -28,7 +30,7 @@ class ParseInvoice(Skill):
         re.IGNORECASE,
     )
 
-    # Common date patterns
+    # All repetitions are bounded, keeping this search linear on untrusted text.
     _DATE_RE = re.compile(
         r"\b(\d{1,4}[-/]\d{1,2}[-/]\d{1,4})\b"
     )
@@ -43,14 +45,14 @@ class ParseInvoice(Skill):
     # Total patterns
     _TOTAL_RE = re.compile(
         r"(?<![a-z])(?:total|amount\s*due|grand\s*total|net\s*total)\s*(?:amount)?\s*[:#]?\s*"
-        r"([€$£¥R]?[€$£¥]?\s*[\d,]+\.?\d*)",
+        rf"((?:{CURRENCY_TOKEN_PATTERN}\s*)?[\d,]+\.?\d*)",
         re.IGNORECASE,
     )
 
     # Subtotal patterns
     _SUBTOTAL_RE = re.compile(
         r"(?:subtotal|sub\s*total)\s*(?:amount)?\s*[:#]?\s*"
-        r"([€$£¥R]?[€$£¥]?\s*[\d,]+\.?\d*)",
+        rf"((?:{CURRENCY_TOKEN_PATTERN}\s*)?[\d,]+\.?\d*)",
         re.IGNORECASE,
     )
 
@@ -67,7 +69,11 @@ class ParseInvoice(Skill):
         """Parse invoice text into structured data."""
         pdf_text = ctx.optional_state("pdf_text", str, "", action=self.name)
         if not pdf_text:
-            raise SystemException("No PDF text to parse", action=self.name)
+            raise BusinessException(
+                "No PDF text to parse",
+                action=self.name,
+                stop=True,
+            )
 
         parsed: dict[str, Any] = {}
 
@@ -175,24 +181,18 @@ class ParseInvoice(Skill):
     def _normalize_date(self, raw: str) -> str:
         """Normalize a date string to ISO 8601 format."""
         raw = raw.strip()
-        sep = raw[2] if len(raw) > 2 else "-"
-
-        if sep == "/":
-            for fmt in ("%d/%m/%Y", "%m/%d/%Y", "%d/%m/%y", "%m/%d/%y"):
-                try:
-                    dt = datetime.strptime(raw, fmt)
-                    return dt.strftime("%Y-%m-%d")
-                except ValueError:
-                    continue
-        else:
-            for fmt in ("%d-%m-%Y", "%m-%d-%Y", "%d-%m-%y", "%m-%d-%y"):
-                try:
-                    dt = datetime.strptime(raw, fmt)
-                    return dt.strftime("%Y-%m-%d")
-                except ValueError:
-                    continue
-
-        for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
+        for fmt in (
+            "%Y-%m-%d",
+            "%Y/%m/%d",
+            "%d/%m/%Y",
+            "%m/%d/%Y",
+            "%d/%m/%y",
+            "%m/%d/%y",
+            "%d-%m-%Y",
+            "%m-%d-%Y",
+            "%d-%m-%y",
+            "%m-%d-%y",
+        ):
             try:
                 dt = datetime.strptime(raw, fmt)
                 return dt.strftime("%Y-%m-%d")
@@ -233,6 +233,8 @@ class ParseInvoice(Skill):
             end = idx + len(kw)
             if end < len(line_lower) and line_lower[end].isalpha():
                 continue
+            if len(re.findall(r"\d+(?:[.,]\d+)?", line[end:])) >= 2:
+                continue
             return True
         return False
 
@@ -245,8 +247,9 @@ class ParseInvoice(Skill):
                 desc = parts[0]
                 try:
                     qty = float(parts[1])
-                    price_str = parts[2].replace("$", "").replace("€", "").replace("£", "").replace("¥", "").replace("R", "").strip()
-                    price = float(price_str)
+                    price = ParseInvoice._try_parse_number(parts[2])
+                    if price is None:
+                        raise ValueError("invalid unit price")
                     return {
                         "description": desc,
                         "quantity": qty,
@@ -322,14 +325,7 @@ class ParseInvoice(Skill):
     @staticmethod
     def _try_parse_number(s: str) -> float | None:
         """Try to parse a string as a number, stripping currency symbols."""
-        cleaned = s.strip()
-        for symbol in ["R$", "$", "€", "£", "¥", "R"]:
-            cleaned = cleaned.replace(symbol, "")
-        cleaned = cleaned.replace(",", "")
-        try:
-            return float(cleaned)
-        except (ValueError, TypeError):
-            return None
+        return try_parse_currency_number(s)
 
     @staticmethod
     def _detect_currency(text: str) -> str:
@@ -337,7 +333,12 @@ class ParseInvoice(Skill):
         total_match = ParseInvoice._TOTAL_RE.search(text)
         if total_match:
             total_str = total_match.group(1)
-            for symbol in ["€", "£", "¥", "R$", "$"]:
+            for code in ("USD", "EUR", "GBP", "JPY", "BRL"):
+                if re.search(rf"\b{code}\b", total_str, re.IGNORECASE):
+                    return code
+            if re.match(r"R\s*\d", total_str, re.IGNORECASE):
+                return "BRL"
+            for symbol in ["â‚¬", "Â£", "Â¥", "€", "£", "¥", "R$", "$"]:
                 if symbol in total_str:
                     if symbol == "R$":
                         return "BRL"
@@ -348,7 +349,9 @@ class ParseInvoice(Skill):
             if any(kw in line_lower for kw in [
                 "total", "amount due", "grand total", "net total",
             ]):
-                for symbol in ["€", "$", "£", "¥", "R$"]:
+                if re.search(r"\bR\s*\d", line, re.IGNORECASE):
+                    return "BRL"
+                for symbol in ["â‚¬", "Â£", "Â¥", "€", "£", "¥", "R$", "$"]:
                     if symbol in line:
                         if symbol == "R$":
                             return "BRL"

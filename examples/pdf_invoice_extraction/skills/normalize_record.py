@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from rpacore import ProcessContext, Skill, Status, SystemException, get_logger
 
+from skills._currency import try_parse_currency_number
+
 logger = get_logger(__name__)
 
 class NormalizeRecord(Skill):
@@ -45,20 +47,10 @@ class NormalizeRecord(Skill):
         raw_total = invoice.get("total")
         raw_subtotal = invoice.get("subtotal")
 
-        # Strip currency symbols before numeric conversion
-        _CURRENCY_SYMBOLS = ["$", "€", "£", "¥", "R$"]
-
         def _to_float(val: str | float | int | None) -> float | None:
             if val is None:
                 return None
-            s = str(val)
-            for sym in _CURRENCY_SYMBOLS:
-                s = s.replace(sym, "")
-            s = s.replace(",", "").strip()
-            try:
-                return float(s)
-            except (ValueError, TypeError):
-                return None
+            return try_parse_currency_number(val)
 
         # Round monetary values to 2 decimal places (only if not None)
         total = _to_float(raw_total)
@@ -68,9 +60,21 @@ class NormalizeRecord(Skill):
         subtotal = _to_float(raw_subtotal)
         if subtotal is not None:
             subtotal = round(subtotal, 2)
+        elif total is not None:
+            logger.warning(
+                "Subtotal missing; deriving it from %d parsed line items.",
+                len(invoice.get("line_items", [])),
+            )
+            subtotal = round(
+                sum(
+                    float(item.get("quantity", 0))
+                    * float(item.get("unit_price", 0))
+                    for item in invoice.get("line_items", [])
+                ),
+                2,
+            )
         else:
-            # Default subtotal to total if not provided
-            subtotal = total
+            subtotal = None
 
         # Standardize line items
         line_items = []
@@ -99,6 +103,7 @@ class NormalizeRecord(Skill):
             "$": "USD",
             "USD": "USD",
             "R$": "BRL",
+            "R": "BRL",
             "BRL": "BRL",
             "€": "EUR",
             "â‚¬": "EUR",

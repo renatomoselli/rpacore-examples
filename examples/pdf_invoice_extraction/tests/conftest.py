@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -43,7 +44,7 @@ def fake_pdfplumber(monkeypatch):
     monkeypatch.setitem(sys.modules, "pdfplumber", SimpleNamespace(open=open_pdf))
 
 @pytest.fixture
-def tmp_env(tmp_path: Path) -> str:
+def tmp_env(tmp_path: Path) -> Iterator[Path]:
     """Create a temporary directory and set it as CWD for isolation."""
     original_cwd = os.getcwd()
     os.chdir(str(tmp_path))

@@ -110,6 +110,24 @@ class TestValidateInvoice:
         with pytest.raises(BusinessException, match="no line items"):
             skill.execute(ctx)
 
+    @pytest.mark.parametrize("total", [None, ""])
+    def test_validate_invoice_line_items_without_total(self, total):
+        tx = Transaction(reference="test", skills=[ValidateInvoice(name="validate_invoice", execution_order=1)])
+        tx.state["parsed_invoice"] = self._make_parsed_invoice(total=total)
+        ctx = ProcessContext(transaction=tx, config={})
+        skill = ValidateInvoice(name="validate_invoice", execution_order=1)
+
+        with pytest.raises(BusinessException, match="line items but no total"):
+            skill.execute(ctx)
+
+    def test_validate_invoice_requires_items_and_total(self):
+        tx = Transaction(reference="test", skills=[ValidateInvoice(name="validate_invoice", execution_order=1)])
+        tx.state["parsed_invoice"] = self._make_parsed_invoice(line_items=[], total="")
+        ctx = ProcessContext(transaction=tx, config={})
+
+        with pytest.raises(BusinessException, match="No line items.*total"):
+            ValidateInvoice(name="validate_invoice", execution_order=1).execute(ctx)
+
     def test_validate_invoice_no_parsed_invoice(self):
         """Missing parsed_invoice raises SystemException (via require_state)."""
         tx = Transaction(reference="test", skills=[ValidateInvoice(name="validate_invoice", execution_order=1)])
@@ -125,3 +143,24 @@ class TestValidateInvoice:
             total=50.09,
         ))
         assert tx.state.get("validation_failed") is False
+
+    def test_validate_invoice_tolerance_is_capped_for_large_invoices(self):
+        line_items = [
+            {"description": f"Item {i}", "quantity": 1, "unit_price": 10.00}
+            for i in range(100)
+        ]
+        tx = Transaction(reference="test", skills=[ValidateInvoice(name="validate_invoice", execution_order=1)])
+        tx.state["parsed_invoice"] = self._make_parsed_invoice(
+            line_items=line_items,
+            total=1001.50,
+        )
+        ctx = ProcessContext(transaction=tx, config={})
+
+        with pytest.raises(BusinessException, match="does not match"):
+            ValidateInvoice(name="validate_invoice", execution_order=1).execute(ctx)
+
+    @pytest.mark.parametrize("value", ["R100.00", "R$100.00", "100.00 USD", "EUR 100.00"])
+    def test_parse_money_strips_only_currency_affixes(self, value):
+        assert ValidateInvoice._parse_money(value) == 100.00
+        with pytest.raises(ValueError):
+            ValidateInvoice._parse_money("1R00.00")

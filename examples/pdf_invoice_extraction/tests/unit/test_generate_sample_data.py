@@ -3,16 +3,40 @@
 from __future__ import annotations
 
 import builtins
+import sys
 from types import SimpleNamespace
 
 import pytest
 
-from generate_sample_data import _SAMPLE_INVOICES, _create_pdf_with_text
+import generate_sample_data as sample_data_module
+from generate_sample_data import (
+    _SAMPLE_INVOICES,
+    _create_pdf_with_text,
+    generate_sample_data,
+)
 
 
 def test_sample_invoice_text_uses_spaces_not_tabs():
     """ReportLab/pdfplumber handles spaces more reliably than tab glyphs."""
     assert all("\t" not in invoice["text"] for invoice in _SAMPLE_INVOICES)
+
+
+def test_generate_sample_data_creates_every_sample(tmp_path, monkeypatch):
+    created = []
+    monkeypatch.setattr(
+        sample_data_module,
+        "_create_pdf_with_text",
+        lambda path, text: created.append((path, text)),
+    )
+
+    generate_sample_data(str(tmp_path))
+
+    assert [path for path, _ in created] == [
+        str(tmp_path / invoice["filename"]) for invoice in _SAMPLE_INVOICES
+    ]
+    assert [text for _, text in created] == [
+        invoice["text"] for invoice in _SAMPLE_INVOICES
+    ]
 
 
 def test_pdf_generator_replaces_tabs_before_drawing(tmp_path, monkeypatch):
@@ -33,16 +57,21 @@ def test_pdf_generator_replaces_tabs_before_drawing(tmp_path, monkeypatch):
         def save(self):
             pass
 
-    monkeypatch.setitem(
-        __import__("sys").modules,
-        "reportlab.lib.pagesizes",
-        SimpleNamespace(letter=(612, 792)),
-    )
-    monkeypatch.setitem(
-        __import__("sys").modules,
-        "reportlab.pdfgen.canvas",
-        SimpleNamespace(Canvas=FakeCanvas),
-    )
+    fake_reportlab = SimpleNamespace()
+    fake_lib = SimpleNamespace()
+    fake_pdfgen = SimpleNamespace()
+    fake_pagesizes = SimpleNamespace(letter=(612, 792))
+    fake_canvas_module = SimpleNamespace(Canvas=FakeCanvas)
+    fake_lib.pagesizes = fake_pagesizes
+    fake_pdfgen.canvas = fake_canvas_module
+    fake_reportlab.lib = fake_lib
+    fake_reportlab.pdfgen = fake_pdfgen
+
+    monkeypatch.setitem(sys.modules, "reportlab", fake_reportlab)
+    monkeypatch.setitem(sys.modules, "reportlab.lib", fake_lib)
+    monkeypatch.setitem(sys.modules, "reportlab.lib.pagesizes", fake_pagesizes)
+    monkeypatch.setitem(sys.modules, "reportlab.pdfgen", fake_pdfgen)
+    monkeypatch.setitem(sys.modules, "reportlab.pdfgen.canvas", fake_canvas_module)
 
     _create_pdf_with_text(str(tmp_path / "invoice.pdf"), "Widget\t10\t$15.00")
 

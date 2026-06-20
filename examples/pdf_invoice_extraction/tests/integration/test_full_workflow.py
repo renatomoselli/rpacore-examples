@@ -57,7 +57,7 @@ _INVOICE_003 = (
     "Total: $300.00"
 )
 
-def _make_config(tmp_env: str, **overrides) -> dict:
+def _make_config(tmp_env: Path, **overrides) -> dict:
     """Build a test config dict with migrated keys."""
     sample_data_dir = str(tmp_env / "sample_data")
     results_dir = str(tmp_env / "results")
@@ -81,7 +81,7 @@ def _make_config(tmp_env: str, **overrides) -> dict:
 class TestFullWorkflow:
     """Integration tests for the full queue-driven workflow."""
 
-    def test_full_successful_workflow(self, tmp_env: str):
+    def test_full_successful_workflow(self, tmp_env: Path):
         """Test the full pipeline: scan -> queue -> process -> CSV output."""
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
@@ -123,7 +123,7 @@ class TestFullWorkflow:
         done_path = Path(sample_data_dir) / "done" / "invoice_001.pdf"
         assert done_path.exists()
 
-    def test_full_workflow_empty_queue(self, tmp_env: str):
+    def test_full_workflow_empty_queue(self, tmp_env: Path):
         """Test that empty queue produces no output."""
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
@@ -149,7 +149,7 @@ class TestFullWorkflow:
         assert result.completed == 0
         assert result.failed == 0
 
-    def test_full_workflow_failed_validation(self, tmp_env: str):
+    def test_full_workflow_failed_validation(self, tmp_env: Path):
         """Test that validation failures are handled correctly."""
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
@@ -180,7 +180,7 @@ class TestFullWorkflow:
         assert pdf_path.exists()
         assert not os.path.exists(output_csv)
 
-    def test_full_workflow_retry_on_system_exception(self, tmp_env: str):
+    def test_full_workflow_retry_on_system_exception(self, tmp_env: Path):
         """Test that transient failures are retried."""
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")
@@ -232,7 +232,7 @@ class TestFullWorkflow:
         assert result.failed == 0
         assert retry_count[0] == 2
 
-    def test_full_workflow_multiple_invoices(self, tmp_env: str):
+    def test_full_workflow_multiple_invoices(self, tmp_env: Path):
         """Test processing multiple invoices in a single run."""
         sample_data_dir = str(tmp_env / "sample_data")
         results_dir = str(tmp_env / "results")

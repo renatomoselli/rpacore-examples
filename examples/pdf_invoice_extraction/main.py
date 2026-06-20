@@ -14,6 +14,7 @@ from rpacore import (
     configure_logger,
     get_logger,
     load_config,
+    resolve_config_paths,
     run_queue_loop,
 )
 
@@ -24,15 +25,30 @@ from skills.normalize_record import NormalizeRecord
 from skills.write_output import WriteOutput
 
 logger = get_logger(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parent
+_CONFIG_PATH_KEYS = (
+    "transaction_db_path",
+    "sample_data_dir",
+    "results_dir",
+    "output_csv",
+    "queue.db_path",
+)
 
 def _has_sample_pdfs(sample_data_dir: str) -> bool:
-    """Return True when the sample area already contains PDF files."""
+    """Return True when the inbox or a disposition directory contains PDFs."""
     sample_path = Path(sample_data_dir)
-    # Include done/ and failed/ so a completed demo run does not regenerate inputs.
-    return sample_path.exists() and any(
-        pdf_file.is_file() and not pdf_file.name.startswith(".")
-        for pdf_file in sample_path.rglob("*.pdf")
-    )
+    if not sample_path.exists():
+        return False
+
+    # Completed or failed demo inputs suppress regeneration, while unrelated
+    # nested folders are not treated as processable inbox content.
+    for directory in (sample_path, sample_path / "done", sample_path / "failed"):
+        if directory.exists() and any(
+            pdf_file.is_file() and not pdf_file.name.startswith(".")
+            for pdf_file in directory.glob("*.pdf")
+        ):
+            return True
+    return False
 
 def _validate_config(config: dict) -> None:
     """Validate config has required keys with correct types and ranges."""
@@ -55,6 +71,16 @@ def _validate_config(config: dict) -> None:
     if config["max_retries"] < 0:
         raise SystemException(
             f"Config key 'max_retries' must be >= 0, got {config['max_retries']}",
+            action="main",
+        )
+    if config["max_pages"] < 1:
+        raise SystemException(
+            f"Config key 'max_pages' must be >= 1, got {config['max_pages']}",
+            action="main",
+        )
+    if not config["output_csv"]:
+        raise SystemException(
+            "Config key 'output_csv' must be a non-empty string",
             action="main",
         )
 
@@ -96,7 +122,7 @@ def ensure_sample_data(config: dict) -> None:
 
 def scan_inbox(config: dict, queue: SqliteQueue) -> int:
     """Add new PDF files in the sample_data directory as queue items."""
-    sample_data_dir = str(config.get("sample_data_dir", "sample_data"))
+    sample_data_dir = str(config["sample_data_dir"])
     inbox_path = Path(sample_data_dir)
 
     if not inbox_path.exists():
@@ -134,8 +160,14 @@ def scan_inbox(config: dict, queue: SqliteQueue) -> int:
 
 def build_transaction(item: QueueItem) -> Transaction:
     """Build a transaction for each queued PDF invoice."""
+    original_name = item.payload.get("original_name")
+    if not isinstance(original_name, str) or not original_name:
+        raise SystemException(
+            "Queue item payload requires a non-empty original_name",
+            action="build_transaction",
+        )
     return Transaction(
-        reference=f"invoice-{item.payload.get('original_name', 'unknown')}",
+        reference=f"invoice-{original_name}",
         skills=[
             OpenPdf(name="open_pdf", execution_order=1),
             ParseInvoice(name="parse_invoice", execution_order=2),
@@ -146,8 +178,14 @@ def build_transaction(item: QueueItem) -> Transaction:
     )
 
 def main() -> None:
-    config = load_config("config.toml")
+    config = load_config(str(PROJECT_ROOT / "config.toml"))
     _validate_config(config)
+    config = resolve_config_paths(
+        config,
+        _CONFIG_PATH_KEYS,
+        base_dir=PROJECT_ROOT,
+        root=PROJECT_ROOT,
+    )
     configure_logger(level=str(config["log_level"]))
 
     engine = Engine(max_retries=int(config["max_retries"]))
