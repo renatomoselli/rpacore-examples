@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Unit tests for the ValidatePost skill."""
 
 import pytest
@@ -65,6 +67,17 @@ class TestValidatePost:
 
         assert "empty or missing title" in str(exc_info.value)
 
+    @pytest.mark.parametrize("field", ["title", "body"])
+    def test_raises_on_non_string_text_field(self, field):
+        """Test that title and body must be strings rather than coerced values."""
+        post = {"id": 1, "title": "Hello", "body": "World", "userId": 1}
+        post[field] = 123
+        transaction = Transaction(reference="test", state={"current_post": post})
+        ctx = ProcessContext(transaction=transaction)
+
+        with pytest.raises(BusinessException, match=f"empty or missing {field}"):
+            ValidatePost("validate_post", 2).execute(ctx)
+
     def test_raises_on_missing_context(self):
         """Test that ValidatePost raises SystemException when no current_post exists."""
         transaction = Transaction(reference="test", state={})
@@ -92,3 +105,22 @@ class TestValidatePost:
 
         assert "missing userId" in str(exc_info.value)
         assert exc_info.value.stops_execution is True
+
+    @pytest.mark.parametrize("user_id", [0, -1, "1", True])
+    def test_raises_on_invalid_user_id(self, user_id):
+        """Test that userId must be a positive integer."""
+        transaction = Transaction(
+            reference="test",
+            state={
+                "current_post": {
+                    "id": 1,
+                    "title": "Hello",
+                    "body": "World",
+                    "userId": user_id,
+                }
+            },
+        )
+        ctx = ProcessContext(transaction=transaction)
+
+        with pytest.raises(BusinessException, match="invalid or missing userId"):
+            ValidatePost("validate_post", 2).execute(ctx)

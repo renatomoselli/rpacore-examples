@@ -10,22 +10,22 @@ class ValidatePost(Skill):
         post = ctx.require_state("current_post", dict, action=self.name)
 
         title = post.get("title")
-        if not title or not str(title).strip():
+        if not isinstance(title, str) or not title.strip():
             raise BusinessException(
                 f"Post {post.get('id', 'unknown')} has empty or missing title: {title!r}",
                 action=self.name, stop=True,
             )
 
         body = post.get("body")
-        if not body or not str(body).strip():
+        if not isinstance(body, str) or not body.strip():
             raise BusinessException(
                 f"Post {post.get('id', 'unknown')} has empty or missing body: {body!r}",
                 action=self.name, stop=True,
             )
 
         user_id = post.get("userId")
-        if user_id is None:
+        if type(user_id) is not int or user_id <= 0:
             raise BusinessException(
-                f"Post {post.get('id', 'unknown')} has missing userId",
+                f"Post {post.get('id', 'unknown')} has invalid or missing userId: {user_id!r}",
                 action=self.name, stop=True,
             )

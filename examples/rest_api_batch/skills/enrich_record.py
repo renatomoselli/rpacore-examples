@@ -10,17 +10,26 @@ class EnrichRecord(Skill):
         post = ctx.require_state("current_post", dict, action=self.name)
         user = ctx.require_state("current_user", dict, action=self.name)
 
+        if type(user.get("id")) is not int or user["id"] <= 0:
+            raise BusinessException(
+                f"User has invalid or missing required field: id ({user.get('id')!r})",
+                action=self.name, stop=True,
+            )
+
         # Validate required user fields
         for field in ("name", "email"):
-            if not user.get(field):
+            value = user.get(field)
+            if not isinstance(value, str) or not value.strip():
                 raise BusinessException(
                     f"User {user.get('id', 'unknown')} missing required field: {field}",
                     action=self.name, stop=True,
                 )
-        if user.get("id") is None:
-            raise BusinessException(
-                f"User missing required field: id",
-                action=self.name, stop=True,
+
+        address = user.get("address")
+        if address is not None and not isinstance(address, dict):
+            raise SystemException(
+                f"User {user['id']} has invalid address data: expected an object",
+                action=self.name,
             )
 
         enriched = {
@@ -30,7 +39,7 @@ class EnrichRecord(Skill):
             "userId": user.get("id"),
             "userName": user.get("name"),
             "userEmail": user.get("email"),
-            "userCity": (user.get("address") or {}).get("city", ""),
+            "userCity": (address or {}).get("city", ""),
         }
 
         ctx.state["enriched_record"] = enriched

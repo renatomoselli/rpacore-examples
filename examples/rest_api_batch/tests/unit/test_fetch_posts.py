@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 """Unit tests for the FetchPosts skill."""
 
 from unittest.mock import patch
 
 import pytest
 
-from rpacore import ProcessContext, SystemException, Transaction
+from rpacore import BusinessException, ProcessContext, SystemException, Transaction
 from skills.fetch_posts import FetchPosts
 
 
@@ -14,7 +16,10 @@ class TestFetchPosts:
     def setup_method(self):
         """Set up test fixtures with real Transaction/ProcessContext."""
         self.transaction = Transaction(reference="test", state={})
-        self.ctx = ProcessContext(transaction=self.transaction, config={})
+        self.ctx = ProcessContext(
+            transaction=self.transaction,
+            config={"api_mode": "live"},
+        )
 
     def test_fixture_mode_uses_deterministic_posts_without_http(self):
         self.ctx.config["api_mode"] = "fixture"
@@ -46,8 +51,8 @@ class TestFetchPosts:
         assert self.ctx.state["posts"] == sample_posts
 
     @patch("skills.fetch_posts.requests.get")
-    def test_raises_system_exception_on_http_error(self, mock_get):
-        """Test that FetchPosts raises SystemException on HTTP error."""
+    def test_raises_business_exception_on_http_404(self, mock_get):
+        """Test that a permanent setup response is not retried."""
         import requests as requests_lib
 
         mock_response = mock_get.return_value
@@ -57,10 +62,29 @@ class TestFetchPosts:
 
         skill = FetchPosts("fetch_posts", 1)
 
-        with pytest.raises(SystemException) as exc_info:
+        with pytest.raises(BusinessException) as exc_info:
             skill.execute(self.ctx)
 
-        assert "HTTP error" in str(exc_info.value)
+        assert "posts request was rejected: 404" in str(exc_info.value)
+        assert exc_info.value.stops_execution is True
+
+    @pytest.mark.parametrize("status_code", [408, 429, 500])
+    @patch("skills.fetch_posts.requests.get")
+    def test_raises_system_exception_on_retryable_http_error(
+        self, mock_get, status_code
+    ):
+        """Test that transient setup responses retain retry semantics."""
+        import requests as requests_lib
+
+        mock_response = mock_get.return_value
+        mock_response.status_code = status_code
+        mock_response.reason = "Temporary failure"
+        mock_get.side_effect = requests_lib.exceptions.HTTPError(
+            response=mock_response
+        )
+
+        with pytest.raises(SystemException, match="HTTP error fetching posts"):
+            FetchPosts("fetch_posts", 1).execute(self.ctx)
 
     @patch("skills.fetch_posts.requests.get")
     def test_raises_system_exception_on_connection_error(self, mock_get):
@@ -117,3 +141,28 @@ class TestFetchPosts:
             skill.execute(self.ctx)
 
         assert "Invalid JSON" in str(exc_info.value)
+
+    @patch("skills.fetch_posts.requests.get")
+    def test_raises_system_exception_on_invalid_response_shape(self, mock_get):
+        """Test that valid JSON must still contain a list of post objects."""
+        mock_response = mock_get.return_value
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = [{"id": 1}, "not-an-object"]
+
+        skill = FetchPosts("fetch_posts", 1)
+
+        with pytest.raises(SystemException, match="JSON array of objects"):
+            skill.execute(self.ctx)
+
+        assert "posts" not in self.ctx.state
+
+    @pytest.mark.parametrize("config", [{}, {"api_mode": "unexpected"}])
+    @patch("skills.fetch_posts.requests.get")
+    def test_rejects_missing_or_invalid_api_mode(self, mock_get, config):
+        """Test that invalid configuration cannot silently enable live HTTP."""
+        ctx = ProcessContext(transaction=self.transaction, config=config)
+
+        with pytest.raises(SystemException):
+            FetchPosts("fetch_posts", 1).execute(ctx)
+
+        mock_get.assert_not_called()

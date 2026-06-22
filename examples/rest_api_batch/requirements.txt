@@ -1,2 +1,2 @@
-rpacore
-requests>=2.31.0
+rpacore==0.1.0
+requests>=2.33.0,<3.0.0

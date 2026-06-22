@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Unit tests for the FetchUser skill."""
 
 from unittest.mock import patch
@@ -17,7 +19,10 @@ class TestFetchUser:
             reference="test",
             state={"current_post": {"id": 1, "userId": 1}},
         )
-        self.ctx = ProcessContext(transaction=self.transaction, config={})
+        self.ctx = ProcessContext(
+            transaction=self.transaction,
+            config={"api_mode": "live"},
+        )
 
     def test_fixture_mode_uses_deterministic_user_without_http(self):
         self.ctx.config["api_mode"] = "fixture"
@@ -89,8 +94,18 @@ class TestFetchUser:
         assert exc_info.value.stops_execution is True
 
     @patch("skills.fetch_user.requests.get")
-    def test_raises_system_exception_on_http_error(self, mock_get):
-        """Test that FetchUser raises SystemException on HTTP error."""
+    def test_raises_business_exception_on_zero_user_id(self, mock_get):
+        """Test that zero is not accepted as a domain user identifier."""
+        self.transaction.state = {"current_post": {"id": 1, "userId": 0}}
+
+        with pytest.raises(BusinessException, match="invalid or no userId"):
+            FetchUser("fetch_user", 1).execute(self.ctx)
+
+        mock_get.assert_not_called()
+
+    @patch("skills.fetch_user.requests.get")
+    def test_raises_business_exception_on_http_404(self, mock_get):
+        """Test that a permanent not-found response is not retried."""
         import requests as requests_lib
 
         mock_response = mock_get.return_value
@@ -100,10 +115,29 @@ class TestFetchUser:
 
         skill = FetchUser("fetch_user", 1)
 
-        with pytest.raises(SystemException) as exc_info:
+        with pytest.raises(BusinessException) as exc_info:
             skill.execute(self.ctx)
 
-        assert "HTTP error" in str(exc_info.value)
+        assert "request was rejected: 404" in str(exc_info.value)
+        assert exc_info.value.stops_execution is True
+
+    @pytest.mark.parametrize("status_code", [408, 429, 500])
+    @patch("skills.fetch_user.requests.get")
+    def test_raises_system_exception_on_retryable_http_error(
+        self, mock_get, status_code
+    ):
+        """Test that transient HTTP responses retain retry semantics."""
+        import requests as requests_lib
+
+        mock_response = mock_get.return_value
+        mock_response.status_code = status_code
+        mock_response.reason = "Temporary failure"
+        mock_get.side_effect = requests_lib.exceptions.HTTPError(
+            response=mock_response
+        )
+
+        with pytest.raises(SystemException, match="HTTP error fetching user"):
+            FetchUser("fetch_user", 1).execute(self.ctx)
 
     @patch("skills.fetch_user.requests.get")
     def test_raises_system_exception_on_connection_error(self, mock_get):
@@ -160,3 +194,32 @@ class TestFetchUser:
             skill.execute(self.ctx)
 
         assert "Invalid JSON" in str(exc_info.value)
+
+    @pytest.mark.parametrize(
+        "payload",
+        [[], {}, {"id": 1, "name": "Name"}, {"id": 0, "name": "Name", "email": "a@b.test"}],
+    )
+    @patch("skills.fetch_user.requests.get")
+    def test_raises_system_exception_on_invalid_user_payload(
+        self, mock_get, payload
+    ):
+        """Test that malformed successful responses fail at the API boundary."""
+        mock_response = mock_get.return_value
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = payload
+
+        with pytest.raises(SystemException, match="Invalid user 1 response"):
+            FetchUser("fetch_user", 1).execute(self.ctx)
+
+        assert "current_user" not in self.ctx.state
+
+    @pytest.mark.parametrize("config", [{}, {"api_mode": "unexpected"}])
+    @patch("skills.fetch_user.requests.get")
+    def test_rejects_missing_or_invalid_api_mode(self, mock_get, config):
+        """Test that invalid configuration cannot silently enable live HTTP."""
+        ctx = ProcessContext(transaction=self.transaction, config=config)
+
+        with pytest.raises(SystemException):
+            FetchUser("fetch_user", 1).execute(ctx)
+
+        mock_get.assert_not_called()

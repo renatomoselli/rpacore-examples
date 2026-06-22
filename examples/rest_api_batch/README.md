@@ -11,12 +11,12 @@ It demonstrates:
 - **Retry on transient failures**: The RPA Core Engine retries skills that raise `SystemException`
 - **Business vs system exceptions**: Validation failures (`BusinessException`) are permanent; HTTP/network errors (`SystemException`) are retried
 - **Artifact reporting**: Successful output writes attach the JSONL path to the transaction audit trail
-- **Crash recovery**: Transaction state is persisted to SQLite after each transaction
+- **Audit persistence**: Transaction state is persisted to SQLite after each transaction
 
 ## Prerequisites
 
 - Python 3.11+
-- `requests` library
+- RPA Core 0.1.0 and Requests 2.33+ (installed from `requirements.txt`)
 
 ## Setup
 
@@ -36,7 +36,7 @@ This will:
 2. Validate each post before fetching/enriching user data
 3. Skip invalid records via `BusinessException(stop=True)`
 4. Write valid enriched records to `output.jsonl`
-5. Persist transaction state to `rpacore.db` for crash recovery
+5. Persist transaction state to `rpacore.db` as an audit trail
 
 ## Output
 
@@ -94,8 +94,10 @@ requirements.txt     — Dependencies (requests)
 
 ## Exception Handling
 
-- **BusinessException**: Raised when a post fails validation (empty title/body/userId). This is a permanent failure; the post will not be retried and will not be written.
-- **SystemException**: Raised for network errors, HTTP errors, or file I/O errors. The Engine will retry up to `max_retries` times.
+- **BusinessException**: Raised for validation failures and permanent API responses (4xx except 408/429), so they are not retried. Invalid posts are persisted as failed and omitted; a permanent setup failure aborts the batch.
+- **SystemException**: Raised for network errors, retryable HTTP responses (408/429/5xx), or file I/O errors. The Engine retries up to `max_retries` times; if retries are exhausted, the batch aborts and restores the previous run's output.
+- **Run boundaries**: Each successful run replaces `output.jsonl`, while `rpacore.db` retains the transaction history across runs. Output deduplication protects skill retries within the current run rather than serving as cross-run recovery.
+- **Aborted runs**: If a later post exhausts retries, the previous JSONL output is restored. Transactions already attempted in the aborted run remain in SQLite as execution history even though that run's JSONL is not published.
 
 ## License
 

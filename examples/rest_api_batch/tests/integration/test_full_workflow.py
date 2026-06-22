@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Integration test for the full REST API Batch Processor workflow.
 
@@ -133,8 +135,8 @@ class TestFullWorkflow:
         assert artifact_count == 2
 
     @patch("requests.get", side_effect=_mock_get)
-    def test_full_workflow_produces_correct_output(self, mock_get):
-        """Test the full pipeline: fetch posts, fetch users, validate, enrich, write."""
+    def test_live_mode_full_workflow_with_mocked_http(self, mock_get):
+        """Test the live-mode pipeline while replacing external HTTP responses."""
         with tempfile.TemporaryDirectory() as tmpdir:
             output_file = str(Path(tmpdir) / "output.jsonl")
             db_path = str(Path(tmpdir) / "rpacore.db")
@@ -201,6 +203,7 @@ class TestFullWorkflow:
                 assert "userName" in record
                 assert "userEmail" in record
                 assert "userCity" in record
+            assert mock_get.call_count == 4
 
     @patch("requests.get")
     def test_partial_batch_failure_with_empty_title(self, mock_get):

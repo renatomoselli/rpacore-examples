@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
-import json
 
 import requests
 
 from rpacore import BusinessException, ProcessContext, Skill, SystemException
-from skills import API_MODE_FIXTURE
+from skills import API_MODE_FIXTURE, API_MODES, fetch_json
 
 USERS_URL = "https://jsonplaceholder.typicode.com/users"
 FIXTURE_USERS = {
@@ -32,13 +31,19 @@ class FetchUser(Skill):
         post = ctx.require_state("current_post", dict, action=self.name)
 
         user_id = post.get("userId")
-        if user_id is None:
+        if type(user_id) is not int or user_id <= 0:
             raise BusinessException(
-                f"Post has no userId: {post}",
+                f"Post has invalid or no userId: {user_id!r}",
                 action=self.name, stop=True,
             )
 
-        if ctx.config.get("api_mode") == API_MODE_FIXTURE:
+        api_mode = ctx.require_config("api_mode", str, action=self.name)
+        if api_mode not in API_MODES:
+            raise SystemException(
+                f"Config key 'api_mode' must be one of {sorted(API_MODES)}, got {api_mode!r}",
+                action=self.name,
+            )
+        if api_mode == API_MODE_FIXTURE:
             user = FIXTURE_USERS.get(user_id)
             if user is None:
                 raise BusinessException(
@@ -48,32 +53,33 @@ class FetchUser(Skill):
             ctx.state["current_user"] = deepcopy(user)
             return
 
-        try:
-            resp = requests.get(f"{USERS_URL}/{user_id}", timeout=30)
-            resp.raise_for_status()
-            ctx.state["current_user"] = resp.json()
-        except (json.JSONDecodeError, ValueError) as exc:
+        user = fetch_json(
+            f"{USERS_URL}/{user_id}",
+            action=self.name,
+            resource=f"user {user_id}",
+            request_get=requests.get,
+        )
+        if not isinstance(user, dict) or any(
+            field not in user for field in ("id", "name", "email")
+        ):
             raise SystemException(
-                f"Invalid JSON in user {user_id} response: {exc}",
+                f"Invalid user {user_id} response: expected an object with id, name, and email",
                 action=self.name,
-            ) from exc
-        except requests.exceptions.HTTPError as exc:
+            )
+        returned_user_id = user["id"]
+        if (
+            type(returned_user_id) is not int
+            or returned_user_id <= 0
+            or returned_user_id != user_id
+        ):
             raise SystemException(
-                f"HTTP error fetching user {user_id}: {exc.response.status_code} — {exc.response.reason}",
+                f"Invalid user {user_id} response: mismatched id {returned_user_id!r}",
                 action=self.name,
-            ) from exc
-        except requests.exceptions.ConnectionError as exc:
+            )
+        address = user.get("address")
+        if address is not None and not isinstance(address, dict):
             raise SystemException(
-                f"Connection error fetching user {user_id}: {exc}",
+                f"Invalid user {user_id} response: address must be an object",
                 action=self.name,
-            ) from exc
-        except requests.exceptions.Timeout as exc:
-            raise SystemException(
-                f"Timeout fetching user {user_id}: {exc}",
-                action=self.name,
-            ) from exc
-        except requests.exceptions.RequestException as exc:
-            raise SystemException(
-                f"Error fetching user {user_id}: {exc}",
-                action=self.name,
-            ) from exc
+            )
+        ctx.state["current_user"] = user

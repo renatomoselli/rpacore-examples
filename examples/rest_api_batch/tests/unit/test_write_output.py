@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 """Unit tests for the WriteOutput skill."""
 
 import json
 import tempfile
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -90,6 +93,27 @@ class TestWriteOutput:
             assert len(lines) == 1
             assert ctx.transaction.artifacts[0].metadata["deduplicated"] is True
 
+    def test_skips_duplicate_record_without_post_id(self, tmp_path):
+        """Test fallback deduplication by full record when postId is absent."""
+        output_file = tmp_path / "output.jsonl"
+        record = {"title": "No identifier"}
+        output_file.write_text(json.dumps(record) + "\n", encoding="utf-8")
+        transaction = Transaction(
+            reference="test",
+            state={"enriched_record": record.copy()},
+        )
+        ctx = ProcessContext(
+            transaction=transaction,
+            config={"output_file": str(output_file)},
+        )
+
+        WriteOutput("write_output", 4).execute(ctx)
+
+        assert output_file.read_text(encoding="utf-8").splitlines() == [
+            json.dumps(record)
+        ]
+        assert ctx.transaction.artifacts[0].metadata["deduplicated"] is True
+
     def test_raises_on_missing_record(self):
         """Test that WriteOutput raises when no enriched_record exists."""
         transaction = Transaction(reference="test", state={})
@@ -102,7 +126,7 @@ class TestWriteOutput:
 
         assert "Missing required state" in str(exc_info.value)
 
-    def test_raises_on_os_error(self):
+    def test_raises_on_os_error(self, tmp_path, monkeypatch):
         """Test that WriteOutput raises SystemException on OSError."""
         transaction = Transaction(
             reference="test",
@@ -110,7 +134,11 @@ class TestWriteOutput:
         )
         ctx = ProcessContext(
             transaction=transaction,
-            config={"output_file": "/nonexistent/dir/output.jsonl"},
+            config={"output_file": str(tmp_path / "output.jsonl")},
+        )
+        monkeypatch.setattr(
+            "skills.write_output.tempfile.mkstemp",
+            Mock(side_effect=OSError("disk full")),
         )
 
         skill = WriteOutput("write_output", 4)
@@ -119,3 +147,45 @@ class TestWriteOutput:
             skill.execute(ctx)
 
         assert "Failed to write" in str(exc_info.value)
+
+    def test_failed_replace_preserves_existing_output(self, tmp_path, monkeypatch):
+        """Test that a failed subsequent write cannot corrupt prior JSONL records."""
+        output_file = tmp_path / "output.jsonl"
+        existing = json.dumps({"postId": 1, "title": "First"}) + "\n"
+        output_file.write_text(existing, encoding="utf-8")
+        transaction = Transaction(
+            reference="test",
+            state={"enriched_record": {"postId": 2, "title": "Second"}},
+        )
+        ctx = ProcessContext(
+            transaction=transaction,
+            config={"output_file": str(output_file)},
+        )
+        monkeypatch.setattr(
+            "skills.write_output.os.replace",
+            Mock(side_effect=OSError("replace failed")),
+        )
+
+        with pytest.raises(SystemException, match="Failed to write"):
+            WriteOutput("write_output", 4).execute(ctx)
+
+        assert output_file.read_text(encoding="utf-8") == existing
+        assert list(tmp_path.glob("*.tmp")) == []
+
+    def test_rejects_corrupt_existing_jsonl(self, tmp_path):
+        """Test that retry deduplication does not silently ignore corrupt lines."""
+        output_file = tmp_path / "output.jsonl"
+        output_file.write_text('{"postId": 1\n', encoding="utf-8")
+        transaction = Transaction(
+            reference="test",
+            state={"enriched_record": {"postId": 2, "title": "Second"}},
+        )
+        ctx = ProcessContext(
+            transaction=transaction,
+            config={"output_file": str(output_file)},
+        )
+
+        with pytest.raises(SystemException, match="invalid JSON on line 1"):
+            WriteOutput("write_output", 4).execute(ctx)
+
+        assert output_file.read_text(encoding="utf-8") == '{"postId": 1\n'

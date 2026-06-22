@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
-import json
 
 import requests
 
 from rpacore import ProcessContext, Skill, SystemException
-from skills import API_MODE_FIXTURE
+from skills import API_MODE_FIXTURE, API_MODES, fetch_json
 
 POSTS_URL = "https://jsonplaceholder.typicode.com/posts"
 FIXTURE_POSTS = [
@@ -35,36 +34,27 @@ class FetchPosts(Skill):
     """Fetch all posts from JSONPlaceholder /posts endpoint."""
 
     def execute(self, ctx: ProcessContext) -> None:
-        if ctx.config.get("api_mode") == API_MODE_FIXTURE:
+        api_mode = ctx.require_config("api_mode", str, action=self.name)
+        if api_mode not in API_MODES:
+            raise SystemException(
+                f"Config key 'api_mode' must be one of {sorted(API_MODES)}, got {api_mode!r}",
+                action=self.name,
+            )
+        if api_mode == API_MODE_FIXTURE:
             ctx.state["posts"] = deepcopy(FIXTURE_POSTS)
             return
 
-        try:
-            resp = requests.get(POSTS_URL, timeout=30)
-            resp.raise_for_status()
-            ctx.state["posts"] = resp.json()
-        except (json.JSONDecodeError, ValueError) as exc:
+        posts = fetch_json(
+            POSTS_URL,
+            action=self.name,
+            resource="posts",
+            request_get=requests.get,
+        )
+        if not isinstance(posts, list) or any(
+            not isinstance(post, dict) for post in posts
+        ):
             raise SystemException(
-                f"Invalid JSON in posts response: {exc}",
+                "Posts response must be a JSON array of objects",
                 action=self.name,
-            ) from exc
-        except requests.exceptions.HTTPError as exc:
-            raise SystemException(
-                f"HTTP error fetching posts: {exc.response.status_code} — {exc.response.reason}",
-                action=self.name,
-            ) from exc
-        except requests.exceptions.ConnectionError as exc:
-            raise SystemException(
-                f"Connection error fetching posts: {exc}",
-                action=self.name,
-            ) from exc
-        except requests.exceptions.Timeout as exc:
-            raise SystemException(
-                f"Timeout fetching posts: {exc}",
-                action=self.name,
-            ) from exc
-        except requests.exceptions.RequestException as exc:
-            raise SystemException(
-                f"Error fetching posts: {exc}",
-                action=self.name,
-            ) from exc
+            )
+        ctx.state["posts"] = posts

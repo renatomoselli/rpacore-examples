@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import os
+import sqlite3
 import sys
+import tempfile
 from pathlib import Path
 
 from rpacore import (
+    BusinessException,
     Engine,
     ProcessContext,
     Status,
@@ -43,6 +47,11 @@ def _validate_config(config: dict) -> None:
                 f"Config key '{key}' must be {expected_type.__name__}, got {type(config[key]).__name__}",
                 action="main",
             )
+        if expected_type is str and not config[key].strip():
+            raise SystemException(
+                f"Config key '{key}' must be a non-empty string",
+                action="main",
+            )
     # Range validation
     if config["max_retries"] < 0:
         raise SystemException(
@@ -63,8 +72,9 @@ def main() -> None:
         config,
         ["transaction_db_path", "output_file"],
         base_dir=PROJECT_ROOT,
+        root=PROJECT_ROOT,
     )
-    configure_logger(level=str(config["log_level"]))
+    configure_logger(level=config["log_level"])
 
     engine = Engine(max_retries=config["max_retries"])
     db_path = str(config["transaction_db_path"])
@@ -80,10 +90,7 @@ def main() -> None:
         ],
     )
     engine.run(ProcessContext(transaction=setup_tx, config=config))
-    try:
-        save_transaction(setup_tx, db_path=db_path)
-    except OSError as exc:
-        logger.warning("Could not persist setup transaction: %s", exc)
+    _persist_transaction(setup_tx, db_path=db_path, description="setup transaction")
 
     if setup_tx.status is not Status.SUCCESSFUL:
         failed = setup_tx.failed_skills()
@@ -94,49 +101,137 @@ def main() -> None:
             logger.error("Setup failed (%s). Aborting.", setup_tx.status)
         sys.exit(1)
 
-    if output_path.exists():
-        output_path.unlink()
-
     posts = setup_tx.state.get("posts", [])
     logger.info("Fetched %d posts.", len(posts))
 
-    # --- one transaction per post ---
-    for post in posts:
-        post_id = post.get("id", "unknown")
-        post_tx = Transaction(
-            reference=f"post-{post_id}",
-            state={"current_post": post},
-            skills=[
-                ValidatePost(name="validate_post", execution_order=1),
-                FetchUser(name="fetch_user", execution_order=2),
-                EnrichRecord(name="enrich_record", execution_order=3),
-                WriteOutput(name="write_output", execution_order=4),
-            ],
-        )
-        engine.run(ProcessContext(transaction=post_tx, config=config))
-        try:
-            save_transaction(post_tx, db_path=db_path)
-        except OSError as exc:
-            logger.warning("Could not persist transaction for post %s: %s", post_id, exc)
-
-        if post_tx.status == Status.SUCCESSFUL:
-            logger.info(
-                "Post %s: %s...",
-                post_id,
-                post.get("title", "")[:50],
+    output_backup = _preserve_existing_output(output_path)
+    try:
+        # --- one transaction per post ---
+        for post in posts:
+            post_id = post.get("id", "unknown")
+            post_tx = Transaction(
+                reference=f"post-{post_id}",
+                state={"current_post": post},
+                skills=[
+                    ValidatePost(name="validate_post", execution_order=1),
+                    FetchUser(name="fetch_user", execution_order=2),
+                    EnrichRecord(name="enrich_record", execution_order=3),
+                    WriteOutput(name="write_output", execution_order=4),
+                ],
             )
-        else:
-            failed = post_tx.failed_skills()
-            if failed:
-                details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed)
-                logger.warning("Post %s failed: %s", post_id, details)
+            engine.run(ProcessContext(transaction=post_tx, config=config))
+            _persist_transaction(
+                post_tx,
+                db_path=db_path,
+                description=f"transaction for post {post_id}",
+            )
+
+            if _has_technical_failure(post_tx):
+                raise SystemException(
+                    f"Post {post_id} exhausted retries; previous output will be restored",
+                    action="main",
+                )
+
+            if post_tx.status == Status.SUCCESSFUL:
+                logger.info(
+                    "Post %s: %s...",
+                    post_id,
+                    post.get("title", "")[:50],
+                )
             else:
-                logger.warning("Post %s: %s", post_id, post_tx.status)
+                failed = post_tx.failed_skills()
+                if failed:
+                    details = "; ".join(
+                        f"{s.name}({s.__class__.__name__})" for s in failed
+                    )
+                    logger.warning("Post %s failed: %s", post_id, details)
+                else:
+                    logger.warning("Post %s: %s", post_id, post_tx.status)
+    except Exception:
+        logger.warning(
+            "Batch aborted; restoring the previous JSONL output. "
+            "SQLite retains this run's attempted transactions as audit history."
+        )
+        _restore_previous_output(output_path, output_backup)
+        raise
+    else:
+        _discard_output_backup(output_backup)
 
     if output_path.exists():
         logger.info("Batch complete. Output written to %s", output_file)
     else:
         logger.info("Batch complete. No output file was written; output target: %s", output_file)
+
+
+def _persist_transaction(
+    transaction: Transaction,
+    *,
+    db_path: str,
+    description: str,
+) -> None:
+    """Persist a transaction or fail the batch when its audit record cannot be saved."""
+    try:
+        save_transaction(transaction, db_path=db_path)
+    except (OSError, sqlite3.Error) as exc:
+        raise SystemException(
+            f"Could not persist {description}: {exc}",
+            action="main",
+        ) from exc
+
+
+def _has_technical_failure(transaction: Transaction) -> bool:
+    """Return whether a failed skill ended with a non-business exception."""
+    return any(
+        not isinstance(exc, BusinessException)
+        for skill in transaction.failed_skills()
+        for exc in skill.exceptions
+    )
+
+
+def _preserve_existing_output(output_path: Path) -> Path | None:
+    """Move the previous run's output aside until the new batch succeeds."""
+    if not output_path.exists():
+        return None
+
+    fd, backup_name = tempfile.mkstemp(
+        dir=output_path.parent,
+        prefix=f".{output_path.name}.",
+        suffix=".backup",
+    )
+    os.close(fd)
+    backup_path = Path(backup_name)
+    try:
+        os.replace(output_path, backup_path)
+    except OSError as exc:
+        backup_path.unlink(missing_ok=True)
+        raise SystemException(
+            f"Could not preserve existing output file {output_path}: {exc}",
+            action="main",
+        ) from exc
+    return backup_path
+
+
+def _restore_previous_output(output_path: Path, backup_path: Path | None) -> None:
+    """Remove partial output and restore the previous successful run."""
+    try:
+        if backup_path is None:
+            output_path.unlink(missing_ok=True)
+        else:
+            os.replace(backup_path, output_path)
+    except OSError as exc:
+        raise SystemException(
+            f"Could not restore previous output file {output_path}: {exc}",
+            action="main",
+        ) from exc
+
+
+def _discard_output_backup(backup_path: Path | None) -> None:
+    if backup_path is None:
+        return
+    try:
+        backup_path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("Could not remove output backup %s: %s", backup_path, exc)
 
 
 if __name__ == "__main__":
