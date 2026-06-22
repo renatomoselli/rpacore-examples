@@ -7,6 +7,7 @@ It is used by the RPA Core skills in the skills/ directory.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -15,8 +16,6 @@ import subprocess
 import time
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_CALCULATOR_PATH = r"C:\Windows\System32\calc.exe"
 
 CALCULATOR_BUTTON_IDS = {
     "0": "num0Button",
@@ -71,6 +70,7 @@ class CalculatorInteractor:
         self.calculator_path: Optional[str] = calculator_path
         self.app = None
         self.window = None
+        self.process_id: int | None = None
 
     def launch(self) -> bool:
         """Launch the Calculator application.
@@ -82,21 +82,30 @@ class CalculatorInteractor:
             logger.error("pywinauto is not available \u2014 cannot launch Calculator")
             return False
 
-        path = self.calculator_path or DEFAULT_CALCULATOR_PATH
+        path = self.calculator_path or self._default_calculator_path()
 
-        if not Path(path).is_file():
+        if path is None or not Path(path).is_file():
             logger.error("Calculator executable not found: %s", path)
             return False
 
         max_retries = 2
         base_delay = 0.5
-        self._cleanup_orphaned_calculators()
+        existing_handles = self._calculator_window_handles()
 
         for attempt in range(max_retries):
             try:
                 self.app = pywinauto.Application(backend="uia").start(path)
-                found = self._find_calculator_window(timeout=15)
+                app_process = getattr(self.app, "process", None)
+                if app_process is not None:
+                    self.process_id = int(app_process)
+                found = self._find_calculator_window(
+                    timeout=15,
+                    excluded_handles=existing_handles,
+                )
                 self.window = self.app.window(handle=found.handle)
+                window_process = getattr(found, "process_id", None)
+                if callable(window_process):
+                    self.process_id = int(window_process())
                 return True
             except (
                 pywinauto.timings.TimeoutError,
@@ -107,7 +116,6 @@ class CalculatorInteractor:
                 RuntimeError,
             ) as e:
                 self.close()
-                self._cleanup_orphaned_calculators()
                 if attempt == max_retries - 1:
                     logger.error("Failed to launch calculator after %s attempts: %s", max_retries, e)
                     return False
@@ -164,6 +172,7 @@ class CalculatorInteractor:
 
     def close(self) -> None:
         """Close the Calculator application (best-effort cleanup)."""
+        process_id = self.process_id
         if self.app:
             if pywinauto is not None:
                 try:
@@ -186,7 +195,9 @@ class CalculatorInteractor:
                         logger.warning("Calculator close fallback failed: %s", close_error)
             self.app = None
             self.window = None
-        self._cleanup_orphaned_calculators()
+        self.process_id = None
+        if process_id is not None:
+            self._terminate_process(process_id)
 
     def _window(self):
         """Return the Calculator top-level window."""
@@ -197,11 +208,17 @@ class CalculatorInteractor:
             raise RuntimeError("Calculator not launched")
         if self.window is not None:
             return self.window
-        found = self._find_calculator_window(timeout=5)
+        found = self._find_calculator_window(timeout=5, process_id=self.process_id)
         self.window = self.app.window(handle=found.handle)
         return self.window
 
-    def _find_calculator_window(self, timeout: float):
+    def _find_calculator_window(
+        self,
+        timeout: float,
+        *,
+        excluded_handles: set[int] | None = None,
+        process_id: int | None = None,
+    ):
         """Find Calculator by stable UIA controls instead of localized title text."""
         if pywinauto is None:
             raise RuntimeError("pywinauto is not available")
@@ -211,6 +228,13 @@ class CalculatorInteractor:
 
         while time.monotonic() < deadline:
             for window in desktop.windows():
+                if excluded_handles and getattr(window, "handle", None) in excluded_handles:
+                    continue
+                window_process = getattr(window, "process_id", None)
+                if process_id is not None and (
+                    not callable(window_process) or int(window_process()) != process_id
+                ):
+                    continue
                 if self._looks_like_calculator(window):
                     return window
             time.sleep(0.25)
@@ -245,21 +269,39 @@ class CalculatorInteractor:
         button.click_input()
 
     @staticmethod
-    def _cleanup_orphaned_calculators() -> None:
-        """Best-effort cleanup for orphaned Calculator processes (both classic and UWP)."""
-        for image in ("calc.exe", "CalculatorApp.exe"):
-            for _attempt in range(4):
-                try:
-                    subprocess.run(
-                        ["taskkill", "/IM", image, "/F"],
-                        capture_output=True,
-                        check=False,
-                        text=True,
-                    )
-                except OSError as exc:
-                    logger.debug("Unable to run %s cleanup: %s", image, exc)
-                    break
-                time.sleep(0.25)
+    def _default_calculator_path() -> str | None:
+        windows_dir = os.environ.get("WINDIR") or os.environ.get("SystemRoot")
+        if not windows_dir:
+            return None
+        return str(Path(windows_dir) / "System32" / "calc.exe")
+
+    @classmethod
+    def _calculator_window_handles(cls) -> set[int]:
+        """Return Calculator windows that existed before this launch attempt."""
+        if pywinauto is None:
+            return set()
+        try:
+            return {
+                int(window.handle)
+                for window in pywinauto.Desktop(backend="uia").windows()
+                if cls._looks_like_calculator(window)
+            }
+        except Exception as exc:
+            logger.debug("Unable to enumerate existing Calculator windows: %s", exc)
+            return set()
+
+    @staticmethod
+    def _terminate_process(process_id: int) -> None:
+        """Best-effort cleanup limited to the Calculator process this instance owns."""
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process_id), "/T", "/F"],
+                capture_output=True,
+                check=False,
+                text=True,
+            )
+        except OSError as exc:
+            logger.debug("Unable to clean up Calculator PID %s: %s", process_id, exc)
 
     @staticmethod
     def _normalize_result(value: Optional[str]) -> Optional[str]:

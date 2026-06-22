@@ -2,10 +2,14 @@
 
 This module provides CSV parsing and test data loading utilities.
 """
+from __future__ import annotations
+
 from typing import List, Dict, Any
 from pathlib import Path
 import csv
 import logging
+import os
+import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +44,8 @@ def load_csv_expressions(csv_path: str) -> List[Dict[str, Any]]:
             raise ValueError(f"Missing required columns: {missing}")
         
         for row_num, row in enumerate(reader, start=2):  # Start at 2 (header is row 1)
-            expression = row.get('expression', '').strip()
-            expected_result = row.get('expected_result', '').strip()
+            expression = (row.get('expression') or '').strip()
+            expected_result = (row.get('expected_result') or '').strip()
             
             if not expression:
                 logger.warning("Row %d: Empty expression, skipping", row_num)
@@ -95,12 +99,38 @@ def save_results(results: List[Dict[str, Any]], output_path: str) -> None:
     fieldnames = ['expression', 'expected_result', 'actual', 'passed']
     
     try:
-        with open(output_path, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(results)
+        write_csv_atomically(output_path, fieldnames, results)
     except OSError as e:
         logger.error("Failed to save results to %s: %s", output_path, e)
+        raise
+
+
+def write_csv_atomically(
+    output_path: str | Path,
+    fieldnames: list[str],
+    rows: list[dict[str, Any]],
+) -> None:
+    """Write a complete CSV before atomically publishing it."""
+    destination = Path(output_path)
+    fd, temp_name = tempfile.mkstemp(
+        dir=destination.parent,
+        prefix=f".{destination.name}.",
+        suffix=".tmp",
+    )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
+            fd = -1
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, destination)
+    except BaseException:
+        if fd >= 0:
+            os.close(fd)
+        temp_path.unlink(missing_ok=True)
         raise
 
 

@@ -1,4 +1,6 @@
 """Tests for CSV loader module."""
+from __future__ import annotations
+
 from calculator_csv_loader import (
     validate_csv_file,
     load_csv_expressions,
@@ -7,10 +9,14 @@ from calculator_csv_loader import (
 import tempfile
 import os
 
+import pytest
 
-def test_validate_csv_file_missing_file():
+import calculator_csv_loader
+
+
+def test_validate_csv_file_missing_file(tmp_path):
     """Test validate_csv_file with missing file."""
-    result = validate_csv_file("/nonexistent.csv")
+    result = validate_csv_file(str(tmp_path / "nonexistent.csv"))
     assert result is False
 
 
@@ -82,6 +88,15 @@ def test_load_csv_expressions_quotes():
         os.unlink(temp_path)
 
 
+def test_load_csv_expressions_missing_trailing_value(tmp_path):
+    csv_file = tmp_path / "short-row.csv"
+    csv_file.write_text("expression,expected_result\n2+2\n", encoding="utf-8")
+
+    expressions = load_csv_expressions(str(csv_file))
+
+    assert expressions[0]["expected_result"] == ""
+
+
 def test_save_results():
     """Test save_results saves to CSV."""
     results = [
@@ -105,11 +120,30 @@ def test_save_results():
         os.unlink(temp_path)
 
 
-def test_load_csv_expressions_missing_file():
+def test_save_results_preserves_existing_file_when_publish_fails(tmp_path, monkeypatch):
+    output = tmp_path / "results.csv"
+    output.write_text("previous\n", encoding="utf-8")
+    monkeypatch.setattr(
+        calculator_csv_loader.os,
+        "replace",
+        lambda *_args: (_ for _ in ()).throw(OSError("replace failed")),
+    )
+
+    with pytest.raises(OSError, match="replace failed"):
+        save_results(
+            [{"expression": "2+2", "expected_result": "4", "actual": "4", "passed": True}],
+            str(output),
+        )
+
+    assert output.read_text(encoding="utf-8") == "previous\n"
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_load_csv_expressions_missing_file(tmp_path):
     """Test load_csv_expressions raises ValueError for missing file."""
     import pytest
     with pytest.raises(ValueError, match="Unable to open CSV file"):
-        load_csv_expressions("/nonexistent.csv")
+        load_csv_expressions(str(tmp_path / "nonexistent.csv"))
 
 
 def test_load_csv_expressions_missing_columns():

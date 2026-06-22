@@ -1,4 +1,6 @@
 """Tests for Calculator interactor module."""
+from __future__ import annotations
+
 from types import SimpleNamespace
 
 import pytest
@@ -21,10 +23,17 @@ class TestCalculatorInteractor:
 
     def test_init_custom_path(self):
         """Test initialization with custom calculator path."""
-        custom_path = r"C:\MyCalculator\calc.exe"
+        custom_path = "custom/calculator.exe"
         interactor = CalculatorInteractor()
         interactor.calculator_path = custom_path
         assert interactor.calculator_path == custom_path
+
+    def test_default_path_uses_windows_environment(self, monkeypatch):
+        monkeypatch.setenv("WINDIR", r"D:\Windows")
+
+        assert CalculatorInteractor._default_calculator_path() == str(
+            calculator_utils.Path(r"D:\Windows") / "System32" / "calc.exe"
+        )
 
     def test_launch_returns_false_when_start_fails(self, monkeypatch):
         """Test launch returns False when pywinauto cannot start Calculator."""
@@ -79,6 +88,18 @@ class TestCalculatorInteractor:
         app.close.assert_called_once_with()
         assert interactor.app is None
         assert interactor.window is None
+
+    def test_close_targets_only_owned_process(self, monkeypatch):
+        interactor = CalculatorInteractor()
+        interactor.process_id = 1234
+        run = Mock()
+        monkeypatch.setattr(calculator_utils.subprocess, "run", run)
+
+        interactor.close()
+
+        run.assert_called_once()
+        assert run.call_args.args[0] == ["taskkill", "/PID", "1234", "/T", "/F"]
+        assert "/IM" not in run.call_args.args[0]
 
     def test_normalize_result_strips_calculator_prefix(self):
         """Test Calculator display text is normalized for comparison."""

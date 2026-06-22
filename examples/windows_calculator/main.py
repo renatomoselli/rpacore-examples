@@ -21,7 +21,9 @@ from rpacore import (
     load_config,
     run_queue_loop,
 )
+from rpacore.paths import resolve_config_paths
 
+from skills._path_utils import unique_destination, validate_contained_path
 from skills.open_calculator import OpenCalculator
 from skills.load_expressions import LoadExpressions
 from skills.process_expressions import ProcessExpressions
@@ -30,6 +32,7 @@ from skills.close_calculator import CloseCalculator
 from skills.move_file import MoveFile
 
 logger = get_logger(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parent
 
 
 def _validate_config(config: dict) -> None:
@@ -41,7 +44,6 @@ def _validate_config(config: dict) -> None:
         ("output_dir", str),
         ("done_dir", str),
         ("failed_dir", str),
-        ("calculator_path", str),
     ):
         if key not in config:
             raise SystemException(f"Missing required config key: {key}", action="main")
@@ -51,6 +53,21 @@ def _validate_config(config: dict) -> None:
                 f"got {type(config[key]).__name__}",
                 action="main",
             )
+
+    calculator_path = config.get("calculator_path")
+    if calculator_path is not None and (
+        type(calculator_path) is not str or not calculator_path.strip()
+    ):
+        raise SystemException(
+            "Config key 'calculator_path' must be a non-empty string when provided",
+            action="main",
+        )
+
+    if config["engine_max_retries"] < 0:
+        raise SystemException(
+            "Config key 'engine_max_retries' must be non-negative",
+            action="main",
+        )
 
     queue_config = config.get("queue")
     if not isinstance(queue_config, dict):
@@ -123,60 +140,47 @@ def _move_failed_file(item: QueueItem, config: dict) -> None:
     file_path = item.payload.get("file_path")
     failed_dir = config.get("failed_dir")
     if not isinstance(file_path, str) or not isinstance(failed_dir, str):
-        return
+        raise SystemException(
+            f"Cannot move failed file: file_path={file_path!r}, failed_dir={failed_dir!r}",
+            action="move_failed_file",
+        )
 
-    src = Path(file_path)
+    input_dir = config.get("input_dir")
+    if not isinstance(input_dir, str):
+        raise SystemException("Missing input_dir for failed-file move", action="move_failed_file")
+    src = validate_contained_path(file_path, input_dir, action="move_failed_file")
     if not src.exists():
-        return
+        raise SystemException(f"Failed source file does not exist: {src}", action="move_failed_file")
 
     dst_dir = Path(failed_dir)
     dst_dir.mkdir(parents=True, exist_ok=True)
-    dst = _unique_destination(dst_dir, src.name)
+    dst = unique_destination(dst_dir, src.name, action="move_failed_file")
 
     try:
         shutil.move(str(src), str(dst))
-    except OSError:
-        logger.exception("Failed to move %s to %s", src, dst)
-
-
-def _unique_destination(directory: Path, filename: str) -> Path:
-    dst = directory / filename
-    if not dst.exists():
-        return dst
-
-    stem = dst.stem
-    suffix = dst.suffix
-    for index in range(1, 1000):
-        candidate = directory / f"{stem}_{index}{suffix}"
-        if not candidate.exists():
-            return candidate
-
-    raise SystemException(f"Unable to find available destination for {filename}", action="move_file")
+    except OSError as exc:
+        raise SystemException(
+            f"Failed to move {src} to {dst}: {exc}",
+            action="move_failed_file",
+        ) from exc
 
 
 def _load_example_config() -> dict:
     config_path = Path(__file__).with_name("config.toml")
     config = dict(load_config(str(config_path)))
-    base_dir = config_path.parent
-
-    for key in ("input_dir", "output_dir", "done_dir", "failed_dir", "transaction_db_path"):
-        value = config.get(key)
-        if isinstance(value, str):
-            path = Path(value)
-            if not path.is_absolute():
-                config[key] = str(base_dir / path)
-
-    queue_config = config.get("queue")
-    if isinstance(queue_config, dict):
-        queue_config = dict(queue_config)
-        db_path = queue_config.get("db_path")
-        if isinstance(db_path, str):
-            path = Path(db_path)
-            if not path.is_absolute():
-                queue_config["db_path"] = str(base_dir / path)
-        config["queue"] = queue_config
-
-    return config
+    return resolve_config_paths(
+        config,
+        [
+            "input_dir",
+            "output_dir",
+            "done_dir",
+            "failed_dir",
+            "transaction_db_path",
+            "queue.db_path",
+        ],
+        base_dir=PROJECT_ROOT,
+        root=PROJECT_ROOT,
+    )
 
 
 def main() -> None:

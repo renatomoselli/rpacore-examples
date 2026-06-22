@@ -1,10 +1,11 @@
 """RPA Core skill: write test results to a CSV report."""
 from __future__ import annotations
 
-import csv
 from pathlib import Path
 
 from rpacore import ProcessContext, Skill, Status, SystemException
+
+from calculator_csv_loader import write_csv_atomically
 
 
 class WriteReport(Skill):
@@ -46,10 +47,7 @@ class WriteReport(Skill):
             )
 
         try:
-            with output_file.open("w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=self.FIELDNAMES)
-                writer.writeheader()
-                writer.writerows(rows)
+            write_csv_atomically(output_file, self.FIELDNAMES, rows)
         except OSError as exc:
             raise SystemException(
                 f"Unable to write report {output_file}: {exc}",

@@ -6,8 +6,6 @@ input_dir = "input"
 output_dir = "output"
 done_dir = "done"
 failed_dir = "failed"
-calculator_path = "C:\\Windows\\System32\\calc.exe"
-
 [queue]
 db_path = "queue.db"
 lease_timeout = 30

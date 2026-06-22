@@ -2,6 +2,8 @@
 
 This module orchestrates the test execution, handles exceptions, and generates reports.
 """
+from __future__ import annotations
+
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import logging

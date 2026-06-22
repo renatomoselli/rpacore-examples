@@ -17,25 +17,31 @@ Install the example:
 pip install -e .
 ```
 
-Run the example with the built-in sample:
+Copy the immutable sample into the runtime inbox, then run the example:
 
 ```powershell
-windows-calculator
+New-Item -ItemType Directory -Force input | Out-Null
+Copy-Item samples\expr_example.csv input\expr_example.csv
+windows-calculator  # or: python main.py
 ```
 
-Or run directly:
+The queue processes each CSV in `input/` exactly once. Runtime files move to
+`done/` on success or `failed/` on validation or expression failure, while the
+tracked sample in `samples/` remains unchanged. Add CSVs with new filenames for
+later runs; remove the local queue and transaction databases to reset demo state.
+Results appear in `output/`.
 
-```powershell
-python main.py
-```
-
-The queue processes each CSV in `input/` exactly once. A sample file (`input/expr_example.csv`) is included — edit it or add more CSVs to `input/` and re-run; new files are picked up automatically. Results appear in `output/` and processed files move to `done/` (success) or `failed/` (validation or expression failure).
+The Calculator executable is discovered from Windows' `WINDIR`/`SystemRoot`
+environment rather than a machine-specific drive path. Set the optional
+`calculator_path` config key only when using a different executable.
 
 ## Architecture
 
 ```text
-input/
-  expr_example.csv          <- sample CSV (edit or replace)
+samples/
+  expr_example.csv          <- immutable tracked sample
+
+input/                      <- runtime inbox (created automatically)
 
 skills/
   load_expressions.py       <- Skill 1: parse and validate CSV
@@ -58,6 +64,8 @@ The queue ensures exactly-once processing per file.
 Configuration follows the current RPA Core API: top-level transaction
 persistence uses `transaction_db_path`, and queue leases use
 `[queue].lease_timeout` rather than the older queue claim-timeout key.
+Configured data paths are resolved inside this example directory, and queued
+source files are validated against `input/` before they are read or moved.
 
 ## CSV Schema
 

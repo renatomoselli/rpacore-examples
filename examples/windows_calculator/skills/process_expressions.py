@@ -34,7 +34,7 @@ class ProcessExpressions(Skill):
                 interactor.type_expression(expression)
                 actual = interactor.get_result()
             except Exception as exc:
-                logger.error("Expression %d: %s", idx + 1, exc)
+                logger.error("Expression %d (%r): %s", idx + 1, expression, exc)
                 results.append(
                     {
                         "expression": expression,

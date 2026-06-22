@@ -17,4 +17,7 @@ class CloseCalculator(Skill):
             logger.warning("No interactor to close")
             return
 
-        interactor.close()
+        try:
+            interactor.close()
+        finally:
+            ctx.resources.pop("interactor", None)

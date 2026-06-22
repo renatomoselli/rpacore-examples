@@ -1,4 +1,6 @@
 """Tests for result verification module."""
+from __future__ import annotations
+
 from calculator_utils import CalculatorResult
 from calculator_test_runner import (
     CalculatorTestRunner,
@@ -35,11 +37,11 @@ def test_calculatortestrunner_init_default():
 
 def test_calculatortestrunner_init_custom_path():
     """Test CalculatorTestRunner initialization with custom calculator path."""
-    runner = CalculatorTestRunner(calculator_path=r"C:\MyCalc.exe")
+    runner = CalculatorTestRunner(calculator_path="custom/calculator.exe")
     # Note: we can't easily assert the interactor's calculator_path
     # but the initialization succeeds
     # The calculator_path is set on the interactor via centralized approach
-    assert runner.interactor.calculator_path == r"C:\MyCalc.exe"
+    assert runner.interactor.calculator_path == "custom/calculator.exe"
 
 
 def test_calculatortestrunner_run_tests_empty():

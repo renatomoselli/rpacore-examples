@@ -18,7 +18,7 @@ def _valid_config() -> dict:
         "output_dir": "output",
         "done_dir": "done",
         "failed_dir": "failed",
-        "calculator_path": r"C:\Windows\System32\calc.exe",
+        "calculator_path": "calculator.exe",
         "queue": {
             "db_path": "queue.db",
             "lease_timeout": 30,
@@ -57,4 +57,3 @@ def test_validate_config_rejects_bool_queue_values(key, value):
 
     with pytest.raises(SystemException):
         _validate_config(config)
-

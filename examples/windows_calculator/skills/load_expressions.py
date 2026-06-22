@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import csv
-from pathlib import Path
 
 from rpacore import BusinessException, ProcessContext, Skill, SystemException
+
+from skills._path_utils import validate_contained_path
 
 
 class LoadExpressions(Skill):
@@ -12,8 +13,8 @@ class LoadExpressions(Skill):
 
     def execute(self, ctx: ProcessContext) -> None:
         file_path = ctx.require_state("file_path", str, action=self.name)
-
-        path = Path(file_path)
+        input_dir = ctx.require_config("input_dir", str, action=self.name)
+        path = validate_contained_path(file_path, input_dir, action=self.name)
 
         try:
             f = path.open("r", newline="", encoding="utf-8")
@@ -39,8 +40,8 @@ class LoadExpressions(Skill):
                 )
 
             for row_num, row in enumerate(reader, start=2):
-                expression = row.get("expression", "").strip()
-                expected_result = row.get("expected_result", "").strip()
+                expression = (row.get("expression") or "").strip()
+                expected_result = (row.get("expected_result") or "").strip()
 
                 if not expression:
                     continue

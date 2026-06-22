@@ -60,6 +60,7 @@ def test_full_workflow_pass_and_fail(tmp_path):
     output_dir = tmp_path / "output"
     done_dir = tmp_path / "done"
     config = {
+        "input_dir": str(tmp_path),
         "output_dir": str(output_dir),
         "done_dir": str(done_dir),
     }
@@ -110,7 +111,10 @@ def test_validation_failure_skips_downstream(tmp_path):
     csv_file = tmp_path / "bad.csv"
     csv_file.write_text("wrong,columns\n1,2\n", encoding="utf-8")
 
-    config = {"output_dir": str(tmp_path / "output")}
+    config = {
+        "input_dir": str(tmp_path),
+        "output_dir": str(tmp_path / "output"),
+    }
 
     interactor = MagicMock()
     interactor.launch.return_value = True
@@ -152,6 +156,7 @@ def test_move_file_moves_to_done(tmp_path):
     output_dir = tmp_path / "output"
     done_dir = tmp_path / "done"
     config = {
+        "input_dir": str(tmp_path),
         "output_dir": str(output_dir),
         "done_dir": str(done_dir),
     }
@@ -180,3 +185,41 @@ def test_move_file_moves_to_done(tmp_path):
     assert done_file.exists()
     assert tx.state.get("moved_file") == str(done_file)
     interactor.close.assert_called_once()
+
+
+def test_short_csv_row_is_loaded_without_attribute_error(tmp_path):
+    """A missing trailing value is normalized to an empty expected result."""
+    csv_file = tmp_path / "short-row.csv"
+    csv_file.write_text("expression,expected_result\n2+2\n", encoding="utf-8")
+    tx = Transaction(
+        reference="short-row",
+        skills=[LoadExpressions(name="load_expressions", execution_order=1)],
+    )
+    tx.state["file_path"] = str(csv_file)
+
+    Engine(max_retries=0).run(
+        ProcessContext(transaction=tx, config={"input_dir": str(tmp_path)})
+    )
+
+    assert tx.status == Status.SUCCESSFUL
+    assert tx.state["expressions"][0]["expected_result"] == ""
+
+
+def test_load_rejects_source_outside_input_dir(tmp_path):
+    """Persisted queue payloads cannot read files outside the configured inbox."""
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    outside = tmp_path / "outside.csv"
+    outside.write_text("expression,expected_result\n2+2,4\n", encoding="utf-8")
+    tx = Transaction(
+        reference="outside",
+        skills=[LoadExpressions(name="load_expressions", execution_order=1)],
+    )
+    tx.state["file_path"] = str(outside)
+
+    Engine(max_retries=0).run(
+        ProcessContext(transaction=tx, config={"input_dir": str(input_dir)})
+    )
+
+    assert tx.status == Status.FAILED
+    assert "expressions" not in tx.state
