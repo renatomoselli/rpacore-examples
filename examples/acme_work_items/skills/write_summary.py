@@ -39,13 +39,14 @@ class WriteSummary(Skill):
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(temporary, destination)
-        except OSError as exc:
+        except (OSError, TypeError, ValueError) as exc:
+            raise SystemException("Unable to write ACME summary report", action=self.name) from exc
+        finally:
             if temporary:
                 try:
                     os.unlink(temporary)
                 except OSError:
                     pass
-            raise SystemException("Unable to write ACME summary report", action=self.name) from exc
 
         ctx.state["summary_path"] = str(destination)
         ctx.add_artifact(

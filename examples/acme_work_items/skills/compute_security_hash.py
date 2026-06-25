@@ -4,6 +4,8 @@ import hashlib
 
 from rpacore import ProcessContext, Skill, SystemException
 
+from skills._session import compute_identity_hash
+
 
 class ComputeSecurityHash(Skill):
     """Compute and persist the deterministic intent before remote mutation."""
@@ -17,7 +19,7 @@ class ComputeSecurityHash(Skill):
         work_item_id = ctx.require_state("work_item_id", str, action=self.name)
         discovered_hash = ctx.require_state("discovered_hash", str, action=self.name)
 
-        security_hash = hashlib.sha1(f"{client_id}{wiid}".encode("utf-8")).hexdigest()
+        security_hash = compute_identity_hash(client_id, wiid)
         intent_material = f"{work_item_id}|{discovered_hash}|{security_hash}"
         ctx.state["security_hash"] = security_hash
         ctx.state["update_intent_id"] = hashlib.sha256(

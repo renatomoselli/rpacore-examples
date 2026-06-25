@@ -195,8 +195,11 @@ def scan_inbox(
 
 
 def build_transaction(item: QueueItem, *, run_id: str = "manual") -> Transaction:
-    if set(item.payload) != {"work_item_id", "discovered_hash"}:
-        raise SystemException("Queue payload must contain exactly work_item_id and discovered_hash", action="build_transaction")
+    payload_keys = set(item.payload)
+    if not {"work_item_id", "discovered_hash"} <= payload_keys:
+        raise SystemException("Queue payload must contain work_item_id and discovered_hash", action="build_transaction")
+    if "work_item_url" in payload_keys:
+        raise SystemException("Queue payload must not supply a work_item_url", action="build_transaction")
     work_item_id = item.payload.get("work_item_id")
     discovered_hash = item.payload.get("discovered_hash")
     if not isinstance(work_item_id, str) or not isinstance(discovered_hash, str) or not discovered_hash:

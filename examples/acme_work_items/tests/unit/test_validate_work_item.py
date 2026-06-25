@@ -36,7 +36,8 @@ def test_validate_marks_success_without_failure_sentinel(example_config) -> None
     [
         ({"client_id": ""}, "missing"),
         ({"fetched_type": "WI4"}, "Unsupported"),
-        ({"fetched_status": "closed"}, "already closed"),
+        ({"fetched_status": "closed"}, "unexpected status 'closed'"),
+        ({"fetched_status": "pending"}, "unexpected status 'pending'"),
         ({"fetched_hash": "new"}, "changed since discovery"),
     ],
 )

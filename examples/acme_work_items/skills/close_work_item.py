@@ -53,6 +53,8 @@ class CloseWorkItem(Skill):
                 action=self.name,
                 stop=True,
             )
+        # Record the irreversible remote outcome before optional artifact work.
+        # A failed screenshot must not hide that the item was already closed.
         ctx.state["closed"] = True
         ctx.state["closed_hash"] = item.fingerprint
         ctx.state["idempotency_outcome"] = "already_closed" if item.was_already_closed else "closed"

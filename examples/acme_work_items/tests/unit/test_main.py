@@ -36,13 +36,30 @@ def test_build_transaction_has_explicit_five_skill_order() -> None:
 
 def test_build_transaction_rejects_payload_url() -> None:
     forbidden_key = "work_item_" + "url"
-    with pytest.raises(SystemException, match="exactly"):
+    with pytest.raises(SystemException, match="work_item_url"):
         build_transaction(
             QueueItem(
                 reference="bad",
                 payload={"work_item_id": "1", "discovered_hash": "v1", forbidden_key: "https://evil.test"},
             )
         )
+
+
+def test_build_transaction_accepts_framework_metadata() -> None:
+    transaction = build_transaction(
+        QueueItem(
+            reference="acme-1001",
+            payload={
+                "work_item_id": "1001",
+                "discovered_hash": "v1",
+                "_queue_claimed_at": "2026-06-25T00:00:00Z",
+            },
+        ),
+        run_id="run",
+    )
+
+    assert transaction.metadata["work_item_id"] == "1001"
+    assert transaction.metadata["run_id"] == "run"
 
 
 def test_validate_config_rejects_bool_integer(example_config) -> None:
@@ -147,12 +164,13 @@ def test_failed_summary_transaction_is_persisted(monkeypatch, example_config) ->
         raise SystemException("summary failed", action=self.name)
 
     monkeypatch.setattr("main.WriteSummary.execute", fail)
+    records = [{"work_item_id": "1001", "status": "successful"}]
     with pytest.raises(SystemException, match="summary transaction failed"):
         _run_summary_transaction(
             example_config,
             Engine(max_retries=0),
             run_id="failed-summary",
-            records=[],
+            records=records,
             omitted_record_count=0,
             queue_summary=QueueRunSummary(),
             credentials=FakeCredentials(),
@@ -160,6 +178,8 @@ def test_failed_summary_transaction_is_persisted(monkeypatch, example_config) ->
     persisted = list_transactions(str(example_config["transaction_db_path"]), limit=10)
     assert persisted[0].reference == "acme-summary-failed-summary"
     assert persisted[0].status is Status.FAILED
+    assert persisted[0].state["run_id"] == "failed-summary"
+    assert persisted[0].state["records"] == records
 
 
 class SkillFailure(Skill):

@@ -41,3 +41,21 @@ def test_write_summary_failure_is_persistable(example_config, tmp_path) -> None:
         config=example_config,
     )
     assert transaction.status is Status.FAILED
+
+
+def test_write_summary_cleans_temp_file_after_serialization_failure(
+    monkeypatch,
+    example_config,
+) -> None:
+    def fail_dump(*args, **kwargs) -> None:
+        raise TypeError("not serializable")
+
+    monkeypatch.setattr("skills.write_summary.json.dump", fail_dump)
+    transaction = run_skill(
+        WriteSummary(name="summary", execution_order=1),
+        state={"run_id": "run-3", "records": [], "omitted_record_count": 0, "queue_summary": {}},
+        config=example_config,
+    )
+
+    assert transaction.status is Status.FAILED
+    assert not list(Path(example_config["report_dir"]).glob("*.tmp"))

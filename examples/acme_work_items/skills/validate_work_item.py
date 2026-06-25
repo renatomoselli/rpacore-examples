@@ -28,7 +28,7 @@ class ValidateWorkItem(Skill):
             )
         if status != "open":
             raise BusinessException(
-                "Work item is already closed without replay authorization",
+                f"Work item has unexpected status {status!r} without replay authorization",
                 action=self.name,
                 stop=True,
             )

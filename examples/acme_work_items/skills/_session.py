@@ -45,12 +45,19 @@ class RemoteWorkItem:
     status: str
     identity_hash: str
     fingerprint: str
+    # Real detail pages do not expose comments. This is populated only from a
+    # directly read fake value or after exact real-form verification succeeds.
     stored_comment: str | None = None
     was_already_closed: bool = False
 
 
 class RemoteConflictError(Exception):
     """The remote item no longer satisfies an expected business precondition."""
+
+
+def compute_identity_hash(client_id: str, wiid: str) -> str:
+    """Return the ACME WI5 security hash for one immutable identity pair."""
+    return hashlib.sha1(f"{client_id}{wiid}".encode("utf-8")).hexdigest()
 
 
 def validate_work_item_id(work_item_id: str) -> str:
@@ -102,13 +109,25 @@ class BrowserSession(AbstractContextManager[dict[str, object]]):
         try:
             page = self._healthy_page()
             page.goto(self._url("work-items"), wait_until="domcontentloaded")
-            if "/login" not in page.url:
+            page_path = urlparse(page.url).path.rstrip("/")
+            if page_path == "/work-items":
                 return
+            if page_path != "/login":
+                raise SystemException(
+                    "ACME navigation reached an unsupported authentication page",
+                    action="login",
+                )
+
+            is_fake = page.locator('[data-testid="username"]').count() > 0
+            is_real = page.locator("#email").count() > 0 and page.locator("#password").count() > 0
+            if not is_fake and not is_real:
+                raise SystemException(
+                    "ACME login page does not expose a supported login form",
+                    action="login",
+                )
 
             username = self._credential(credentials, "acme_username")
             password = self._credential(credentials, "acme_password")
-
-            is_fake = page.locator('[data-testid="username"]').count() > 0
             if is_fake:
                 page.get_by_test_id("username").fill(username)
                 page.get_by_test_id("password").fill(password)
@@ -119,8 +138,14 @@ class BrowserSession(AbstractContextManager[dict[str, object]]):
                 page.locator("button[type=submit]").click()
 
             page.wait_for_load_state("domcontentloaded")
-            if "/login" in page.url:
+            page_path = urlparse(page.url).path.rstrip("/")
+            if page_path == "/login":
                 raise SystemException("ACME authentication was rejected", action="login")
+            if page_path != "/work-items":
+                raise SystemException(
+                    "ACME authentication did not reach the work-items page",
+                    action="login",
+                )
         except SystemException:
             raise
         except Exception as exc:
@@ -139,7 +164,7 @@ class BrowserSession(AbstractContextManager[dict[str, object]]):
                     raise ValueError("work-item pagination loop detected")
                 visited_pages.add(page.url)
 
-                is_fake = page.locator('[data-testid="work-item-row"]').count() > 0
+                is_fake = self._is_fake_page(page)
                 if is_fake:
                     for row in page.locator('[data-testid="work-item-row"]').all():
                         work_item_id = validate_work_item_id(row.get_attribute("data-work-item-id") or "")
@@ -214,7 +239,7 @@ class BrowserSession(AbstractContextManager[dict[str, object]]):
     ) -> RemoteWorkItem:
         page = self._load_item(work_item_id)
         current = self._read_item(page, work_item_id)
-        is_fake = page.locator('[data-testid="security-hash-input"]').count() > 0
+        is_fake = self._is_fake_page(page)
         if (
             is_fake
             and current.status == "open"
@@ -282,7 +307,7 @@ class BrowserSession(AbstractContextManager[dict[str, object]]):
         if current.status != "open" or current.fingerprint != expected_hash:
             raise RemoteConflictError("work item changed before close")
         try:
-            if page.locator('[data-testid="close"]').count():
+            if self._is_fake_page(page):
                 page.get_by_test_id("close").click()
                 page.wait_for_load_state("domcontentloaded")
                 closed = self._read_item(page, work_item_id)
@@ -452,12 +477,11 @@ class BrowserSession(AbstractContextManager[dict[str, object]]):
 
     @staticmethod
     def _compute_fingerprint(wiid: str, status: str, date: str) -> str:
+        # These are the mutable fields exposed on both list and detail views.
+        # Client identity is fetched fresh, then guarded by identity_hash before
+        # either remote mutation; it is not available during list discovery.
         material = f"{wiid}|{status.lower()}|{date}"
         return hashlib.sha256(material.encode("utf-8")).hexdigest()
-
-    @staticmethod
-    def _compute_identity_hash(client_id: str, wiid: str) -> str:
-        return hashlib.sha1(f"{client_id}{wiid}".encode("utf-8")).hexdigest()
 
     def _page_or_raise(self) -> Page:
         if self._page is None or self._page.is_closed():
@@ -469,13 +493,25 @@ class BrowserSession(AbstractContextManager[dict[str, object]]):
         page = self._page_or_raise()
         try:
             page.goto(self._url(f"work-items/{quote(work_item_id, safe='')}"), wait_until="domcontentloaded")
-            if page.locator('[data-testid="work-item-detail"]').count():
+            if self._is_fake_page(page):
                 return page
             if f"/work-items/{quote(work_item_id, safe='')}" in page.url:
                 return page
             raise ValueError("work-item detail was not rendered")
         except Exception as exc:
             raise SystemException("Unable to load ACME work item", action="fetch_work_item") from exc
+
+    @staticmethod
+    def _is_fake_page(page: Page) -> bool:
+        return any(
+            page.locator(selector).count() > 0
+            for selector in (
+                '[data-testid="work-item-row"]',
+                '[data-testid="work-item-detail"]',
+                '[data-testid="security-hash-input"]',
+                '[data-testid="close"]',
+            )
+        )
 
     @staticmethod
     def _text(page: Page, test_id: str) -> str:
@@ -508,7 +544,7 @@ class BrowserSession(AbstractContextManager[dict[str, object]]):
                     wiid=wiid,
                     item_type=self._text(page, "item-type"),
                     status=self._text(page, "status").lower(),
-                    identity_hash=self._compute_identity_hash(client_id, wiid),
+                    identity_hash=compute_identity_hash(client_id, wiid),
                     fingerprint=self._text(page, "fingerprint"),
                     stored_comment=self._text(page, "security-hash"),
                 )
@@ -532,7 +568,7 @@ class BrowserSession(AbstractContextManager[dict[str, object]]):
             wiid=wiid,
             item_type=cls._type_code(item_type_full),
             status=status,
-            identity_hash=cls._compute_identity_hash(client_id, wiid),
+            identity_hash=compute_identity_hash(client_id, wiid),
             fingerprint=cls._compute_fingerprint(wiid, status, date),
         )
 

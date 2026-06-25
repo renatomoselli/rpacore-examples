@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rpacore import BusinessException, Status
+import pytest
+from rpacore import BusinessException, Status, SystemException
 
 from skills._session import RemoteConflictError, RemoteWorkItem
 from skills.close_work_item import CloseWorkItem
@@ -10,9 +11,16 @@ from tests.conftest import run_skill
 
 
 class CloseSession:
-    def __init__(self, *, replay: bool = False, conflict: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        replay: bool = False,
+        conflict: bool = False,
+        screenshot_failure: bool = False,
+    ) -> None:
         self.replay = replay
         self.conflict = conflict
+        self.screenshot_failure = screenshot_failure
 
     def close_item(
         self,
@@ -36,6 +44,8 @@ class CloseSession:
         )
 
     def capture_screenshot(self, work_item_id: str, destination: Path) -> Path:
+        if self.screenshot_failure:
+            raise SystemException("screenshot failed", action="screenshot")
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(b"png")
         return destination
@@ -90,3 +100,44 @@ def test_close_conflict_is_terminal_business_failure(monkeypatch, example_config
         config=example_config,
     )
     assert isinstance(transaction.failed_skills()[0].exceptions[-1], BusinessException)
+
+
+@pytest.mark.parametrize(
+    "close_intent",
+    [
+        {"work_item_id": "other", "expected_hash": "updated", "security_hash": "desired"},
+        {"work_item_id": "1001", "expected_hash": "updated", "security_hash": "other"},
+        {"work_item_id": "1001", "expected_hash": 123, "security_hash": "desired"},
+    ],
+)
+def test_close_rejects_mismatched_durable_intent(close_intent, example_config) -> None:
+    state = _state()
+    state["close_intent"] = close_intent
+
+    transaction = run_skill(
+        CloseWorkItem(name="close", execution_order=1),
+        state=state,
+        config=example_config,
+    )
+
+    exception = transaction.failed_skills()[0].exceptions[-1]
+    assert isinstance(exception, BusinessException)
+    assert exception.stop is True
+    assert "does not authorize" in str(exception)
+
+
+def test_screenshot_failure_preserves_verified_remote_close_outcome(monkeypatch, example_config) -> None:
+    monkeypatch.setattr(
+        "skills.close_work_item.require_authenticated_session",
+        lambda ctx: CloseSession(screenshot_failure=True),
+    )
+    transaction = run_skill(
+        CloseWorkItem(name="close", execution_order=1),
+        state=_state(),
+        config=example_config,
+    )
+
+    assert transaction.status is Status.FAILED
+    assert transaction.state["closed"] is True
+    assert transaction.state["idempotency_outcome"] == "closed"
+    assert transaction.artifacts == []

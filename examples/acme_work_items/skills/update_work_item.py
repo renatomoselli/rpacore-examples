@@ -43,6 +43,7 @@ class UpdateWorkItem(Skill):
             or item.status != "open"
         ):
             raise SystemException("Updated work item could not be verified", action=self.name)
+        # Persist audit evidence and the exact close precondition for resume.
         ctx.state["update_applied"] = True
         ctx.state["updated_hash"] = item.fingerprint
         ctx.state["close_intent"] = {

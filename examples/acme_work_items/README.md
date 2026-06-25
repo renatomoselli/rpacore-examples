@@ -87,6 +87,12 @@ item record references one screenshot artifact. Screenshot names are keyed by
 work-item ID, so a verified replay replaces that item's existing file; the
 directory may also contain screenshots from earlier runs.
 
+`update_applied`, `updated_hash`, `closed_hash`, and `idempotency_outcome` are
+durable audit checkpoints, not downstream control flags. In particular, a
+failed screenshot can produce a failed transaction whose idempotency outcome is
+still `closed`: the remote close is irreversible and must remain visible even
+when optional artifact capture fails.
+
 The update and close skills are deliberately idempotent. A process may stop
 after the remote side effect but before its checkpoint. On retry, the update may
 re-submit the same deterministic comment and verify it again. The persisted
