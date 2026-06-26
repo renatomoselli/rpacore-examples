@@ -217,15 +217,15 @@ class WriteOutput(Skill):
     def _csv_row(self, invoice: dict) -> dict[str, str]:
         """Return a normalized CSV row for an invoice."""
         return {
-            "invoice_number": str(invoice.get("invoice_number", "")),
-            "date": str(invoice.get("date", "")),
-            "vendor": str(invoice.get("vendor", "")),
-            "line_items_count": str(
+            "invoice_number": self._csv_safe(invoice.get("invoice_number", "")),
+            "date": self._csv_safe(invoice.get("date", "")),
+            "vendor": self._csv_safe(invoice.get("vendor", "")),
+            "line_items_count": self._csv_safe(
                 invoice.get("line_items_count", len(invoice.get("line_items", [])))
             ),
-            "subtotal": self._format_decimal(invoice.get("subtotal")),
-            "total": self._format_decimal(invoice.get("total")),
-            "currency": str(invoice.get("currency", "USD")),
+            "subtotal": self._csv_safe(self._format_decimal(invoice.get("subtotal"))),
+            "total": self._csv_safe(self._format_decimal(invoice.get("total"))),
+            "currency": self._csv_safe(invoice.get("currency", "USD")),
         }
 
     def _raise_if_duplicate(self, rows: list[dict[str, str]], invoice_number: str) -> None:
@@ -250,6 +250,14 @@ class WriteOutput(Skill):
         if value is None:
             return ""
         return f"{float(value):.2f}"
+
+    @staticmethod
+    def _csv_safe(value: object) -> str:
+        """Return a spreadsheet-safe CSV cell value."""
+        text = str(value)
+        if text and text[0] in "=+-@":
+            return f"'{text}"
+        return text
 
     @staticmethod
     def _find_unique_dest(sample_data_dir: str, destination: str, name: str) -> str:

@@ -19,7 +19,7 @@ from rpacore import (
     load_config,
     save_transaction,
 )
-from rpacore.paths import resolve_config_paths
+from rpacore import resolve_config_paths
 
 from skills.check_working_tree import CheckWorkingTree
 from skills.capture_recent_commits import CaptureRecentCommits

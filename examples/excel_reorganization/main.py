@@ -17,7 +17,7 @@ from rpacore import (
     get_logger,
     configure_logger,
 )
-from rpacore.paths import resolve_config_paths
+from rpacore import resolve_config_paths
 from skills import (
     LoadSalesData,
     GroupByMonth,

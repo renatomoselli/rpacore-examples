@@ -18,7 +18,7 @@ from rpacore import (
     load_config,
     save_transaction,
 )
-from rpacore.paths import resolve_config_paths
+from rpacore import resolve_config_paths
 
 from skills.fetch_posts import FetchPosts
 from skills.fetch_user import FetchUser

@@ -14,7 +14,7 @@ from rpacore import (
     load_config,
     save_transaction,
 )
-from rpacore.paths import resolve_config_paths
+from rpacore import resolve_config_paths
 
 from skills.row import FillRow, SubmitRow
 from skills.score import RecordScore

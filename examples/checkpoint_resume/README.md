@@ -101,8 +101,8 @@ python main.py
 
 This will:
 
-1. Execute the first run (save_state succeeds, fail_task fails)
-2. Persist the transaction to `rpacore.db`
+1. Execute the first run with strict engine checkpoints to `rpacore.db`
+2. Preserve save_state's successful status and state after fail_task fails
 3. Resume the transaction (fail_task runs again and succeeds)
 4. Print a summary showing the final counter value and resume flag
 

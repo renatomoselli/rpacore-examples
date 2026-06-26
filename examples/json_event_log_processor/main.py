@@ -16,7 +16,7 @@ from rpacore import (
     load_config,
     save_transaction,
 )
-from rpacore.paths import resolve_config_paths
+from rpacore import resolve_config_paths
 
 from skills.load_json_file import LoadJsonFile
 from skills.validate_events import ValidateEvents

@@ -106,6 +106,29 @@ class TestScanInbox:
 
         assert result == 1
 
+    def test_scan_inbox_skips_symlink_escape(self, tmp_env: Path):
+        """Symlinked PDFs resolving outside the inbox must not be queued."""
+        sample_data_dir = tmp_env / "sample_data"
+        outside_dir = tmp_env / "outside"
+        sample_data_dir.mkdir()
+        outside_dir.mkdir()
+        outside_pdf = outside_dir / "escape.pdf"
+        outside_pdf.write_text("fake pdf", encoding="utf-8")
+        link_path = sample_data_dir / "escape.pdf"
+        try:
+            link_path.symlink_to(outside_pdf)
+        except OSError as exc:
+            pytest.skip(f"Symlinks unavailable: {exc}")
+
+        queue = MagicMock()
+        queue.add_once = MagicMock(return_value=True)
+        config = {"sample_data_dir": str(sample_data_dir)}
+
+        result = scan_inbox(config, queue)
+
+        assert result == 0
+        queue.add_once.assert_not_called()
+
     def test_scan_inbox_idempotent_enqueue(self, tmp_env: Path):
         """Test that add_once returns False for duplicate references."""
         sample_data_dir = str(tmp_env / "sample_data")

@@ -73,8 +73,14 @@ def main() -> None:
         metadata={"example": "checkpoint_resume"},
         skills=_create_skills(),
     )
-    engine.run(ProcessContext(transaction=tx, config=config))
-    _save_transaction(tx, db_path, checkpoint_path=config["checkpoint_path"])
+    engine.run(
+        ProcessContext(transaction=tx, config=config),
+        checkpoint=lambda transaction: _save_transaction(
+            transaction,
+            db_path,
+            checkpoint_path=config["checkpoint_path"],
+        ),
+    )
 
     logger.info("First run status: %s", tx.status)
     _log_history(tx.history)
@@ -92,10 +98,12 @@ def main() -> None:
             skills=_create_skills(),
             db_path=db_path,
         )
-        engine.run(ProcessContext(transaction=resumed_tx, config=resume_config))
         # Keep the existing checkpoint artifact if resume persistence fails; it
         # still represents the successful pre-resume state.
-        _save_transaction(resumed_tx, db_path)
+        engine.run(
+            ProcessContext(transaction=resumed_tx, config=resume_config),
+            checkpoint=lambda transaction: _save_transaction(transaction, db_path),
+        )
         final_tx = resumed_tx
 
         logger.info("Resume status: %s", resumed_tx.status)

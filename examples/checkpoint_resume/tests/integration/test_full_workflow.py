@@ -50,8 +50,10 @@ def _run_first_run(db_path: str, checkpoint_path: str, fail_on_first_run: bool =
         metadata={"example": "checkpoint_resume"},
         skills=_create_skills(),
     )
-    Engine(max_retries=0).run(ProcessContext(transaction=tx, config=config))
-    save_transaction(tx, db_path=db_path)
+    Engine(max_retries=0).run(
+        ProcessContext(transaction=tx, config=config),
+        checkpoint=lambda transaction: save_transaction(transaction, db_path=db_path),
+    )
     return tx, config
 
 
@@ -73,8 +75,10 @@ def _resume_and_run(
         skills=_create_skills(),
         db_path=db_path,
     )
-    Engine(max_retries=0).run(ProcessContext(transaction=resumed_tx, config=config))
-    save_transaction(resumed_tx, db_path=db_path)
+    Engine(max_retries=0).run(
+        ProcessContext(transaction=resumed_tx, config=config),
+        checkpoint=lambda transaction: save_transaction(transaction, db_path=db_path),
+    )
     return resumed_tx, config
 
 

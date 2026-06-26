@@ -1,1 +1,1 @@
-rpacore
+rpacore==0.1.0

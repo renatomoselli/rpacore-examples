@@ -21,7 +21,7 @@ from rpacore import (
     load_config,
     run_queue_loop,
 )
-from rpacore.paths import resolve_config_paths
+from rpacore import resolve_config_paths
 
 from skills._path_utils import unique_destination, validate_contained_path
 from skills.open_calculator import OpenCalculator

@@ -131,9 +131,16 @@ def scan_inbox(config: dict, queue: SqliteQueue) -> int:
             action="scan_inbox",
         )
 
-    pdf_files = sorted(inbox_path.glob("*.pdf"))
-    # Skip hidden files
-    pdf_files = [f for f in pdf_files if not f.name.startswith(".")]
+    inbox_root = inbox_path.resolve()
+    pdf_files = []
+    for pdf_file in sorted(inbox_path.glob("*.pdf")):
+        if pdf_file.name.startswith("."):
+            continue
+        resolved = pdf_file.resolve()
+        if not resolved.is_relative_to(inbox_root):
+            logger.warning("Skipping inbox PDF outside configured root: %s", pdf_file.name)
+            continue
+        pdf_files.append(pdf_file)
 
     if not pdf_files:
         logger.warning("No PDF files found in %s. Nothing to queue.", sample_data_dir)

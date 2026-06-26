@@ -137,6 +137,39 @@ class TestWriteOutput:
             assert row["total"] == "250.10"
             assert row["subtotal"] == "100.01"
 
+    def test_write_output_escapes_spreadsheet_formula_prefixes(self, tmp_env: Path):
+        sample_data_dir = str(tmp_env / "sample_data")
+        results_dir = str(tmp_env / "results")
+        output_csv = os.path.join(results_dir, "output.csv")
+        os.makedirs(sample_data_dir, exist_ok=True)
+        os.makedirs(results_dir, exist_ok=True)
+
+        self._run_skill(
+            record=self._make_normalized_record(
+                invoice_number="=cmd|' /C calc'!A0",
+                date="+2024-01-15",
+                vendor="@ACME",
+                subtotal=-10.0,
+                total=-10.0,
+                currency="-USD",
+            ),
+            config={
+                "sample_data_dir": sample_data_dir,
+                "results_dir": results_dir,
+                "output_csv": output_csv,
+            },
+        )
+
+        with open(output_csv, "r", encoding="utf-8", newline="") as f:
+            row = next(csv.DictReader(f))
+
+        assert row["invoice_number"] == "'=cmd|' /C calc'!A0"
+        assert row["date"] == "'+2024-01-15"
+        assert row["vendor"] == "'@ACME"
+        assert row["subtotal"] == "'-10.00"
+        assert row["total"] == "'-10.00"
+        assert row["currency"] == "'-USD"
+
     def test_write_output_missing_normalized_record(self, tmp_env: Path):
         tx = Transaction(reference="test", skills=[WriteOutput(name="write_output", execution_order=1)])
         tx.state["file_path"] = "/nonexistent/file.pdf"
