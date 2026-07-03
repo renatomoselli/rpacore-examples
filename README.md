@@ -23,33 +23,47 @@ It exists to validate the real consumer workflow:
 - packaging logic for RPA Core itself
 - examples that only exist to support the RPA Core test suite
 
+## Framework Compatibility
+
+These examples target RPA Core `0.1.0`.
+
+Most example folders include their own `requirements.txt`; those files pin the
+compatible RPA Core release and any example-specific libraries. During release
+rehearsal, install the freshly built local wheel from the exact framework commit
+being validated before running the example requirements or validation script.
+After RPA Core is public, use the released package version.
+
 ## Quick Start
 
-From a sibling checkout of the RPA Core framework repo, build a wheel:
+From the `rpacore-examples` repository root, create and activate a virtual
+environment:
 
 ```powershell
-cd ..\rpacore
-.venv\Scripts\python.exe -m build
-```
-
-From this repo, create and activate a virtual environment:
-
-```powershell
-cd ..\rpacore-examples
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-Install the latest built wheel:
+Install the released package:
 
 ```powershell
-pip install ..\rpacore\dist\rpacore-0.1.0-py3-none-any.whl
+python -m pip install "rpacore==0.1.0"
+```
+
+Or, during release rehearsal, build and install a local wheel from a sibling
+framework checkout:
+
+```powershell
+cd ..\rpacore
+.venv\Scripts\python.exe -m build
+cd ..\rpacore-examples
+python -m pip install ..\rpacore\dist\rpacore-0.1.0-py3-none-any.whl
 ```
 
 Run an example from its own directory:
 
 ```powershell
 cd examples\json_event_log_processor
+python -m pip install -r requirements.txt
 python main.py
 ```
 
