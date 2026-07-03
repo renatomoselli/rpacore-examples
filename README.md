@@ -73,6 +73,16 @@ Most examples include tests:
 python -m pytest tests
 ```
 
+## Community and Support
+
+- [Contributing](CONTRIBUTING.md)
+- [Support](SUPPORT.md)
+- [Security Policy](SECURITY.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Maintainers](MAINTAINERS.md)
+- [Authors](AUTHORS.md)
+- [Notice](NOTICE)
+
 ## Project Layout
 
 Each example under `examples/` follows a consistent structure:
@@ -88,4 +98,8 @@ examples/<name>/
     unit/              # Unit tests per skill
     integration/       # End-to-end workflow tests
 ```
+
+## License
+
+Apache 2.0. See [LICENSE](LICENSE).
 
