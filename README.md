@@ -73,6 +73,16 @@ Most examples include tests:
 python -m pytest tests
 ```
 
+## Release Rehearsal
+
+During RPA Core release rehearsal, this repository must be at the examples
+commit recorded in the framework release manifest. Deterministic examples are
+validated against the freshly built framework wheel, and the resulting
+examples-wheel evidence is referenced by the framework go/no-go draft.
+
+See the framework
+[release rehearsal guide](https://github.com/renatomoselli/rpacore/tree/main/docs/release-rehearsal.md).
+
 ## Community and Support
 
 - [Contributing](CONTRIBUTING.md)
