@@ -16,7 +16,7 @@ It demonstrates:
 ## Prerequisites
 
 - Python 3.11+
-- RPA Core 0.1.0 and Requests 2.33+ (installed from `requirements.txt`)
+- RPA Core 0.1.x and Requests 2.33+ (installed from `requirements.txt`)
 
 ## Setup
 
