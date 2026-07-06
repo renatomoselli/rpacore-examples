@@ -133,9 +133,9 @@ engine.run(
 ```
 
 **Key aspects:**
-- **dict-based data** — `data` is a plain dict, no typed wrapper
-- **shared state** — Same dict passed to all skills in a transaction
-- **no Result<T>** — Data is mutated, not returned
+- **durable state** — JSON-safe workflow values live in `ctx.state`
+- **runtime resources** — Browser/page handles live in `ctx.resources` and are not persisted
+- **no Result<T>** — State is mutated explicitly, not returned
 - **arguments separate** — Skill-specific data in `self.arguments`
 
 ### Error Handling Boundary (CRITICAL: SystemException vs BusinessException)
@@ -220,7 +220,7 @@ class TestFillRow:
         self.mock_tx = Mock(spec=Transaction, reference="fill-row")
         self.mock_ctx = ProcessContext(
             transaction=self.mock_tx,
-            data={"page": self.mock_page, "_pw": Mock()}
+            resources={"page": self.mock_page, "_pw": Mock()}
         )
 
     def test_fills_all_fields(self):

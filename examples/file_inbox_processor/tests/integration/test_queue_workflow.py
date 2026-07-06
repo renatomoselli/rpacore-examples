@@ -149,7 +149,7 @@ def test_business_validation_failure_does_not_add_system_failure(tmp_path):
         )
     )
 
-    # Seed state from payload (migrated: was ProcessContext(..., data={"file_path": ...}))
+    # Seed state from payload.
     tx.state["file_path"] = str(inbox_file)
     Engine(max_retries=1).run(ProcessContext(transaction=tx, config=config))
 
@@ -209,7 +209,7 @@ def test_master_append_is_idempotent_by_source_file(tmp_path):
     for _ in range(2):
         skill = AppendToMaster(name="append_to_master", execution_order=1)
         tx = Transaction(reference="append", skills=[skill])
-        # Seed state (migrated: was ProcessContext(..., data=state))
+        # Seed state from payload.
         for key, value in state.items():
             tx.state[key] = value
         Engine(max_retries=0).run(ProcessContext(transaction=tx, config=config))
