@@ -124,6 +124,11 @@ counts persisted transactions that are neither `SUCCESSFUL` nor `FAILED`. If a f
 is processed but its transaction cannot be written to `rpacore.db`, the batch
 continues and the persistence problem is listed in `persistence_errors`.
 
+The error report queries the database by the current run's persisted `run_id` and
+continues through every matching result page before loading failure details. It is
+therefore scoped to the run even when more than 100 newer transactions from other
+runs exist.
+
 ## Event Schema
 
 Events must conform to this schema:

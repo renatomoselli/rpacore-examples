@@ -3,6 +3,7 @@ import json
 import os
 import sqlite3
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 from rpacore import (
@@ -10,11 +11,51 @@ from rpacore import (
     ProcessContext,
     Skill,
     SystemException,
+    Transaction,
     get_logger,
-    list_transactions,
+    load_transaction,
+    query_transactions,
 )
 
 logger = get_logger(__name__)
+
+
+def _iter_run_transactions(db_path: str, run_id: str) -> Iterator[Transaction]:
+    """Yield complete persisted transactions for one run across query pages."""
+    if not Path(db_path).exists():
+        logger.info(
+            "No transaction database exists at %s; writing an empty report for run %s",
+            db_path,
+            run_id,
+        )
+        return
+
+    cursor: str | None = None
+    while True:
+        page = query_transactions(
+            db_path,
+            metadata_filter={"run_id": run_id},
+            cursor=cursor,
+        )
+        for summary in page.transactions:
+            try:
+                transaction = load_transaction(summary.id, db_path, readonly=True)
+            except KeyError:
+                # A concurrent cleanup may remove a selected record before its
+                # detailed report data is loaded.
+                logger.warning(
+                    "Transaction %s was removed before error-report details could be loaded",
+                    summary.id,
+                )
+                continue
+            if transaction.metadata.get("transaction_kind") != "error-report":
+                yield transaction
+
+        if not page.has_more:
+            return
+        if page.next_cursor is None:
+            raise RuntimeError("Transaction query page omitted its continuation cursor")
+        cursor = page.next_cursor
 
 
 class WriteErrorReport(Skill):
@@ -35,8 +76,8 @@ class WriteErrorReport(Skill):
             )
 
         try:
-            transactions = list_transactions(db_path)
-        except (sqlite3.Error, OSError) as exc:
+            transactions = list(_iter_run_transactions(db_path, run_id))
+        except (sqlite3.Error, OSError, RuntimeError) as exc:
             raise SystemException(
                 f"Failed to read transactions from db {db_path}: {exc}",
                 action=self.name,
