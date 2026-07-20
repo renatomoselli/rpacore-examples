@@ -8,14 +8,19 @@ Pattern: Follows examples/json_event_log_processor/skills/write_output.py:39-45
 """
 
 from __future__ import annotations
-import os
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, Alignment, PatternFill
-from rpacore import BusinessException, ProcessContext, Skill, SystemException, get_logger
+from rpacore import (
+    BusinessException,
+    ProcessContext,
+    Skill,
+    SystemException,
+    atomic_output_path,
+    get_logger,
+)
 
 logger = get_logger(__name__)
 
@@ -80,34 +85,24 @@ class BuildOutputSheets(Skill):
             subtotal = sum(float(row["amount"]) for row in month_data)
             ws.append(["Subtotal", "", subtotal, ""])
 
-        tmp_path: Path | None = None
         try:
-            tmp_handle = tempfile.NamedTemporaryFile(
-                suffix=output_path.suffix,
-                prefix=f".{output_path.stem}-",
-                dir=output_dir_resolved,
-                delete=False,
-            )
-            tmp_path = Path(tmp_handle.name)
-            tmp_handle.close()
+            with atomic_output_path(output_path) as temporary_path:
+                # Save workbook with write_only mode.
+                workbook.save(temporary_path)
 
-            # Save workbook with write_only mode.
-            workbook.save(tmp_path)
+                # WriteOnlyWorksheet cannot format cells, so reopen the same
+                # unpublished sibling before formatting and final publication.
+                # ``atomic_output_path`` uses a .tmp suffix; openpyxl accepts
+                # the sibling through a binary handle without inspecting it.
+                with temporary_path.open("rb") as workbook_file:
+                    workbook = load_workbook(workbook_file)
 
-            # Load the workbook again to apply formatting. This is necessary because
-            # WriteOnlyWorksheet doesn't support cell() method.
-            workbook = load_workbook(tmp_path)
+                for sheet_name in workbook.sheetnames:
+                    ws = workbook[sheet_name]
+                    self._apply_sheet_formatting(ws, data_row_count=len(grouped_data[sheet_name]))
 
-            for sheet_name in workbook.sheetnames:
-                ws = workbook[sheet_name]
-                self._apply_sheet_formatting(ws, data_row_count=len(grouped_data[sheet_name]))
-
-            workbook.save(tmp_path)
-            os.replace(tmp_path, output_path)
-            tmp_path = None
+                workbook.save(temporary_path)
         except Exception as exc:
-            if tmp_path is not None and tmp_path.exists():
-                tmp_path.unlink()
             raise SystemException(f"Failed to build Excel workbook: {exc}", action=self.name) from exc
 
         logger.info("Created Excel workbook: %s", output_path)

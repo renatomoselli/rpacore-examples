@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 from openpyxl import load_workbook
 import skills.build_output_sheets as build_output_sheets
@@ -131,6 +133,8 @@ def test_build_output_sheets_cleans_temp_file_when_reload_fails(tmp_path, monkey
             "output_dir": str(tmp_path),
         },
     )
+    destination = tmp_path / "custom.xlsx"
+    destination.write_text("previous output", encoding="utf-8")
 
     def fail_load_workbook(_path):
         raise OSError("cannot reload")
@@ -140,8 +144,8 @@ def test_build_output_sheets_cleans_temp_file_when_reload_fails(tmp_path, monkey
     with pytest.raises(SystemException, match="Failed to build Excel workbook"):
         BuildOutputSheets(name="build_output_sheets", execution_order=1).execute(ctx)
 
-    assert not (tmp_path / "custom.xlsx").exists()
-    assert list(tmp_path.glob(".custom-*.xlsx")) == []
+    assert destination.read_text(encoding="utf-8") == "previous output"
+    assert list(tmp_path.glob(".custom.xlsx.*.tmp")) == []
 
 
 def test_build_output_sheets_cleans_temp_file_when_replace_fails(tmp_path, monkeypatch):
@@ -154,17 +158,44 @@ def test_build_output_sheets_cleans_temp_file_when_replace_fails(tmp_path, monke
             "output_dir": str(tmp_path),
         },
     )
+    destination = tmp_path / "custom.xlsx"
+    destination.write_text("previous output", encoding="utf-8")
 
     def fail_replace(_src, _dst):
         raise OSError("cannot replace")
 
-    monkeypatch.setattr(build_output_sheets.os, "replace", fail_replace)
+    monkeypatch.setattr(os, "replace", fail_replace)
 
     with pytest.raises(SystemException, match="Failed to build Excel workbook"):
         BuildOutputSheets(name="build_output_sheets", execution_order=1).execute(ctx)
 
-    assert not (tmp_path / "custom.xlsx").exists()
-    assert list(tmp_path.glob(".custom-*.xlsx")) == []
+    assert destination.read_text(encoding="utf-8") == "previous output"
+    assert list(tmp_path.glob(".custom.xlsx.*.tmp")) == []
+
+
+def test_build_output_sheets_preserves_destination_when_fsync_fails(tmp_path, monkeypatch):
+    ctx = make_context(
+        state={
+            "grouped_data": _grouped_data(),
+            "output_filename": "custom.xlsx",
+        },
+        config={
+            "output_dir": str(tmp_path),
+        },
+    )
+    destination = tmp_path / "custom.xlsx"
+    destination.write_text("previous output", encoding="utf-8")
+
+    def fail_fsync(_descriptor):
+        raise OSError("cannot fsync")
+
+    monkeypatch.setattr(os, "fsync", fail_fsync)
+
+    with pytest.raises(SystemException, match="Failed to build Excel workbook"):
+        BuildOutputSheets(name="build_output_sheets", execution_order=1).execute(ctx)
+
+    assert destination.read_text(encoding="utf-8") == "previous output"
+    assert list(tmp_path.glob(".custom.xlsx.*.tmp")) == []
 
 
 def test_build_output_sheets_rejects_empty_employee_name(tmp_path):

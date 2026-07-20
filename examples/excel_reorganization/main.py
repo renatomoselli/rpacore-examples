@@ -7,15 +7,16 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from rpacore import (
+    ConfigField,
     Engine,
-    ProcessContext,
     Status,
     Transaction,
     SystemException,
+    execute_transaction,
     load_config,
-    save_transaction,
     get_logger,
     configure_logger,
+    validate_config,
 )
 from rpacore import resolve_config_paths
 from skills import (
@@ -34,56 +35,43 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 
 LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR"}
 
+CONFIG_FIELDS = (
+    ConfigField("max_retries", int, min_value=0),
+    ConfigField("log_level", str, choices=LOG_LEVELS),
+    ConfigField("csv_path", str, allow_empty=False),
+    ConfigField("output_dir", str, allow_empty=False),
+    ConfigField("transaction_db_path", str, allow_empty=False),
+)
 
-def _validate_config(config: dict) -> None:
-    """Validate config and resolve path values to absolute paths under PROJECT_ROOT.
 
-    Mutates *config* in-place: relative paths are replaced with resolved
-    absolute paths after safety checks pass.
-    """
-    if "transaction_db_path" not in config and "db_path" in config:
+def _validate_config(config: dict[str, object]) -> dict[str, object]:
+    """Return validated config with paths contained under ``PROJECT_ROOT``."""
+    if "db_path" in config:
         raise SystemException(
             "Config key 'db_path' has been renamed to 'transaction_db_path'",
             action="validate_config",
         )
 
-    for key, expected_type in (
-        ("max_retries", int),
-        ("log_level", str),
-        ("csv_path", str),
-        ("output_dir", str),
-        ("transaction_db_path", str),
-    ):
-        if key not in config:
-            raise SystemException(f"Missing required config key: {key}", action="validate_config")
-        if type(config[key]) is not expected_type:
-            raise SystemException(
-                f"Config key '{key}' must be {expected_type.__name__}, got {type(config[key]).__name__}",
-                action="validate_config",
-            )
+    try:
+        validated = validate_config(config, CONFIG_FIELDS)
+        resolved = resolve_config_paths(
+            validated,
+            ["csv_path", "output_dir", "transaction_db_path"],
+            base_dir=PROJECT_ROOT,
+            root=PROJECT_ROOT,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SystemException(f"Invalid config: {exc}", action="validate_config") from exc
 
-    # log_level validation
-    if config["log_level"] not in LOG_LEVELS:
+    csv_path = Path(str(resolved["csv_path"]))
+    if not csv_path.is_file():
         raise SystemException(
-            f"Config key 'log_level' must be one of {sorted(LOG_LEVELS)}, got {config['log_level']!r}",
+            f"Config key 'csv_path' must name an existing file: {csv_path}",
             action="validate_config",
         )
-
-    # Path-type keys: resolved safely under PROJECT_ROOT via resolve_config_paths
-    resolve_config_paths(
-        config,
-        ["csv_path", "output_dir", "transaction_db_path"],
-        base_dir=PROJECT_ROOT,
-    )
-    for key in ("csv_path", "output_dir", "transaction_db_path"):
-        raw_path = Path(str(config[key]))
-        resolved = (raw_path if raw_path.is_absolute() else PROJECT_ROOT / raw_path).resolve()
-        if not resolved.is_relative_to(PROJECT_ROOT):
-            raise SystemException(
-                f"Config key '{key}' must resolve under {PROJECT_ROOT}",
-                action="validate_config",
-            )
-        config[key] = str(resolved)
+    if "output_filename" in config:
+        resolved["output_filename"] = config["output_filename"]
+    return resolved
 
 
 def _cleanup_failed_output(tx: Transaction, logger) -> None:
@@ -100,8 +88,7 @@ def _cleanup_failed_output(tx: Transaction, logger) -> None:
 
 def main() -> None:
     """Run the Excel reorganization workflow."""
-    config = load_config("config.toml")
-    _validate_config(config)
+    config = _validate_config(load_config(PROJECT_ROOT / "config.toml", require_file=True))
     configure_logger(level=str(config["log_level"]))
     logger = get_logger(__name__)
 
@@ -130,9 +117,19 @@ def main() -> None:
         ],
     )
 
-    # Run transaction
-    engine = Engine(max_retries=config["max_retries"])
-    engine.run(ProcessContext(transaction=tx, config=config))
+    try:
+        execute_transaction(
+            tx,
+            config=config,
+            engine=Engine(max_retries=int(config["max_retries"])),
+            transaction_db_path=str(config["transaction_db_path"]),
+        )
+    except Exception as exc:
+        _cleanup_failed_output(tx, logger)
+        raise SystemException(
+            f"Failed to execute and checkpoint transaction: {exc}",
+            action="execute_transaction",
+        ) from exc
 
     if tx.status is not Status.SUCCESSFUL:
         failed = tx.failed_skills()
@@ -140,12 +137,6 @@ def main() -> None:
         logger.error("Workflow failed (%s). Failed skill(s): %s", tx.status, details)
         _cleanup_failed_output(tx, logger)
         sys.exit(1)
-
-    try:
-        save_transaction(tx, db_path=config["transaction_db_path"])
-    except Exception as exc:
-        _cleanup_failed_output(tx, logger)
-        raise SystemException(f"Failed to persist transaction: {exc}", action="save_transaction") from exc
 
     logger.info("Excel reorganization completed successfully")
 
