@@ -17,6 +17,7 @@ class ClassifyOutcome(Skill):
             raise BusinessException(
                 f"Payment {payment.get('payment_id')} missing from bank statement",
                 action=self.name,
+                code="database_reconciliation.payment.missing_from_bank",
             )
 
         expected_amount_str = payment.get("amount")
@@ -25,6 +26,7 @@ class ClassifyOutcome(Skill):
             raise SystemException(
                 f"Current payment amount must be str, got {expected_amount_str!r}",
                 action=self.name,
+                code="database_reconciliation.payment.invalid_internal_amount_type",
             )
         expected_amount = Decimal(expected_amount_str)
 
@@ -37,6 +39,7 @@ class ClassifyOutcome(Skill):
                 raise SystemException(
                     f"Bank candidate amount must be str, got {candidate_amount_str!r}",
                     action=self.name,
+                    code="database_reconciliation.payment.invalid_bank_amount_type",
                 )
             candidate_amount = Decimal(candidate_amount_str)
             if candidate_amount == expected_amount:
@@ -51,6 +54,7 @@ class ClassifyOutcome(Skill):
         raise BusinessException(
             f"Payment {payment.get('payment_id')} amount mismatch for reference {payment.get('reference')}",
             action=self.name,
+            code="database_reconciliation.payment.amount_mismatch",
         )
 
 

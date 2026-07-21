@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import csv
-import tempfile
 from pathlib import Path
 
-from rpacore import ProcessContext, Skill, SystemException
+from rpacore import ProcessContext, Skill, SystemException, atomic_output_path
 
 REPORT_COLUMNS = (
     "payment_id",
@@ -30,27 +29,15 @@ class WriteReconciliationReport(Skill):
 
         path = Path(report_file)
         path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path: Path | None = None
 
         try:
-            with tempfile.NamedTemporaryFile(
-                "w",
-                encoding="utf-8",
-                newline="",
-                dir=path.parent,
-                prefix=f".{path.name}.",
-                suffix=".tmp",
-                delete=False,
-            ) as handle:
-                temp_path = Path(handle.name)
-                writer = csv.DictWriter(handle, fieldnames=REPORT_COLUMNS)
-                writer.writeheader()
-                for result in results:
-                    writer.writerow({column: str(result.get(column, "")) for column in REPORT_COLUMNS})
-            temp_path.replace(path)
+            with atomic_output_path(path) as temporary:
+                with temporary.open("w", encoding="utf-8", newline="") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=REPORT_COLUMNS)
+                    writer.writeheader()
+                    for result in results:
+                        writer.writerow({column: str(result.get(column, "")) for column in REPORT_COLUMNS})
         except OSError as exc:
-            if temp_path is not None:
-                temp_path.unlink(missing_ok=True)
             raise SystemException(f"Unable to write reconciliation report {path}: {exc}", action=self.name) from exc
 
         ctx.add_artifact(
@@ -63,6 +50,7 @@ class WriteReconciliationReport(Skill):
                     "matched": sum(1 for r in results if r.get("status") == "matched"),
                     "missing_from_bank": sum(1 for r in results if r.get("status") == "missing_from_bank"),
                     "amount_mismatch": sum(1 for r in results if r.get("status") == "amount_mismatch"),
+                    "type_error": sum(1 for r in results if r.get("status") == "type_error"),
                 },
             },
         )

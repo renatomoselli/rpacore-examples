@@ -5,6 +5,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from rpacore import (
+    ConfigField,
     Engine,
     ProcessContext,
     Status,
@@ -15,6 +16,7 @@ from rpacore import (
     load_config,
     resolve_config_paths,
     save_transaction,
+    validate_config,
 )
 
 from skills.classify_outcome import ClassifyOutcome
@@ -30,7 +32,21 @@ logger = get_logger(__name__)
 # All config paths must resolve under this root to prevent path traversal.
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+LOG_LEVELS = ("CRITICAL", "DEBUG", "ERROR", "INFO", "WARNING")
+PATH_KEYS = (
+    "transaction_db_path",
+    "internal_records_csv",
+    "bank_statement_csv",
+    "report_file",
+)
+CONFIG_FIELDS = (
+    ConfigField("max_retries", int, min_value=0),
+    ConfigField("log_level", str, choices=LOG_LEVELS),
+    ConfigField("transaction_db_path", str, allow_empty=False),
+    ConfigField("internal_records_csv", str, allow_empty=False),
+    ConfigField("bank_statement_csv", str, allow_empty=False),
+    ConfigField("report_file", str, allow_empty=False),
+)
 
 
 def _last_failure_message(tx: Transaction) -> str:
@@ -61,59 +77,32 @@ def _missing_result_message(payment: dict, payment_tx: Transaction) -> str:
     return f"Payment {payment_id} did not produce a reconciliation result: {details}"
 
 
-def _validate_config(config: dict) -> None:
-    """Validate config and resolve path values to absolute paths under PROJECT_ROOT."""
-    if "transaction_db_path" not in config and "db_path" in config:
+def _validate_config(config: dict[str, object]) -> dict[str, object]:
+    """Return validated config with paths contained under ``PROJECT_ROOT``."""
+    if "db_path" in config:
         raise SystemException(
             "Config key 'db_path' has been renamed to 'transaction_db_path'",
             action="main",
         )
 
-    for key, expected_type in (
-        ("max_retries", int),
-        ("log_level", str),
-        ("transaction_db_path", str),
-        ("internal_records_csv", str),
-        ("bank_statement_csv", str),
-        ("report_file", str),
-    ):
-        if key not in config:
-            raise SystemException(f"Missing required config key: {key}", action="main")
-        # Use exact type checks so booleans do not pass as integers.
-        if type(config[key]) is not expected_type:
-            raise SystemException(
-                f"Config key '{key}' must be {expected_type.__name__}, got {type(config[key]).__name__}",
-                action="main",
-            )
-    if config["max_retries"] < 0:
-        raise SystemException(
-            f"Config key 'max_retries' must be >= 0, got {config['max_retries']}",
-            action="main",
-        )
-    if config["log_level"] not in LOG_LEVELS:
-        raise SystemException(
-            f"Config key 'log_level' must be one of {sorted(LOG_LEVELS)}, got {config['log_level']!r}",
-            action="main",
-        )
-
-    # Resolve paths safely under PROJECT_ROOT (relative paths only)
-    path_keys = ["transaction_db_path", "internal_records_csv", "bank_statement_csv", "report_file"]
-    relative_path_keys = [
-        key for key in path_keys if not Path(str(config[key])).is_absolute()
-    ]
-    if relative_path_keys:
+    try:
+        validated = validate_config(config, CONFIG_FIELDS)
         resolved = resolve_config_paths(
-            config,
-            relative_path_keys,
+            {**config, **validated},
+            PATH_KEYS,
             base_dir=PROJECT_ROOT,
             root=PROJECT_ROOT,
         )
-        config.update(resolved)
+    except SystemException:
+        raise
+    except (KeyError, TypeError, ValueError, OSError) as exc:
+        raise SystemException(f"Invalid config: {exc}", action="main") from exc
+
+    return resolved
 
 
 def main() -> None:
-    config = load_config("config.toml")
-    _validate_config(config)
+    config = _validate_config(load_config(PROJECT_ROOT / "config.toml", require_file=True))
     configure_logger(level=str(config["log_level"]))
 
     engine = Engine(max_retries=int(config["max_retries"]))

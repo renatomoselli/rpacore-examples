@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from rpacore import Engine, ProcessContext, Status, Transaction
+from rpacore import (
+    Engine,
+    OutcomeCategory,
+    ProcessContext,
+    RetryDisposition,
+    Status,
+    Transaction,
+    load_transaction,
+    save_transaction,
+)
 
 from skills.classify_outcome import ClassifyOutcome
 
@@ -37,6 +46,9 @@ def test_classify_outcome_marks_exact_amount_match_successful():
     )
 
     assert tx.status == Status.SUCCESSFUL
+    assert tx.outcome_category is OutcomeCategory.SUCCESSFUL
+    assert tx.retry_disposition is RetryDisposition.NOT_APPLICABLE
+    assert tx.failure_code == ""
     assert tx.state["reconciliation_result"]["status"] == "matched"
     assert tx.state["reconciliation_result"]["reason_code"] == ""
 
@@ -56,6 +68,9 @@ def test_classify_outcome_flags_missing_payment_as_business_exception():
     )
 
     assert tx.status == Status.FAILED
+    assert tx.outcome_category is OutcomeCategory.BUSINESS_FAILED
+    assert tx.retry_disposition is RetryDisposition.NOT_REQUESTED
+    assert tx.failure_code == "database_reconciliation.payment.missing_from_bank"
     assert tx.state["reconciliation_result"]["status"] == "missing_from_bank"
     assert tx.state["reconciliation_result"]["reason_code"] == "missing_from_bank"
     assert "missing from bank statement" in str(tx.failed_skills()[0].exceptions[-1])
@@ -83,6 +98,9 @@ def test_classify_outcome_flags_amount_mismatch_as_business_exception():
     )
 
     assert tx.status == Status.FAILED
+    assert tx.outcome_category is OutcomeCategory.BUSINESS_FAILED
+    assert tx.retry_disposition is RetryDisposition.NOT_REQUESTED
+    assert tx.failure_code == "database_reconciliation.payment.amount_mismatch"
     assert tx.state["reconciliation_result"]["status"] == "amount_mismatch"
     assert tx.state["reconciliation_result"]["bank_amount"] == "1570.30"
 
@@ -115,6 +133,9 @@ def test_classify_outcome_reports_closest_mismatch_candidate():
     )
 
     assert tx.status == Status.FAILED
+    assert tx.outcome_category is OutcomeCategory.BUSINESS_FAILED
+    assert tx.retry_disposition is RetryDisposition.NOT_REQUESTED
+    assert tx.failure_code == "database_reconciliation.payment.amount_mismatch"
     assert tx.state["reconciliation_result"]["status"] == "amount_mismatch"
     assert tx.state["reconciliation_result"]["bank_amount"] == "1570.30"
 
@@ -141,7 +162,11 @@ def test_classify_outcome_rejects_non_string_payment_amount():
     )
 
     assert tx.status == Status.FAILED
+    assert tx.outcome_category is OutcomeCategory.SYSTEM_FAILED
+    assert tx.retry_disposition is RetryDisposition.RETRY_EXHAUSTED
+    assert tx.failure_code == "database_reconciliation.payment.invalid_internal_amount_type"
     assert tx.state["reconciliation_result"]["status"] == "type_error"
+    assert tx.state["reconciliation_result"]["reason_code"] == "type_error"
     assert "Current payment amount must be str, got 1250" in str(
         tx.failed_skills()[0].exceptions[-1]
     )
@@ -169,11 +194,45 @@ def test_classify_outcome_rejects_non_string_bank_amount():
     )
 
     assert tx.status == Status.FAILED
+    assert tx.outcome_category is OutcomeCategory.SYSTEM_FAILED
+    assert tx.retry_disposition is RetryDisposition.RETRY_EXHAUSTED
+    assert tx.failure_code == "database_reconciliation.payment.invalid_bank_amount_type"
     assert tx.state["reconciliation_result"]["status"] == "type_error"
+    assert tx.state["reconciliation_result"]["reason_code"] == "type_error"
     assert tx.state["reconciliation_result"]["bank_amount"] == 1250
     assert "Bank candidate amount must be str, got 1250" in str(
         tx.failed_skills()[0].exceptions[-1]
     )
+
+
+def test_classify_outcome_persists_canonical_mismatch_facts(tmp_path):
+    tx = _run(
+        {
+            "current_payment": {
+                "payment_id": "PAY-1006",
+                "date": "2024-04-03",
+                "reference": "INV-1006",
+                "amount": "1575.30",
+                "vendor": "Wide World Importers",
+            },
+            "bank_candidates": [
+                {
+                    "posted_date": "2024-04-03",
+                    "reference": "INV-1006",
+                    "amount": "1570.30",
+                    "description": "ACH Wide World Importers",
+                }
+            ],
+        }
+    )
+
+    db_path = tmp_path / "rpacore.db"
+    save_transaction(tx, db_path=str(db_path))
+    persisted = load_transaction(tx.id, db_path=str(db_path))
+
+    assert persisted.outcome_category is OutcomeCategory.BUSINESS_FAILED
+    assert persisted.retry_disposition is RetryDisposition.NOT_REQUESTED
+    assert persisted.failure_code == "database_reconciliation.payment.amount_mismatch"
 
 
 def test_result_helper_uses_defaults_for_missing_bank_entry():

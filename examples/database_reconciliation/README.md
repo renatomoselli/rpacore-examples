@@ -50,7 +50,7 @@ The sample data includes 20 internal payments, 17 exact matches, 2 amount mismat
 | `internal_amount` | Amount from the internal system |
 | `bank_amount` | Amount from the bank statement, if present |
 | `bank_date` | Bank posted date, if present |
-| `status` | `matched`, `amount_mismatch`, or `missing_from_bank` |
+| `status` | `matched`, `amount_mismatch`, `missing_from_bank`, or `type_error` |
 | `reason_code` | Empty for matched records, otherwise the discrepancy reason |
 
 ## RPA Core Behavior
@@ -59,6 +59,17 @@ Each internal payment is one transaction. Matched payments complete successfully
 Missing and mismatched payments raise `BusinessException`, so they are persisted as failed transactions with clear reason messages.
 
 Unreadable or malformed source files raise `SystemException` during setup and stop the run.
+Invalid payment or bank amount types are system failures recorded as
+`type_error` rows, preserving their domain reason code in the CSV.
+
+Configuration is loaded from the `config.toml` beside `main.py`. The database,
+input CSV, and report paths must be non-empty and remain within this example
+directory. The report is published atomically, so a write failure leaves an
+existing report untouched.
+
+The CSV keeps its domain `status` and `reason_code` values. Persisted payment
+transactions separately record their terminal outcome, retry disposition, and
+a stable failure code for operator inspection.
 
 ## Testing
 
