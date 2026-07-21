@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -85,3 +86,18 @@ class TestWriteOutput:
         output_file = Path(self.ctx.config["results_dir"]) / "events_001_cleaned.jsonl"
         assert output_file.exists()
         assert output_file.read_text(encoding="utf-8").strip() == ""
+
+    @pytest.mark.parametrize("failure_target", ["rpacore.paths.os.fsync", "rpacore.paths.os.replace"])
+    def test_keeps_previous_output_and_removes_temporary_on_publication_failure(
+        self,
+        failure_target: str,
+    ) -> None:
+        output_file = Path(self.ctx.config["results_dir"]) / "events_001_cleaned.jsonl"
+        output_file.write_text("previous\n", encoding="utf-8")
+
+        with patch(failure_target, side_effect=OSError("publication failed")):
+            with pytest.raises(SystemException, match="publication failed"):
+                WriteOutput("write_output", 4).execute(self.ctx)
+
+        assert output_file.read_text(encoding="utf-8") == "previous\n"
+        assert list(output_file.parent.glob(".*.tmp")) == []

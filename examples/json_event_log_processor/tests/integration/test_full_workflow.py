@@ -122,7 +122,7 @@ class TestFullWorkflow:
             return original_save_transaction(tx, db_path=db_path)
 
         monkeypatch.setattr(app_main, "PROJECT_ROOT", project_root)
-        monkeypatch.setattr(app_main, "load_config", lambda _: config)
+        monkeypatch.setattr(app_main, "load_config", lambda *args, **kwargs: config)
         monkeypatch.setattr(app_main, "save_transaction", flaky_save_transaction)
 
         app_main.main()
@@ -156,7 +156,7 @@ class TestFullWorkflow:
         }
 
         monkeypatch.setattr(app_main, "PROJECT_ROOT", project_root)
-        monkeypatch.setattr(app_main, "load_config", lambda _: config)
+        monkeypatch.setattr(app_main, "load_config", lambda *args, **kwargs: config)
 
         app_main.main()
 
@@ -168,6 +168,32 @@ class TestFullWorkflow:
 
         saved_txs = list_transactions(str(project_root / "rpacore.db"))
         assert any(tx.reference == "error-report" and tx.status == Status.SUCCESSFUL for tx in saved_txs)
+
+    def test_main_loads_required_project_root_config_from_nested_working_directory(self, tmp_path, monkeypatch):
+        project_root = tmp_path / "project"
+        (project_root / "inbox").mkdir(parents=True)
+        (project_root / "results").mkdir()
+        nested_working_directory = tmp_path / "nested"
+        nested_working_directory.mkdir()
+        (project_root / "config.toml").write_text(
+            '\n'.join([
+                'max_retries = 0',
+                'log_level = "WARNING"',
+                'transaction_db_path = "rpacore.db"',
+                'inbox_dir = "inbox"',
+                'results_dir = "results"',
+                '',
+            ]),
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(app_main, "PROJECT_ROOT", project_root)
+        monkeypatch.chdir(nested_working_directory)
+
+        app_main.main()
+
+        assert (project_root / "results" / "error_report.json").exists()
+        assert (project_root / "rpacore.db").exists()
 
     def test_main_refreshes_report_when_error_report_persistence_fails(self, tmp_path, monkeypatch):
         project_root = tmp_path / "project"
@@ -189,7 +215,7 @@ class TestFullWorkflow:
             return original_save_transaction(tx, db_path=db_path)
 
         monkeypatch.setattr(app_main, "PROJECT_ROOT", project_root)
-        monkeypatch.setattr(app_main, "load_config", lambda _: config)
+        monkeypatch.setattr(app_main, "load_config", lambda *args, **kwargs: config)
         monkeypatch.setattr(app_main, "save_transaction", flaky_save_transaction)
 
         app_main.main()
@@ -223,7 +249,7 @@ class TestFullWorkflow:
         }
 
         monkeypatch.setattr(app_main, "PROJECT_ROOT", project_root)
-        monkeypatch.setattr(app_main, "load_config", lambda _: config)
+        monkeypatch.setattr(app_main, "load_config", lambda *args, **kwargs: config)
 
         app_main.main()
 
@@ -235,3 +261,42 @@ class TestFullWorkflow:
         assert report["successful"] == 0
         assert report["failed"] == 2
         assert sorted(failure["status"] for failure in report["failures"]) == ["FAILED", "FAILED"]
+        assert {failure["outcome_category"] for failure in report["failures"]} == {"business_failed"}
+        assert {failure["retry_disposition"] for failure in report["failures"]} == {"not_requested"}
+        assert {failure["failure_code"] for failure in report["failures"]} == {
+            "json_event_log.validation.invalid_event",
+        }
+
+    def test_main_reports_system_failure_code_for_malformed_json(self, tmp_path, monkeypatch):
+        project_root = tmp_path / "project"
+        inbox_dir = project_root / "inbox"
+        results_dir = project_root / "results"
+        inbox_dir.mkdir(parents=True)
+        results_dir.mkdir()
+        (inbox_dir / "events_001.json").write_text("{not valid JSON", encoding="utf-8")
+        config = {
+            "max_retries": 0,
+            "log_level": "WARNING",
+            "transaction_db_path": "rpacore.db",
+            "inbox_dir": "inbox",
+            "results_dir": "results",
+        }
+
+        monkeypatch.setattr(app_main, "PROJECT_ROOT", project_root)
+        monkeypatch.setattr(app_main, "load_config", lambda *args, **kwargs: config)
+
+        app_main.main()
+
+        report = json.loads((results_dir / "error_report.json").read_text(encoding="utf-8"))
+        assert report["total_transactions"] == 1
+        assert report["failed"] == 1
+        failure = report["failures"]
+        assert len(failure) == 1
+        assert failure[0]["transaction_reference"] == "json-file-events_001"
+        assert failure[0]["status"] == "FAILED"
+        assert failure[0]["retry_count"] == 0
+        assert failure[0]["outcome_category"] == "system_failed"
+        assert failure[0]["retry_disposition"] == "retry_exhausted"
+        assert failure[0]["failure_code"] == "json_event_log.input.malformed_json"
+        assert failure[0]["failed_skills"][0]["skill_name"] == "load_json_file"
+        assert failure[0]["failed_skills"][0]["exception_type"] == "system"

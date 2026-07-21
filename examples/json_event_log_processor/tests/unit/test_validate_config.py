@@ -22,11 +22,27 @@ def _valid_config() -> dict:
 def test_validate_config_accepts_valid_config():
     config = _valid_config()
 
-    _validate_config(config)
+    validated = _validate_config(config)
 
-    assert config["transaction_db_path"].endswith("rpacore.db")
-    assert config["inbox_dir"].endswith("inbox")
-    assert config["results_dir"].endswith("results")
+    assert validated["transaction_db_path"].endswith("rpacore.db")
+    assert validated["inbox_dir"].endswith("inbox")
+    assert validated["results_dir"].endswith("results")
+    assert config == _valid_config()
+
+
+def test_validate_config_resolves_contained_paths_without_mutating_input(tmp_path, monkeypatch):
+    config = _valid_config()
+    config["example_note"] = "preserve unknown settings"
+    original = dict(config)
+    monkeypatch.setattr("main.PROJECT_ROOT", tmp_path)
+
+    validated = _validate_config(config)
+
+    assert validated["transaction_db_path"] == str(tmp_path / "rpacore.db")
+    assert validated["inbox_dir"] == str(tmp_path / "inbox")
+    assert validated["results_dir"] == str(tmp_path / "results")
+    assert validated["example_note"] == "preserve unknown settings"
+    assert config == original
 
 
 def test_validate_config_rejects_old_db_path_key():
@@ -74,6 +90,17 @@ def test_validate_config_rejects_invalid_log_level():
         _validate_config(config)
 
     assert "log_level" in str(exc_info.value)
+
+
+@pytest.mark.parametrize("key", ["transaction_db_path", "inbox_dir", "results_dir"])
+def test_validate_config_rejects_empty_path(key):
+    config = _valid_config()
+    config[key] = ""
+
+    with pytest.raises(SystemException) as exc_info:
+        _validate_config(config)
+
+    assert key in str(exc_info.value)
 
 
 @pytest.mark.parametrize("key", ["transaction_db_path", "inbox_dir", "results_dir"])

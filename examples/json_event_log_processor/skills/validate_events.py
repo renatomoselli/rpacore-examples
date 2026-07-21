@@ -13,7 +13,12 @@ class ValidateEvents(Skill):
     def _reject(self, ctx: ProcessContext, message: str) -> None:
         ctx.state.pop("events", None)
         ctx.transaction.metadata.pop("event_count", None)
-        raise BusinessException(message, action=self.name, stop=True)
+        raise BusinessException(
+            message,
+            action=self.name,
+            stop=True,
+            code="json_event_log.validation.invalid_event",
+        )
 
     def execute(self, ctx: ProcessContext) -> None:
         events = ctx.optional_state("events", list, None, action=self.name)

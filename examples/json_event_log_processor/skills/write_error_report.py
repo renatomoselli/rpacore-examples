@@ -1,8 +1,6 @@
 from __future__ import annotations
 import json
-import os
 import sqlite3
-import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -12,6 +10,7 @@ from rpacore import (
     Skill,
     SystemException,
     Transaction,
+    atomic_output_path,
     get_logger,
     load_transaction,
     query_transactions,
@@ -36,6 +35,7 @@ def _iter_run_transactions(db_path: str, run_id: str) -> Iterator[Transaction]:
             db_path,
             metadata_filter={"run_id": run_id},
             cursor=cursor,
+            readonly=True,
         )
         for summary in page.transactions:
             try:
@@ -114,6 +114,9 @@ class WriteErrorReport(Skill):
                 "transaction_reference": tx.reference,
                 "status": tx.status.name,
                 "retry_count": tx.retry_count,
+                "outcome_category": tx.outcome_category.value,
+                "retry_disposition": tx.retry_disposition.value,
+                "failure_code": tx.failure_code,
                 "failed_skills": [],
             }
             for skill in tx.ordered_skills():
@@ -139,36 +142,26 @@ class WriteErrorReport(Skill):
                     action=self.name,
                 )
 
-            fd, tmp_path = tempfile.mkstemp(
-                dir=results_resolved, suffix=".tmp", prefix="error_report_",
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
+            with atomic_output_path(report_resolved) as temporary:
+                with temporary.open("w", encoding="utf-8") as f:
                     json.dump(report, f, indent=2, default=str)
-                os.replace(tmp_path, str(report_resolved))
 
-                ctx.add_artifact(
-                    name="error_report.json",
-                    path=str(report_resolved),
-                    kind="report",
-                    metadata={
-                        "total_transactions": len(transactions),
-                        "failed_count": len(failed_txs),
-                        "unresolved_count": unresolved_count,
-                        "persistence_error_count": len(persistence_errors),
-                        "run_id": run_id,
-                    },
-                )
-                ctx.transaction.metadata["run_id"] = run_id
-                ctx.transaction.metadata["error_count"] = len(failed_txs)
-                ctx.transaction.metadata["unresolved_count"] = unresolved_count
-                ctx.transaction.metadata["persistence_error_count"] = len(persistence_errors)
-            except Exception:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                raise
+            ctx.add_artifact(
+                name="error_report.json",
+                path=str(report_resolved),
+                kind="report",
+                metadata={
+                    "total_transactions": len(transactions),
+                    "failed_count": len(failed_txs),
+                    "unresolved_count": unresolved_count,
+                    "persistence_error_count": len(persistence_errors),
+                    "run_id": run_id,
+                },
+            )
+            ctx.transaction.metadata["run_id"] = run_id
+            ctx.transaction.metadata["error_count"] = len(failed_txs)
+            ctx.transaction.metadata["unresolved_count"] = unresolved_count
+            ctx.transaction.metadata["persistence_error_count"] = len(persistence_errors)
 
             logger.info("Wrote error report to %s", report_path)
         except OSError as exc:

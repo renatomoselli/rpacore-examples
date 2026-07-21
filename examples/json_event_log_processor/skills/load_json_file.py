@@ -33,15 +33,21 @@ class LoadJsonFile(Skill):
                 data = json.load(f)
         except FileNotFoundError as exc:
             raise SystemException(
-                f"File not found: {current_file}", action=self.name,
+                f"File not found: {current_file}",
+                action=self.name,
+                code="json_event_log.input.missing_file",
             ) from exc
         except json.JSONDecodeError as exc:
             raise SystemException(
-                f"Malformed JSON in {current_file}: {exc}", action=self.name,
+                f"Malformed JSON in {current_file}: {exc}",
+                action=self.name,
+                code="json_event_log.input.malformed_json",
             ) from exc
         except OSError as exc:
             raise SystemException(
-                f"Failed to read file {current_file}: {exc}", action=self.name,
+                f"Failed to read file {current_file}: {exc}",
+                action=self.name,
+                code="json_event_log.input.read_failed",
             ) from exc
 
         # Support both single event object and array of events.

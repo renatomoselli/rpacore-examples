@@ -6,6 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from rpacore import (
+    ConfigField,
     Engine,
     ProcessContext,
     Status,
@@ -14,9 +15,10 @@ from rpacore import (
     configure_logger,
     get_logger,
     load_config,
+    resolve_config_paths,
     save_transaction,
+    validate_config,
 )
-from rpacore import resolve_config_paths
 
 from skills.load_json_file import LoadJsonFile
 from skills.validate_events import ValidateEvents
@@ -31,8 +33,16 @@ logger = get_logger(__name__)
 # under this root to prevent path traversal attacks.  [S1, S2]
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+LOG_LEVELS = ("CRITICAL", "DEBUG", "ERROR", "INFO", "WARNING")
 MAX_RETRIES_UPPER_BOUND = 10  # Upper bound for max_retries config
+PATH_KEYS = ("transaction_db_path", "inbox_dir", "results_dir")
+CONFIG_FIELDS = (
+    ConfigField("max_retries", int, min_value=0, max_value=MAX_RETRIES_UPPER_BOUND),
+    ConfigField("log_level", str, choices=LOG_LEVELS),
+    ConfigField("transaction_db_path", str, allow_empty=False),
+    ConfigField("inbox_dir", str, allow_empty=False),
+    ConfigField("results_dir", str, allow_empty=False),
+)
 
 
 def _record_persistence_error(config: dict[str, Any], tx: Transaction, exc: Exception) -> None:
@@ -87,75 +97,30 @@ def _run_error_report(engine: Engine, config: dict[str, Any], db_path: str, run_
     engine.run(ProcessContext(transaction=refreshed_error_tx, config=config))
 
 
-def _validate_config(config: dict) -> None:
-    """Validate config and resolve path values to absolute paths under PROJECT_ROOT.
-
-    Mutates *config* in-place: relative paths are replaced with resolved
-    absolute paths after safety checks pass.
-    """
-    if "transaction_db_path" not in config and "db_path" in config:
+def _validate_config(config: dict[str, object]) -> dict[str, object]:
+    """Return validated config with paths contained under ``PROJECT_ROOT``."""
+    if "db_path" in config:
         raise SystemException(
             "Config key 'db_path' has been renamed to 'transaction_db_path'",
             action="main",
         )
 
-    for key, expected_type in (
-        ("max_retries", int),
-        ("log_level", str),
-        ("transaction_db_path", str),
-        ("inbox_dir", str),
-        ("results_dir", str),
-    ):
-        if key not in config:
-            raise SystemException(f"Missing required config key: {key}", action="main")
-        # Use ``type() is`` instead of isinstance() to reject bool subclasses
-        # of int/str (e.g. ``max_retries = True`` must not pass as int).  [Q2, Q18]
-        if type(config[key]) is not expected_type:
-            raise SystemException(
-                f"Config key '{key}' must be {expected_type.__name__}, got {type(config[key]).__name__}",
-                action="main",
-            )
-
-    # max_retries bounds  [Q3]
-    max_retries = config["max_retries"]
-    if max_retries < 0:
-        raise SystemException(
-            f"Config key 'max_retries' must be >= 0, got {max_retries}",
-            action="main",
+    try:
+        validated = validate_config(config, CONFIG_FIELDS)
+        return resolve_config_paths(
+            {**config, **validated},
+            PATH_KEYS,
+            base_dir=PROJECT_ROOT,
+            root=PROJECT_ROOT,
         )
-    if max_retries > MAX_RETRIES_UPPER_BOUND:
-        raise SystemException(
-            f"Config key 'max_retries' must be <= {MAX_RETRIES_UPPER_BOUND}, got {max_retries}",
-            action="main",
-        )
-
-    # log_level validation  [Q3]
-    if config["log_level"] not in LOG_LEVELS:
-        raise SystemException(
-            f"Config key 'log_level' must be one of {sorted(LOG_LEVELS)}, got {config['log_level']!r}",
-            action="main",
-        )
-
-    # Path-type keys: resolved safely under PROJECT_ROOT via resolve_config_paths  [S1, S2]
-    resolve_config_paths(
-        config,
-        ["transaction_db_path", "inbox_dir", "results_dir"],
-        base_dir=PROJECT_ROOT,
-    )
-    for key in ("transaction_db_path", "inbox_dir", "results_dir"):
-        raw_path = Path(str(config[key]))
-        resolved = (raw_path if raw_path.is_absolute() else PROJECT_ROOT / raw_path).resolve()
-        if not resolved.is_relative_to(PROJECT_ROOT):
-            raise SystemException(
-                f"Config key '{key}' must resolve under {PROJECT_ROOT}",
-                action="main",
-            )
-        config[key] = str(resolved)
+    except SystemException:
+        raise
+    except (KeyError, TypeError, ValueError, OSError) as exc:
+        raise SystemException(f"Invalid config: {exc}", action="main") from exc
 
 
 def main() -> None:
-    config = load_config("config.toml")
-    _validate_config(config)
+    config = _validate_config(load_config(PROJECT_ROOT / "config.toml", require_file=True))
     configure_logger(level=str(config["log_level"]))
 
     engine = Engine(max_retries=config["max_retries"])

@@ -1,10 +1,8 @@
 from __future__ import annotations
 import json
-import os
-import tempfile
 from pathlib import Path
 
-from rpacore import ProcessContext, Skill, SystemException, get_logger
+from rpacore import ProcessContext, Skill, SystemException, atomic_output_path, get_logger
 
 logger = get_logger(__name__)
 
@@ -29,30 +27,20 @@ class WriteOutput(Skill):
             )
 
         try:
-            fd, tmp_path = tempfile.mkstemp(
-                dir=results_resolved, suffix=".tmp", prefix=f"{stem}_cleaned_",
-            )
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
+            with atomic_output_path(output_resolved) as temporary:
+                with temporary.open("w", encoding="utf-8") as f:
                     for event in normalized_events:
                         f.write(json.dumps(event, ensure_ascii=False) + "\n")
-                os.replace(tmp_path, str(output_resolved))
 
-                ctx.add_artifact(
-                    name=f"{stem}_cleaned.jsonl",
-                    path=str(output_resolved),
-                    kind="output",
-                    metadata={
-                        "source_file": str(current_file),
-                        "event_count": len(normalized_events),
-                    },
-                )
-            except Exception:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                raise
+            ctx.add_artifact(
+                name=f"{stem}_cleaned.jsonl",
+                path=str(output_resolved),
+                kind="output",
+                metadata={
+                    "source_file": str(current_file),
+                    "event_count": len(normalized_events),
+                },
+            )
 
             logger.info(
                 "Wrote %d normalized events to %s",

@@ -13,7 +13,9 @@ import pytest
 
 from rpacore import (
     BusinessException,
+    OutcomeCategory,
     ProcessContext,
+    RetryDisposition,
     Status,
     SystemException,
     Transaction,
@@ -78,6 +80,85 @@ class TestWriteErrorReport:
         assert artifact.metadata["total_transactions"] == 2
         assert artifact.metadata["failed_count"] == 1
         assert artifact.metadata["persistence_error_count"] == 0
+
+    def test_projects_canonical_outcome_facts_without_replacing_existing_fields(self) -> None:
+        from rpacore import Skill as RpaSkill
+
+        validation_skill = RpaSkill(name="validate_events", execution_order=2)
+        validation_skill.exceptions = [
+            BusinessException(
+                "invalid event payload",
+                stop=True,
+                code="json_event_log.validation.invalid_event",
+            )
+        ]
+        business_tx = Transaction(
+            reference="business-failure",
+            status=Status.FAILED,
+            retry_count=7,
+            outcome_category=OutcomeCategory.BUSINESS_FAILED,
+            retry_disposition=RetryDisposition.NOT_REQUESTED,
+            failure_code="json_event_log.validation.invalid_event",
+            skills=[validation_skill],
+            metadata={"run_id": "test-run"},
+        )
+        read_skill = RpaSkill(name="load_json_file", execution_order=1)
+        read_skill.exceptions = [
+            SystemException(
+                "unavailable input",
+                code="json_event_log.input.read_failed",
+            )
+        ]
+        system_tx = Transaction(
+            reference="system-failure",
+            status=Status.FAILED,
+            retry_count=0,
+            outcome_category=OutcomeCategory.SYSTEM_FAILED,
+            retry_disposition=RetryDisposition.RETRY_EXHAUSTED,
+            failure_code="json_event_log.input.read_failed",
+            skills=[read_skill],
+            metadata={"run_id": "test-run"},
+        )
+
+        with patch("skills.write_error_report._iter_run_transactions", return_value=iter([business_tx, system_tx])):
+            WriteErrorReport("write_error_report", 5).execute(self.ctx)
+
+        report = json.loads((Path(self.ctx.config["results_dir"]) / "error_report.json").read_text(encoding="utf-8"))
+        by_reference = {failure["transaction_reference"]: failure for failure in report["failures"]}
+        assert by_reference["business-failure"] == {
+            "transaction_id": business_tx.id,
+            "transaction_reference": "business-failure",
+            "status": "FAILED",
+            "retry_count": 7,
+            "outcome_category": "business_failed",
+            "retry_disposition": "not_requested",
+            "failure_code": "json_event_log.validation.invalid_event",
+            "failed_skills": [{
+                "skill_name": "validate_events",
+                "skill_order": 2,
+                "exception_type": "business",
+                "message": "invalid event payload",
+            }],
+        }
+        assert by_reference["system-failure"]["outcome_category"] == "system_failed"
+        assert by_reference["system-failure"]["retry_disposition"] == "retry_exhausted"
+        assert by_reference["system-failure"]["failure_code"] == "json_event_log.input.read_failed"
+
+    @pytest.mark.parametrize("failure_target", ["skills.write_error_report.json.dump", "rpacore.paths.os.replace"])
+    def test_keeps_previous_report_and_removes_temporary_on_publication_failure(
+        self,
+        failure_target: str,
+    ) -> None:
+        report_path = Path(self.ctx.config["results_dir"]) / "error_report.json"
+        report_path.write_text("previous", encoding="utf-8")
+
+        with patch("skills.write_error_report._iter_run_transactions", return_value=iter(())):
+            with patch(failure_target, side_effect=OSError("publication failed")):
+                with pytest.raises(SystemException, match="publication failed"):
+                    WriteErrorReport("write_error_report", 5).execute(self.ctx)
+
+        assert report_path.read_text(encoding="utf-8") == "previous"
+        assert list(report_path.parent.glob(".*.tmp")) == []
 
     def test_handles_empty_transaction_list(self) -> None:
         results_dir = self.ctx.config["results_dir"]
@@ -185,9 +266,19 @@ class TestWriteErrorReport:
         )
         malformed_page = SimpleNamespace(transactions=(), has_more=True, next_cursor=None)
 
-        with patch("skills.write_error_report.query_transactions", return_value=malformed_page):
+        with patch(
+            "skills.write_error_report.query_transactions",
+            return_value=malformed_page,
+        ) as mock_query:
             with pytest.raises(SystemException, match="omitted its continuation cursor"):
                 WriteErrorReport("write_error_report", 5).execute(self.ctx)
+
+        mock_query.assert_called_once_with(
+            db_path,
+            metadata_filter={"run_id": "test-run"},
+            cursor=None,
+            readonly=True,
+        )
 
     def test_logs_when_a_selected_transaction_is_removed_before_loading(self, tmp_path: Path) -> None:
         db_path = str(tmp_path / "rpacore.db")

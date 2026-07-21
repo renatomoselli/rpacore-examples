@@ -54,6 +54,11 @@ Run the processor:
 python main.py
 ```
 
+The command loads the committed `config.toml` beside `main.py`, so it has the
+same behavior when launched from this directory or a nested working directory.
+The configured database, inbox, and results paths must remain under the
+example directory.
+
 This will:
 1. Process all `.json` files in the `inbox/` folder
 2. Output normalized JSONL files to the `results/` folder
@@ -106,6 +111,9 @@ Each line in the JSONL output follows this schema:
       "transaction_reference": "json-file-events_003",
       "status": "FAILED",
       "retry_count": 0,
+      "outcome_category": "business_failed",
+      "retry_disposition": "not_requested",
+      "failure_code": "json_event_log.validation.invalid_event",
       "failed_skills": [
         {
           "skill_name": "validate_events",
@@ -124,10 +132,19 @@ counts persisted transactions that are neither `SUCCESSFUL` nor `FAILED`. If a f
 is processed but its transaction cannot be written to `rpacore.db`, the batch
 continues and the persistence problem is listed in `persistence_errors`.
 
+Each failure also includes the durable outcome category, the final retry
+disposition, and an optional stable failure code. These are recorded by RPA
+Core at the execution boundary; `retry_count` remains the number of retry
+passes that actually ran, not a substitute for the final retry decision.
+
 The error report queries the database by the current run's persisted `run_id` and
 continues through every matching result page before loading failure details. It is
 therefore scoped to the run even when more than 100 newer transactions from other
 runs exist.
+
+Both JSONL output and the error report publish atomically: an existing complete
+file remains in place if creating, writing, syncing, or replacing the new file
+fails.
 
 ## Event Schema
 
