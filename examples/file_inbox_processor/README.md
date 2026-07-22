@@ -41,6 +41,18 @@ python main.py
 Successful files are appended to `output/master_consolidated.csv` and moved to `done/`.
 Files with business-rule violations are moved to `failed/`.
 
+The entry point always reads its required `config.toml` from the example
+directory, so it can be launched from a nested working directory. Configured
+paths must stay within that directory; queue payload file paths are checked
+against the configured inbox before they are read, appended, or moved.
+
+The included configuration emits protected JSON log format v2. Set
+`log_format = "text"` when a human-readable console log is more useful. The
+run-summary event reports the public `QueueRunSummary` fields for that
+invocation. Its `processed` and `failed` values are compatibility aggregates;
+`retry_scheduled`, `terminal_failed`, `lease_lost`, and
+`transition_unknown` describe the queue disposition precisely.
+
 ## CSV Schema
 
 | Field | Type | Rule |
@@ -57,9 +69,22 @@ It skips files that already have pending or in-progress queue items, so a
 restart after scanning does not create duplicate active work.
 `run_queue_loop` claims each item atomically, runs the RPA Core transaction, and marks the queue item successful or failed.
 
-The RPA Core engine retries retryable `SystemException` failures within the transaction according to `max_retries`. Queue-level retries are disabled in this example because source files are moved after a terminal queue outcome.
+The RPA Core engine retries retryable `SystemException` failures within the transaction according to `max_retries`. The included configuration disables queue-level retries; if you enable them, a retryable source file remains in the inbox until the queue records a terminal outcome. After a queue run returns, terminally failed files are moved to `failed/` on a best-effort basis.
 
 Invalid business data raises `BusinessException`, skips downstream processing, and is not retried. The master CSV includes `source_file` and will not append the same source file twice.
+
+## Inspect Existing State
+
+After the example has created its transaction and queue databases, inspect
+them without modifying the workflow or importing its entry point:
+
+```bash
+rpacore doctor --config config.toml --transaction-db rpacore.db --queue-db queue.db --json
+```
+
+The command is read-only and keeps diagnostics privacy bounded. It is useful
+before a later run when both databases already exist. On a clean checkout, an
+explicit missing database is reported as a failed check and is not created.
 
 ## Testing
 

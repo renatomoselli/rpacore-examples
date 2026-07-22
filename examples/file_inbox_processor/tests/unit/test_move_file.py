@@ -71,7 +71,7 @@ def test_path_traversal_blocked(tmp_path):
         {"done_dir": str(done_dir), "inbox_dir": str(inbox)},
     )
     assert tx.status == Status.FAILED
-    assert "outside allowed directory" in str(tx.failed_skills()[0].exceptions[-1]).lower()
+    assert "resolves outside root" in str(tx.failed_skills()[0].exceptions[-1]).lower()
 
 
 def test_falls_back_to_file_path(tmp_path):

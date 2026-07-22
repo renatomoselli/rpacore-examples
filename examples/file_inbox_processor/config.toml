@@ -1,5 +1,6 @@
 max_retries = 1
 log_level = "INFO"
+log_format = "json"
 transaction_db_path = "rpacore.db"
 
 inbox_dir = "inbox"

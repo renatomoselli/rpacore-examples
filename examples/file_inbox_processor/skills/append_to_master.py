@@ -7,9 +7,7 @@ import os
 from pathlib import Path
 import time
 
-from rpacore import ProcessContext, Skill, Status, SystemException
-
-from skills._path_utils import validate_contained_path
+from rpacore import ProcessContext, Skill, Status, SystemException, resolve_config_path
 
 MASTER_COLUMNS = ("source_file", "branch_id", "date", "revenue", "headcount", "revenue_per_headcount")
 MASTER_LOCK_TIMEOUT_SECONDS = 10.0
@@ -46,7 +44,14 @@ class AppendToMaster(Skill):
         # Skip validation when inbox_dir is absent (unit tests); production always provides it.
         inbox_dir = ctx.config.get("inbox_dir")
         if isinstance(inbox_dir, str) and inbox_dir:
-            source_path = validate_contained_path(raw_source, inbox_dir, action=self.name)
+            source_path = Path(
+                resolve_config_path(
+                    raw_source,
+                    base_dir=inbox_dir,
+                    root=inbox_dir,
+                    key=self.name,
+                )
+            )
         else:
             source_path = Path(raw_source)
         source_file = source_path.name

@@ -25,6 +25,7 @@ from rpacore import (
 
 from main import _move_failed_file_safely, build_transaction, scan_inbox
 from skills.append_to_master import AppendToMaster
+from skills.read_report_file import ReadReportFile
 
 
 def test_queue_workflow_processes_valid_files_and_moves_invalid_file(tmp_path):
@@ -188,7 +189,7 @@ def test_path_traversal_fails_before_business_validation(tmp_path):
     assert len(failed) == 1
     assert failed[0].name == "read_report_file"
     assert isinstance(failed[0].exceptions[-1], SystemException)
-    assert "outside allowed directory" in str(failed[0].exceptions[-1]).lower()
+    assert "resolves outside root" in str(failed[0].exceptions[-1]).lower()
     assert not Path(config["master_csv"]).exists()
     assert outside_file.exists()
 
@@ -226,7 +227,7 @@ def test_stale_lease_is_reclaimed_by_next_worker(tmp_path):
         {
             "db_path": str(tmp_path / "queue.db"),
             "lease_timeout": 1,
-            "max_retries": 0,
+            "max_retries": 1,
         }
     )
     item = QueueItem(
@@ -248,6 +249,109 @@ def test_stale_lease_is_reclaimed_by_next_worker(tmp_path):
     assert reclaimed.id == item.id
     assert reclaimed.status == QueueStatus.IN_PROGRESS
     assert reclaimed.claimed_by == "worker-2"
+
+
+def test_failed_file_outside_inbox_is_not_moved(tmp_path):
+    inbox = tmp_path / "inbox"
+    failed = tmp_path / "failed"
+    inbox.mkdir()
+    outside = tmp_path / "outside.csv"
+    outside.write_text("branch_id,date,revenue,headcount\n101,2024-03-01,1,1\n", encoding="utf-8")
+
+    _move_failed_file_safely(
+        QueueItem(reference="branch-report-outside", payload={"file_path": str(outside)}),
+        {"inbox_dir": str(inbox), "failed_dir": str(failed)},
+    )
+
+    assert outside.exists()
+    assert not (failed / outside.name).exists()
+
+
+def test_main_retries_source_before_terminal_failed_file_disposition(tmp_path, monkeypatch):
+    inbox = tmp_path / "inbox"
+    done = tmp_path / "done"
+    failed = tmp_path / "failed"
+    inbox.mkdir()
+    source = inbox / "retry.csv"
+    source.write_text(
+        "branch_id,date,revenue,headcount\n101,2024-03-01,12450.75,23\n",
+        encoding="utf-8",
+    )
+    config = {
+        "max_retries": 0,
+        "log_level": "WARNING",
+        "log_format": "text",
+        "transaction_db_path": str(tmp_path / "rpacore.db"),
+        "inbox_dir": str(inbox),
+        "done_dir": str(done),
+        "failed_dir": str(failed),
+        "master_csv": str(tmp_path / "output" / "master.csv"),
+        "queue": {
+            "db_path": str(tmp_path / "queue.db"),
+            "lease_timeout": 30,
+            "max_retries": 1,
+        },
+    }
+    original_execute = ReadReportFile.execute
+    attempts = 0
+
+    def fail_once(self, ctx):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise SystemException("temporary read failure", action=self.name)
+        return original_execute(self, ctx)
+
+    monkeypatch.setattr(file_inbox_main, "_load_example_config", lambda: config)
+    monkeypatch.setattr(file_inbox_main, "configure_logger", lambda **_kwargs: file_inbox_main.logger)
+    monkeypatch.setattr(ReadReportFile, "execute", fail_once)
+
+    file_inbox_main.main()
+
+    item = SqliteQueue(config["queue"]).list_items()[0]
+    assert attempts == 2
+    assert item.status == QueueStatus.SUCCESSFUL
+    assert not source.exists()
+    assert (done / source.name).exists()
+    assert not (failed / source.name).exists()
+
+
+def test_main_moves_terminal_business_failure_to_failed(tmp_path, monkeypatch):
+    inbox = tmp_path / "inbox"
+    done = tmp_path / "done"
+    failed = tmp_path / "failed"
+    inbox.mkdir()
+    source = inbox / "invalid.csv"
+    source.write_text(
+        "branch_id,date,revenue,headcount\n101,2024-03-01,12450.75,0\n",
+        encoding="utf-8",
+    )
+    config = {
+        "max_retries": 0,
+        "log_level": "WARNING",
+        "log_format": "text",
+        "transaction_db_path": str(tmp_path / "rpacore.db"),
+        "inbox_dir": str(inbox),
+        "done_dir": str(done),
+        "failed_dir": str(failed),
+        "master_csv": str(tmp_path / "output" / "master.csv"),
+        "queue": {
+            "db_path": str(tmp_path / "queue.db"),
+            "lease_timeout": 30,
+            "max_retries": 1,
+        },
+    }
+
+    monkeypatch.setattr(file_inbox_main, "_load_example_config", lambda: config)
+    monkeypatch.setattr(file_inbox_main, "configure_logger", lambda **_kwargs: file_inbox_main.logger)
+
+    file_inbox_main.main()
+
+    item = SqliteQueue(config["queue"]).list_items()[0]
+    assert item.status == QueueStatus.FAILED
+    assert not source.exists()
+    assert not (done / source.name).exists()
+    assert (failed / source.name).exists()
 
 
 def test_retry_resumes_same_bound_transaction_without_duplicate_append(tmp_path):

@@ -41,6 +41,21 @@ def test_reads_valid_csv(tmp_path):
     assert tx.state["report_file"] == str(csv_file)
 
 
+def test_relative_file_path_is_resolved_under_inbox(tmp_path):
+    inbox = tmp_path / "inbox"
+    inbox.mkdir()
+    csv_file = inbox / "branch_101.csv"
+    csv_file.write_text(
+        "branch_id,date,revenue,headcount\n101,2024-03-01,12450.75,23\n",
+        encoding="utf-8",
+    )
+
+    tx = _run({"file_path": "branch_101.csv"}, config={"inbox_dir": str(inbox)})
+
+    assert tx.status == Status.SUCCESSFUL
+    assert tx.state["report_file"] == str(csv_file)
+
+
 def test_missing_file_path_raises():
     tx = _run({})
     assert tx.status == Status.FAILED
@@ -85,7 +100,7 @@ def test_path_traversal_blocked(tmp_path):
     )
     assert tx.status == Status.FAILED
     failed = tx.failed_skills()[0]
-    assert "outside allowed directory" in str(failed.exceptions[-1]).lower()
+    assert "resolves outside root" in str(failed.exceptions[-1]).lower()
 
 
 def test_symlink_escape_blocked(tmp_path):
@@ -108,7 +123,7 @@ def test_symlink_escape_blocked(tmp_path):
         config=config,
     )
     assert tx.status == Status.FAILED
-    assert "outside allowed directory" in str(tx.failed_skills()[0].exceptions[-1]).lower()
+    assert "resolves outside root" in str(tx.failed_skills()[0].exceptions[-1]).lower()
 
 
 def test_no_inbox_dir_skips_validation(tmp_path):

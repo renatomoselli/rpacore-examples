@@ -3,9 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from rpacore import ProcessContext, Skill, Status, SystemException
-
-from skills._path_utils import validate_contained_path
+from rpacore import ProcessContext, Skill, Status, SystemException, resolve_config_path
 
 
 class MoveFile(Skill):
@@ -31,7 +29,14 @@ class MoveFile(Skill):
         # Skip validation when inbox_dir is absent (unit tests); production always provides it.
         inbox_dir = ctx.config.get("inbox_dir")
         if isinstance(inbox_dir, str) and inbox_dir:
-            src = validate_contained_path(source, inbox_dir, action=self.name)
+            src = Path(
+                resolve_config_path(
+                    source,
+                    base_dir=inbox_dir,
+                    root=inbox_dir,
+                    key=self.name,
+                )
+            )
         else:
             src = Path(source)
         dst_dir = Path(done_dir)
