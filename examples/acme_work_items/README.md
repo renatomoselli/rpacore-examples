@@ -87,6 +87,11 @@ item record references one screenshot artifact. Screenshot names are keyed by
 work-item ID, so a verified replay replaces that item's existing file; the
 directory may also contain screenshots from earlier runs.
 
+For every item transaction, the summary embeds RPA Core's immutable report-v1
+record and its canonical outcome category, retry disposition, failure code,
+and transaction retry count. A build failure with no transaction keeps only
+separate diagnostics; it never receives an invented report or outcome.
+
 `update_applied`, `updated_hash`, `closed_hash`, and `idempotency_outcome` are
 durable audit checkpoints, not downstream control flags. In particular, a
 failed screenshot can produce a failed transaction whose idempotency outcome is
@@ -108,6 +113,11 @@ still use the verified already-closed replay path.
 Notifications use RPA Core's existing `[notification.email]` and
 `[notification.webhook]` configuration. No notification section is committed,
 so the default run sends nothing.
+
+The committed configuration emits protected JSON log format v2. Set
+`log_format = "text"` when a human-readable console log is more useful. The
+completion event reports the exact public queue-run disposition counters for
+that invocation, alongside the bounded summary transaction identity.
 
 ## Tests
 

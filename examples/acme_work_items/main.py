@@ -2,7 +2,6 @@ from __future__ import annotations
 
 """ACME Work Items — durable queue-driven browser automation capstone."""
 
-import math
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
@@ -11,9 +10,9 @@ from uuid import uuid4
 
 from rpacore import (
     BusinessException,
+    ConfigField,
     CredentialProvider,
     Engine,
-    ProcessContext,
     QueueItem,
     QueueRunSummary,
     Notifier,
@@ -24,11 +23,13 @@ from rpacore import (
     build_credential_provider,
     build_notifiers,
     configure_logger,
+    execute_transaction,
+    generate_report,
     get_logger,
     load_config,
     resolve_config_paths,
     run_queue_loop,
-    save_transaction,
+    validate_config,
 )
 
 from skills._session import BrowserSession, DiscoveredItem, validate_work_item_id
@@ -48,7 +49,39 @@ _CONFIG_PATH_KEYS = (
     "screenshot_dir",
     "report_dir",
 )
-_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+_QUEUE_SUMMARY_FIELDS = (
+    "processed",
+    "completed",
+    "failed",
+    "callback_errors",
+    "persistence_errors",
+    "lifecycle_errors",
+    "notification_errors",
+    "retry_scheduled",
+    "terminal_failed",
+    "lease_lost",
+    "transition_unknown",
+)
+_CONFIG_FIELDS = (
+    ConfigField("max_retries", int, min_value=0),
+    ConfigField("retry_delay", (int, float), min_value=0),
+    ConfigField("retry_backoff", (int, float), min_value=1),
+    ConfigField("log_level", str, allow_empty=False),
+    ConfigField("log_format", str, choices=("text", "json")),
+    ConfigField("transaction_db_path", str, allow_empty=False),
+    ConfigField("screenshot_dir", str, allow_empty=False),
+    ConfigField("report_dir", str, allow_empty=False),
+    ConfigField("report_max_records", int, min_value=1),
+    ConfigField("base_url", str, allow_empty=False),
+    ConfigField("credential_provider", str, choices=("env", "keyring")),
+    ConfigField("headless", bool),
+    ConfigField("page_load_timeout_ms", int, min_value=1),
+    ConfigField("action_timeout_ms", int, min_value=1),
+    ConfigField("queue.db_path", str, allow_empty=False),
+    ConfigField("queue.lease_timeout", int, min_value=1),
+    ConfigField("queue.max_retries", int, min_value=0),
+)
 
 
 @dataclass(frozen=True)
@@ -59,57 +92,18 @@ class RunResult:
     summary_transaction: Transaction
 
 
-def _expect_type(config: dict[str, object], key: str, expected: type) -> object:
-    if key not in config:
-        raise SystemException(f"Missing required config key: {key}", action="main")
-    value = config[key]
-    if type(value) is not expected:
-        raise SystemException(
-            f"Config key {key!r} must be {expected.__name__}, got {type(value).__name__}",
-            action="main",
-        )
-    return value
-
-
 def _validate_config(config: dict[str, object]) -> None:
-    for key, expected in (
-        ("max_retries", int),
-        ("log_level", str),
-        ("log_format", str),
-        ("transaction_db_path", str),
-        ("screenshot_dir", str),
-        ("report_dir", str),
-        ("report_max_records", int),
-        ("base_url", str),
-        ("credential_provider", str),
-        ("headless", bool),
-        ("page_load_timeout_ms", int),
-        ("action_timeout_ms", int),
-    ):
-        _expect_type(config, key, expected)
+    try:
+        validate_config(config, _CONFIG_FIELDS)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SystemException(f"Invalid config: {exc}", action="main") from exc
 
-    for key in ("retry_delay", "retry_backoff"):
-        if key not in config or isinstance(config[key], bool) or not isinstance(config[key], (int, float)):
-            raise SystemException(f"Config key {key!r} must be a number", action="main")
-
-    if int(config["max_retries"]) < 0:
-        raise SystemException("max_retries must be >= 0", action="main")
-    if float(config["retry_delay"]) < 0 or not math.isfinite(float(config["retry_delay"])):
-        raise SystemException("retry_delay must be >= 0", action="main")
-    if float(config["retry_backoff"]) < 1 or not math.isfinite(float(config["retry_backoff"])):
-        raise SystemException("retry_backoff must be >= 1", action="main")
-    for key in ("report_max_records", "page_load_timeout_ms", "action_timeout_ms"):
-        if int(config[key]) <= 0:
-            raise SystemException(f"{key} must be > 0", action="main")
-    if str(config["log_level"]).upper() not in _LOG_LEVELS:
-        raise SystemException("log_level is invalid", action="main")
-    if config["log_format"] not in {"text", "json"}:
-        raise SystemException("log_format must be 'text' or 'json'", action="main")
-    if config["credential_provider"] not in {"env", "keyring"}:
-        raise SystemException("credential_provider must be 'env' or 'keyring'", action="main")
     for key in ("transaction_db_path", "screenshot_dir", "report_dir"):
         if not str(config[key]).strip():
             raise SystemException(f"{key} must be a non-empty path", action="main")
+
+    if str(config["log_level"]).upper() not in _LOG_LEVELS:
+        raise SystemException("log_level is invalid", action="main")
 
     parsed = urlparse(str(config["base_url"]))
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -117,16 +111,11 @@ def _validate_config(config: dict[str, object]) -> None:
     if parsed.username or parsed.password:
         raise SystemException("base_url must not contain embedded credentials", action="main")
 
-    queue_config = config.get("queue")
+    queue_config = config["queue"]
     if not isinstance(queue_config, dict):
-        raise SystemException("Missing required [queue] section", action="main")
-    for key, expected in (("db_path", str), ("lease_timeout", int), ("max_retries", int)):
-        if key not in queue_config or type(queue_config[key]) is not expected:
-            raise SystemException(f"queue.{key} has an invalid type", action="main")
-    if not queue_config["db_path"]:
+        raise SystemException("queue must be a configuration table", action="main")
+    if not str(queue_config["db_path"]).strip():
         raise SystemException("queue.db_path must be non-empty", action="main")
-    if queue_config["lease_timeout"] <= 0 or queue_config["max_retries"] < 0:
-        raise SystemException("queue lease/retry values are out of range", action="main")
 
 
 def _load_example_config(path: Path | None = None) -> dict[str, object]:
@@ -195,6 +184,8 @@ def scan_inbox(
 
 
 def build_transaction(item: QueueItem, *, run_id: str = "manual") -> Transaction:
+    if not isinstance(item.payload, dict):
+        raise SystemException("Queue payload must be an object", action="build_transaction")
     payload_keys = set(item.payload)
     if not {"work_item_id", "discovered_hash"} <= payload_keys:
         raise SystemException("Queue payload must contain work_item_id and discovered_hash", action="build_transaction")
@@ -221,7 +212,7 @@ def build_transaction(item: QueueItem, *, run_id: str = "manual") -> Transaction
     )
 
 
-def _failure_details(transaction: Transaction | None, error: Exception | None) -> tuple[str, str, str]:
+def _failure_diagnostics(transaction: Transaction | None, error: Exception | None) -> dict[str, str]:
     failed_skill = ""
     exception: BaseException | None = error
     if transaction is not None:
@@ -231,12 +222,16 @@ def _failure_details(transaction: Transaction | None, error: Exception | None) -
             if failed[-1].exceptions:
                 exception = failed[-1].exceptions[-1]
     if isinstance(exception, BusinessException):
-        return failed_skill, "business", str(exception)[:300]
+        return {"failed_skill": failed_skill, "error_type": "business_exception", "message": str(exception)[:300]}
     if isinstance(exception, SystemException):
-        return failed_skill, "system", str(exception)[:300]
+        return {"failed_skill": failed_skill, "error_type": "system_exception", "message": str(exception)[:300]}
     if exception is not None:
-        return failed_skill, "unexpected", "Unexpected item-processing error"
-    return failed_skill, "none", ""
+        return {
+            "failed_skill": failed_skill,
+            "error_type": "unexpected_exception",
+            "message": "Unexpected item-processing error",
+        }
+    return {"failed_skill": failed_skill} if failed_skill else {}
 
 
 def _project_outcome(
@@ -244,19 +239,34 @@ def _project_outcome(
     transaction: Transaction | None,
     error: Exception | None,
 ) -> dict[str, object]:
-    failed_skill, classification, message = _failure_details(transaction, error)
-    return {
+    record: dict[str, object] = {
         "work_item_id": item.payload.get("work_item_id", ""),
         "queue_reference": item.reference,
-        "transaction_id": transaction.id if transaction else "",
-        "status": str(transaction.status) if transaction else "failed",
-        "retry_count": transaction.retry_count if transaction else item.retry_count,
-        "failed_skill": failed_skill,
-        "classification": classification,
-        "message": message,
-        "idempotency_outcome": transaction.state.get("idempotency_outcome", "") if transaction else "",
-        "artifact_paths": [artifact.path for artifact in transaction.artifacts] if transaction else [],
+        "queue_retry_count": item.retry_count,
     }
+    if transaction is not None:
+        report = generate_report(transaction)
+        if report.record is None:
+            raise SystemException("Unable to create canonical transaction report record", action="summary")
+        record.update(
+            {
+                "transaction_id": transaction.id,
+                "transaction_status": str(transaction.status),
+                "transaction_retry_count": report.retry_count,
+                "outcome": {
+                    "category": str(report.outcome.category),
+                    "retry_disposition": str(report.outcome.retry_disposition),
+                    "failure_code": report.outcome.failure_code,
+                },
+                "report_record": report.record.to_dict(),
+                "idempotency_outcome": transaction.state.get("idempotency_outcome", ""),
+                "artifact_paths": [artifact.path for artifact in transaction.artifacts],
+            }
+        )
+    diagnostics = _failure_diagnostics(transaction, error)
+    if diagnostics:
+        record["diagnostics"] = diagnostics
+    return record
 
 
 def _queue_summary_state(summary: QueueRunSummary) -> dict[str, int]:
@@ -284,8 +294,13 @@ def _run_summary_transaction(
         metadata={"example": "acme_work_items", "run_id": run_id, "summary": True},
         skills=[WriteSummary(name="write_summary", execution_order=1)],
     )
-    engine.run(ProcessContext(transaction=transaction, config=config, credentials=credentials))
-    save_transaction(transaction, db_path=str(config["transaction_db_path"]))
+    execute_transaction(
+        transaction,
+        config=config,
+        credentials=credentials,
+        engine=engine,
+        transaction_db_path=str(config["transaction_db_path"]),
+    )
     if transaction.status is not Status.SUCCESSFUL:
         raise SystemException("ACME summary transaction failed", action="summary")
     return transaction
@@ -302,7 +317,8 @@ def run_example(
     provider = credentials or build_credential_provider(str(config["credential_provider"]))
     configured_notifiers = build_notifiers(config, provider) if notifiers is None else notifiers
     queue_config = config["queue"]
-    assert isinstance(queue_config, dict)
+    if not isinstance(queue_config, dict):
+        raise SystemException("queue must be a configuration table", action="main")
     queue = SqliteQueue(queue_config)
     run_id = uuid4().hex
     enqueued = scan_inbox(config, queue, provider, session_factory=session_factory)
@@ -349,18 +365,32 @@ def run_example(
     return RunResult(run_id, enqueued, queue_summary, summary_transaction)
 
 
+def _log_run_summary(result: RunResult) -> None:
+    logger.info(
+        "ACME run complete.",
+        extra={
+            "event": "acme_run_summary",
+            "run_id": result.run_id,
+            "enqueued": result.enqueued,
+            "summary_transaction_id": result.summary_transaction.id,
+            "summary_transaction_reference": result.summary_transaction.reference,
+            **{
+                field: getattr(result.queue_summary, field)
+                for field in _QUEUE_SUMMARY_FIELDS
+            },
+        },
+    )
+
+
 def main() -> None:
     config = _load_example_config()
-    configure_logger(level=str(config["log_level"]), fmt=str(config["log_format"]))
+    log_format = str(config["log_format"])
+    logger_options: dict[str, object] = {"level": str(config["log_level"]), "fmt": log_format}
+    if log_format == "json":
+        logger_options["json_version"] = 2
+    configure_logger(**logger_options)
     result = run_example(config)
-    logger.info(
-        "ACME run complete: enqueued=%d processed=%d completed=%d failed=%d summary=%s",
-        result.enqueued,
-        result.queue_summary.processed,
-        result.queue_summary.completed,
-        result.queue_summary.failed,
-        result.summary_transaction.state.get("summary_path", ""),
-    )
+    _log_run_summary(result)
 
 
 if __name__ == "__main__":

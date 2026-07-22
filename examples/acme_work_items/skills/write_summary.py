@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from pathlib import Path
 
-from rpacore import ProcessContext, Skill, SystemException
+from rpacore import ProcessContext, Skill, SystemException, atomic_output_path
 
 
 class WriteSummary(Skill):
@@ -26,27 +24,13 @@ class WriteSummary(Skill):
             "queue_summary": queue_summary,
             "records": records,
         }
-        temporary = ""
         try:
-            fd, temporary = tempfile.mkstemp(
-                dir=str(report_dir),
-                prefix=f".summary-{run_id}-",
-                suffix=".tmp",
-            )
-            with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                json.dump(payload, stream, indent=2, ensure_ascii=False)
-                stream.write("\n")
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary, destination)
+            with atomic_output_path(destination) as temporary:
+                with temporary.open("w", encoding="utf-8") as stream:
+                    json.dump(payload, stream, indent=2, ensure_ascii=False)
+                    stream.write("\n")
         except (OSError, TypeError, ValueError) as exc:
             raise SystemException("Unable to write ACME summary report", action=self.name) from exc
-        finally:
-            if temporary:
-                try:
-                    os.unlink(temporary)
-                except OSError:
-                    pass
 
         ctx.state["summary_path"] = str(destination)
         ctx.add_artifact(

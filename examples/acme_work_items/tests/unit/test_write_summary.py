@@ -11,7 +11,7 @@ from tests.conftest import run_skill
 
 def test_write_summary_is_durable_atomic_and_registers_artifact(monkeypatch, example_config) -> None:
     fsync_calls: list[int] = []
-    monkeypatch.setattr("skills.write_summary.os.fsync", fsync_calls.append)
+    monkeypatch.setattr("rpacore.paths.os.fsync", fsync_calls.append)
     transaction = run_skill(
         WriteSummary(name="summary", execution_order=1),
         state={

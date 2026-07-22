@@ -43,7 +43,7 @@ def test_full_queue_workflow_persists_state_and_real_artifacts(
     assert result.summary_transaction.status is Status.SUCCESSFUL
     summary_path = Path(result.summary_transaction.state["summary_path"])
     assert summary_path.is_file()
-    assert json.loads(summary_path.read_text(encoding="utf-8"))["records"][0]["status"] == "successful"
+    assert json.loads(summary_path.read_text(encoding="utf-8"))["records"][0]["transaction_status"] == "successful"
 
     persisted_text = json.dumps(
         [
@@ -77,7 +77,8 @@ def test_concurrent_change_is_terminal_business_failure(
     assert acme_server.state.update_counts == {}
     assert acme_server.state.close_counts == {}
     report = json.loads(Path(result.summary_transaction.state["summary_path"]).read_text(encoding="utf-8"))
-    assert report["records"][0]["classification"] == "business"
+    assert report["records"][0]["outcome"]["category"] == "business_failed"
+    assert report["records"][0]["diagnostics"]["error_type"] == "business_exception"
 
 
 def test_item_closed_after_discovery_is_terminal_without_retry(
