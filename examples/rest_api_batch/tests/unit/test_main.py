@@ -9,7 +9,16 @@ from unittest.mock import Mock
 
 import pytest
 
-from rpacore import Skill, SystemException, Transaction
+from rpacore import (
+    BusinessException,
+    Engine,
+    OutcomeCategory,
+    ProcessContext,
+    RetryDisposition,
+    Skill,
+    SystemException,
+    Transaction,
+)
 
 
 class TestValidateConfig:
@@ -59,7 +68,7 @@ class TestValidateConfig:
         with pytest.raises(SystemException) as exc_info:
             _validate_config(config)
 
-        assert "must be int" in str(exc_info.value)
+        assert "expected int" in str(exc_info.value)
 
     def test_rejects_bool_as_int(self):
         """Test that bool (which is subclass of int) is rejected by strict type check."""
@@ -76,7 +85,7 @@ class TestValidateConfig:
         with pytest.raises(SystemException) as exc_info:
             _validate_config(config)
 
-        assert "must be int" in str(exc_info.value)
+        assert "expected int" in str(exc_info.value)
 
     def test_raises_on_negative_max_retries(self):
         """Test that negative max_retries raises SystemException."""
@@ -93,7 +102,7 @@ class TestValidateConfig:
         with pytest.raises(SystemException) as exc_info:
             _validate_config(config)
 
-        assert "must be >= 0" in str(exc_info.value)
+        assert "expected int >= 0" in str(exc_info.value)
 
     def test_zero_max_retries_is_valid(self):
         """Test that zero max_retries is accepted."""
@@ -165,7 +174,7 @@ class TestMainRuntime:
         monkeypatch.setattr(
             main,
             "load_config",
-            lambda _: {
+            lambda _, *, require_file: {
                 "max_retries": 0,
                 "log_level": "WARNING",
                 "transaction_db_path": str(tmp_path / "rpacore.db"),
@@ -191,7 +200,7 @@ class TestMainRuntime:
         monkeypatch.setattr(
             main,
             "load_config",
-            lambda _: {
+            lambda _, *, require_file: {
                 "max_retries": 0,
                 "log_level": "WARNING",
                 "transaction_db_path": str(tmp_path / "rpacore.db"),
@@ -228,7 +237,7 @@ class TestMainRuntime:
         monkeypatch.setattr(
             main,
             "load_config",
-            lambda _: {
+            lambda _, *, require_file: {
                 "max_retries": 0,
                 "log_level": "WARNING",
                 "transaction_db_path": "rpacore.db",
@@ -259,7 +268,7 @@ class TestMainRuntime:
         monkeypatch.setattr(
             main,
             "load_config",
-            lambda _: {
+            lambda _, *, require_file: {
                 "max_retries": 0,
                 "log_level": "WARNING",
                 "transaction_db_path": "rpacore.db",
@@ -291,7 +300,7 @@ class TestMainRuntime:
         monkeypatch.setattr(
             main,
             "load_config",
-            lambda _: {
+            lambda _, *, require_file: {
                 "max_retries": 0,
                 "log_level": "WARNING",
                 "transaction_db_path": "rpacore.db",
@@ -315,7 +324,7 @@ class TestMainRuntime:
         monkeypatch.setattr(
             main,
             "load_config",
-            lambda _: {
+            lambda _, *, require_file: {
                 "max_retries": 0,
                 "log_level": "WARNING",
                 "transaction_db_path": "rpacore.db",
@@ -347,7 +356,7 @@ class TestMainRuntime:
         monkeypatch.setattr(
             main,
             "load_config",
-            lambda _: {
+            lambda _, *, require_file: {
                 "max_retries": 0,
                 "log_level": "WARNING",
                 "transaction_db_path": "rpacore.db",
@@ -391,7 +400,7 @@ class TestMainRuntime:
         monkeypatch.setattr(
             main,
             "load_config",
-            lambda _: {
+            lambda _, *, require_file: {
                 "max_retries": 0,
                 "log_level": "WARNING",
                 "transaction_db_path": "rpacore.db",
@@ -425,3 +434,158 @@ class TestMainRuntime:
                 db_path=str(tmp_path / "rpacore.db"),
                 description="test transaction",
             )
+
+
+def test_load_example_config_is_rooted_and_does_not_mutate_source(tmp_path, monkeypatch) -> None:
+    import main
+
+    config = {
+        "max_retries": 2,
+        "log_level": "INFO",
+        "transaction_db_path": "state/rpacore.db",
+        "output_file": "output/output.jsonl",
+        "api_mode": "fixture",
+    }
+    monkeypatch.setattr(main, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(main, "load_config", lambda path, *, require_file: dict(config))
+
+    loaded = main._load_example_config()
+
+    assert config["transaction_db_path"] == "state/rpacore.db"
+    assert config["output_file"] == "output/output.jsonl"
+    assert loaded["transaction_db_path"] == str(tmp_path / "state" / "rpacore.db")
+    assert loaded["output_file"] == str(tmp_path / "output" / "output.jsonl")
+
+
+def test_load_example_config_rejects_database_path_outside_project(tmp_path, monkeypatch) -> None:
+    import main
+
+    monkeypatch.setattr(main, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(
+        main,
+        "load_config",
+        lambda path, *, require_file: {
+            "max_retries": 2,
+            "log_level": "INFO",
+            "transaction_db_path": "../outside/rpacore.db",
+            "output_file": "output/output.jsonl",
+            "api_mode": "fixture",
+        },
+    )
+
+    with pytest.raises(SystemException, match="resolves outside root"):
+        main._load_example_config()
+
+
+def test_post_rollback_uses_canonical_business_outcome() -> None:
+    from main import _post_requires_batch_rollback
+    from skills.validate_post import ValidatePost
+
+    transaction = Transaction(
+        reference="post-invalid",
+        state={"current_post": {"id": 1, "title": "", "body": "body", "userId": 1}},
+        skills=[ValidatePost(name="validate_post", execution_order=1)],
+    )
+    Engine(max_retries=0).run(ProcessContext(transaction=transaction, config={}))
+
+    assert transaction.outcome_category is OutcomeCategory.BUSINESS_FAILED
+    assert transaction.retry_disposition is RetryDisposition.NOT_REQUESTED
+    assert transaction.failure_code == "rest_api_batch.post.invalid"
+    assert transaction.retry_count == 0
+    assert _post_requires_batch_rollback(transaction) is False
+
+
+def test_post_rollback_uses_final_canonical_outcome_after_retry() -> None:
+    from main import _post_requires_batch_rollback
+
+    class ChangesFailureKind(Skill):
+        def execute(self, ctx) -> None:
+            if ctx.transaction.retry_count == 0:
+                raise SystemException("transient", action=self.name, code="rest_api_batch.http.request_failed")
+            raise BusinessException("rejected", action=self.name, stop=True, code="rest_api_batch.post.invalid")
+
+    transaction = Transaction(reference="post-retried", skills=[ChangesFailureKind("post", 1)])
+    Engine(max_retries=2).run(ProcessContext(transaction=transaction, config={}))
+
+    assert transaction.outcome_category is OutcomeCategory.BUSINESS_FAILED
+    assert transaction.retry_disposition is RetryDisposition.NOT_REQUESTED
+    assert transaction.failure_code == "rest_api_batch.post.invalid"
+    assert transaction.retry_count == 1
+    assert _post_requires_batch_rollback(transaction) is False
+
+
+def test_post_rollback_requires_zero_retry_system_failure() -> None:
+    from main import _post_requires_batch_rollback
+
+    class AlwaysFails(Skill):
+        def execute(self, ctx) -> None:
+            raise SystemException(
+                "request failed",
+                action=self.name,
+                code="rest_api_batch.http.request_failed",
+            )
+
+    transaction = Transaction(reference="post-zero-retry", skills=[AlwaysFails("post", 1)])
+    Engine(max_retries=0).run(ProcessContext(transaction=transaction, config={}))
+
+    assert transaction.outcome_category is OutcomeCategory.SYSTEM_FAILED
+    assert transaction.retry_disposition is RetryDisposition.RETRY_EXHAUSTED
+    assert transaction.failure_code == "rest_api_batch.http.request_failed"
+    assert transaction.retry_count == 0
+    assert _post_requires_batch_rollback(transaction) is True
+
+
+def test_post_rollback_requires_exhausted_fetch_failure_and_preserves_output(
+    tmp_path, monkeypatch
+) -> None:
+    from main import _post_requires_batch_rollback
+    from skills.enrich_record import EnrichRecord
+    from skills.fetch_user import FetchUser
+    from skills.validate_post import ValidatePost
+    from skills.write_output import WriteOutput
+
+    calls = 0
+
+    def timeout(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise SystemException(
+            "request timed out",
+            action="fetch_user",
+            code="rest_api_batch.http.request_failed",
+        )
+
+    monkeypatch.setattr("skills.fetch_user.fetch_json", timeout)
+    output_file = tmp_path / "output.jsonl"
+    transaction = Transaction(
+        reference="post-timeout",
+        state={
+            "current_post": {
+                "id": 1,
+                "title": "Valid title",
+                "body": "Valid body",
+                "userId": 1,
+            }
+        },
+        skills=[
+            ValidatePost(name="validate_post", execution_order=1),
+            FetchUser(name="fetch_user", execution_order=2),
+            EnrichRecord(name="enrich_record", execution_order=3),
+            WriteOutput(name="write_output", execution_order=4),
+        ],
+    )
+
+    Engine(max_retries=2).run(
+        ProcessContext(
+            transaction=transaction,
+            config={"api_mode": "live", "output_file": str(output_file)},
+        )
+    )
+
+    assert calls == 3
+    assert transaction.outcome_category is OutcomeCategory.SYSTEM_FAILED
+    assert transaction.retry_disposition is RetryDisposition.RETRY_EXHAUSTED
+    assert transaction.failure_code == "rest_api_batch.http.request_failed"
+    assert transaction.retry_count == 2
+    assert _post_requires_batch_rollback(transaction) is True
+    assert not output_file.exists()

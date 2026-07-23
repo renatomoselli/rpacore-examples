@@ -31,6 +31,7 @@ def fetch_json(
         raise SystemException(
             f"Invalid JSON in {resource} response: {exc}",
             action=action,
+            code="rest_api_batch.http.invalid_response",
         ) from exc
     except requests.exceptions.HTTPError as exc:
         raise_http_error(exc, action=action, resource=resource)
@@ -38,16 +39,19 @@ def fetch_json(
         raise SystemException(
             f"Connection error fetching {resource}: {exc}",
             action=action,
+            code="rest_api_batch.http.request_failed",
         ) from exc
     except requests.exceptions.Timeout as exc:
         raise SystemException(
             f"Timeout fetching {resource}: {exc}",
             action=action,
+            code="rest_api_batch.http.request_failed",
         ) from exc
     except requests.exceptions.RequestException as exc:
         raise SystemException(
             f"Error fetching {resource}: {exc}",
             action=action,
+            code="rest_api_batch.http.request_failed",
         ) from exc
 
 
@@ -70,8 +74,10 @@ def raise_http_error(
             f"{resource} request was rejected: {status_code} — {reason}",
             action=action,
             stop=True,
+            code="rest_api_batch.http.request_rejected",
         ) from exc
     raise SystemException(
         f"HTTP error fetching {resource}: {status_code} — {reason}",
         action=action,
+        code="rest_api_batch.http.request_failed",
     ) from exc

@@ -56,5 +56,6 @@ class FetchPosts(Skill):
             raise SystemException(
                 "Posts response must be a JSON array of objects",
                 action=self.name,
+                code="rest_api_batch.http.invalid_response",
             )
         ctx.state["posts"] = posts

@@ -34,7 +34,7 @@ class FetchUser(Skill):
         if type(user_id) is not int or user_id <= 0:
             raise BusinessException(
                 f"Post has invalid or no userId: {user_id!r}",
-                action=self.name, stop=True,
+                action=self.name, stop=True, code="rest_api_batch.user.invalid",
             )
 
         api_mode = ctx.require_config("api_mode", str, action=self.name)
@@ -48,7 +48,7 @@ class FetchUser(Skill):
             if user is None:
                 raise BusinessException(
                     f"Post {post.get('id', 'unknown')} references unknown userId: {user_id!r}",
-                    action=self.name, stop=True,
+                    action=self.name, stop=True, code="rest_api_batch.user.not_found",
                 )
             ctx.state["current_user"] = deepcopy(user)
             return
@@ -65,6 +65,7 @@ class FetchUser(Skill):
             raise SystemException(
                 f"Invalid user {user_id} response: expected an object with id, name, and email",
                 action=self.name,
+                code="rest_api_batch.http.invalid_response",
             )
         returned_user_id = user["id"]
         if (
@@ -75,11 +76,13 @@ class FetchUser(Skill):
             raise SystemException(
                 f"Invalid user {user_id} response: mismatched id {returned_user_id!r}",
                 action=self.name,
+                code="rest_api_batch.http.invalid_response",
             )
         address = user.get("address")
         if address is not None and not isinstance(address, dict):
             raise SystemException(
                 f"Invalid user {user_id} response: address must be an object",
                 action=self.name,
+                code="rest_api_batch.http.invalid_response",
             )
         ctx.state["current_user"] = user

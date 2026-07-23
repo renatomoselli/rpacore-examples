@@ -13,7 +13,7 @@ class EnrichRecord(Skill):
         if type(user.get("id")) is not int or user["id"] <= 0:
             raise BusinessException(
                 f"User has invalid or missing required field: id ({user.get('id')!r})",
-                action=self.name, stop=True,
+                action=self.name, stop=True, code="rest_api_batch.user.invalid",
             )
 
         # Validate required user fields
@@ -22,7 +22,7 @@ class EnrichRecord(Skill):
             if not isinstance(value, str) or not value.strip():
                 raise BusinessException(
                     f"User {user.get('id', 'unknown')} missing required field: {field}",
-                    action=self.name, stop=True,
+                    action=self.name, stop=True, code="rest_api_batch.user.invalid",
                 )
 
         address = user.get("address")
@@ -30,6 +30,7 @@ class EnrichRecord(Skill):
             raise SystemException(
                 f"User {user['id']} has invalid address data: expected an object",
                 action=self.name,
+                code="rest_api_batch.http.invalid_response",
             )
 
         enriched = {

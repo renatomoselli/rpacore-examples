@@ -38,6 +38,9 @@ This will:
 4. Write valid enriched records to `output.jsonl`
 5. Persist transaction state to `rpacore.db` as an audit trail
 
+The entry point always loads the committed `config.toml` beside `main.py`; the
+database and JSONL paths are resolved under that project root.
+
 ## Output
 
 - `output.jsonl` — one JSON object per line, each containing post and enriched user data
@@ -96,6 +99,9 @@ requirements.txt     — Dependencies (requests)
 
 - **BusinessException**: Raised for validation failures and permanent API responses (4xx except 408/429), so they are not retried. Invalid posts are persisted as failed and omitted; a permanent setup failure aborts the batch.
 - **SystemException**: Raised for network errors, retryable HTTP responses (408/429/5xx), or file I/O errors. The Engine retries up to `max_retries` times; if retries are exhausted, the batch aborts and restores the previous run's output.
+- **Canonical terminal truth**: Each persisted post transaction records its
+  outcome category, retry disposition, and stable failure code. Batch rollback
+  uses those terminal fields rather than rescanning exception history.
 - **Run boundaries**: Each successful run replaces `output.jsonl`, while `rpacore.db` retains the transaction history across runs. Output deduplication protects skill retries within the current run rather than serving as cross-run recovery.
 - **Aborted runs**: If a later post exhausts retries, the previous JSONL output is restored. Transactions already attempted in the aborted run remain in SQLite as execution history even though that run's JSONL is not published.
 

@@ -74,6 +74,7 @@ class WriteOutput(Skill):
             raise SystemException(
                 f"Failed to write to output file {output_path}: {exc}",
                 action=self.name,
+                code="rest_api_batch.output.write_failed",
             ) from exc
         finally:
             # Clean up temp file if replace failed
@@ -107,11 +108,13 @@ def _read_output(
             raise SystemException(
                 f"Output file {output_path} contains invalid JSON on line {line_number}",
                 action=action,
+                code="rest_api_batch.output.invalid_jsonl",
             ) from exc
         if not isinstance(existing, dict):
             raise SystemException(
                 f"Output file {output_path} contains a non-object on line {line_number}",
                 action=action,
+                code="rest_api_batch.output.invalid_jsonl",
             )
         if target_post_id is not None and existing.get("postId") == target_post_id:
             return content, True

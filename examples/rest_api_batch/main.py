@@ -7,9 +7,11 @@ import tempfile
 from pathlib import Path
 
 from rpacore import (
-    BusinessException,
+    ConfigField,
     Engine,
+    OutcomeCategory,
     ProcessContext,
+    RetryDisposition,
     Status,
     Transaction,
     SystemException,
@@ -17,6 +19,7 @@ from rpacore import (
     get_logger,
     load_config,
     save_transaction,
+    validate_config,
 )
 from rpacore import resolve_config_paths
 
@@ -29,35 +32,24 @@ from skills import API_MODES
 
 logger = get_logger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent
+_CONFIG_FIELDS = (
+    ConfigField("max_retries", int, min_value=0),
+    ConfigField("log_level", str, allow_empty=False),
+    ConfigField("transaction_db_path", str, allow_empty=False),
+    ConfigField("output_file", str, allow_empty=False),
+    ConfigField("api_mode", str, allow_empty=False),
+)
 
 
-def _validate_config(config: dict) -> None:
-    """Validate config has required keys with correct types and ranges."""
-    for key, expected_type in (
-        ("max_retries", int),
-        ("log_level", str),
-        ("transaction_db_path", str),
-        ("output_file", str),
-        ("api_mode", str),
-    ):
-        if key not in config:
-            raise SystemException(f"Missing required config key: {key}", action="main")
-        if type(config[key]) is not expected_type:
-            raise SystemException(
-                f"Config key '{key}' must be {expected_type.__name__}, got {type(config[key]).__name__}",
-                action="main",
-            )
-        if expected_type is str and not config[key].strip():
-            raise SystemException(
-                f"Config key '{key}' must be a non-empty string",
-                action="main",
-            )
-    # Range validation
-    if config["max_retries"] < 0:
-        raise SystemException(
-            f"Config key 'max_retries' must be >= 0, got {config['max_retries']}",
-            action="main",
-        )
+def _validate_config(config: dict[str, object]) -> None:
+    """Validate external configuration without mutating it."""
+    try:
+        validate_config(config, _CONFIG_FIELDS)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SystemException(f"Invalid config: {exc}", action="main") from exc
+    for key in ("log_level", "transaction_db_path", "output_file", "api_mode"):
+        if not str(config[key]).strip():
+            raise SystemException(f"Config key '{key}' must be a non-empty string", action="main")
     if config["api_mode"] not in API_MODES:
         raise SystemException(
             f"Config key 'api_mode' must be one of {sorted(API_MODES)}, got {config['api_mode']!r}",
@@ -65,18 +57,22 @@ def _validate_config(config: dict) -> None:
         )
 
 
-def main() -> None:
-    config = load_config("config.toml")
+def _load_example_config() -> dict[str, object]:
+    config = load_config(PROJECT_ROOT / "config.toml", require_file=True)
     _validate_config(config)
-    config = resolve_config_paths(
+    return resolve_config_paths(
         config,
-        ["transaction_db_path", "output_file"],
+        ("transaction_db_path", "output_file"),
         base_dir=PROJECT_ROOT,
         root=PROJECT_ROOT,
     )
-    configure_logger(level=config["log_level"])
 
-    engine = Engine(max_retries=config["max_retries"])
+
+def main() -> None:
+    config = _load_example_config()
+    configure_logger(level=str(config["log_level"]))
+
+    engine = Engine(max_retries=int(config["max_retries"]))
     db_path = str(config["transaction_db_path"])
     output_file = str(config["output_file"])
     output_path = Path(output_file)
@@ -126,7 +122,7 @@ def main() -> None:
                 description=f"transaction for post {post_id}",
             )
 
-            if _has_technical_failure(post_tx):
+            if _post_requires_batch_rollback(post_tx):
                 raise SystemException(
                     f"Post {post_id} exhausted retries; previous output will be restored",
                     action="main",
@@ -179,12 +175,18 @@ def _persist_transaction(
         ) from exc
 
 
-def _has_technical_failure(transaction: Transaction) -> bool:
-    """Return whether a failed skill ended with a non-business exception."""
-    return any(
-        not isinstance(exc, BusinessException)
-        for skill in transaction.failed_skills()
-        for exc in skill.exceptions
+def _post_requires_batch_rollback(transaction: Transaction) -> bool:
+    """Return the canonical terminal rollback decision for one post transaction."""
+    outcome = (transaction.outcome_category, transaction.retry_disposition)
+    if outcome == (OutcomeCategory.SUCCESSFUL, RetryDisposition.NOT_APPLICABLE):
+        return False
+    if outcome == (OutcomeCategory.BUSINESS_FAILED, RetryDisposition.NOT_REQUESTED):
+        return False
+    if outcome == (OutcomeCategory.SYSTEM_FAILED, RetryDisposition.RETRY_EXHAUSTED):
+        return True
+    raise SystemException(
+        f"Post {transaction.reference} ended with unsupported outcome {outcome[0]}/{outcome[1]}",
+        action="main",
     )
 
 
