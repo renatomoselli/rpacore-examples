@@ -59,6 +59,8 @@ class TestSaveState:
         run_skill,
         sample_checkpoint_path,
     ) -> None:
+        sample_checkpoint_path.write_text("last valid checkpoint", encoding="utf-8")
+
         def fail_dump(*args, **kwargs):
             raise OSError("disk full")
 
@@ -70,8 +72,10 @@ class TestSaveState:
         )
 
         assert tx.status == Status.FAILED
-        assert "counter" not in tx.state
-        assert not sample_checkpoint_path.exists()
+        assert tx.state == {}
+        assert tx.artifacts == []
+        assert sample_checkpoint_path.read_text(encoding="utf-8") == "last valid checkpoint"
+        assert not list(sample_checkpoint_path.parent.glob(".checkpoint.json.*.tmp"))
 
     def test_execute_with_missing_value_key(self, run_skill, sample_checkpoint_path) -> None:
         """Counter with no 'value' key should default to 0."""

@@ -13,6 +13,10 @@ skills to pending, and lets the engine continue from where it left off.
 
 This example uses a two-skill pipeline to demonstrate the pattern:
 
+The example intentionally retains its explicit `Engine.run()` checkpoints and
+`resume_transaction()` call: recovery sequencing, skill reattachment, and
+history inspection are the behavior being demonstrated.
+
 1. **SaveState** — Increments a counter, writes a JSON checkpoint file, and
    records an artifact. This skill always succeeds.
 2. **FailTask** — On the first run, raises a `SystemException` to simulate an
@@ -29,6 +33,7 @@ checkpoint_resume/
     __init__.py
     save_state.py      # Skill A: always succeeds, writes durable state
     fail_task.py       # Skill B: fails on first run, succeeds on resume
+  reports/             # Separate immutable failed and resumed report records
   tests/
     unit/              # Unit tests for individual skills
     integration/       # Integration test for the full workflow
@@ -54,6 +59,10 @@ First run status: FAILED
 Skill A (save_state) succeeds and its state is persisted. Skill B (fail_task)
 raises `SystemException`, causing the transaction to fail. The checkpoint
 database now contains the partially-completed transaction.
+
+The example also writes an immutable failed report record under `reports/`.
+After resume it writes a second successful record with the same transaction ID;
+the failed record is never overwritten.
 
 ### Resume (Completion)
 
@@ -113,6 +122,19 @@ This will:
 `ctx.state` is a JSON-safe dict that survives across runs. The `SaveState` skill
 writes a counter dict to `ctx.state["counter"]`. On resume, this state is
 restored from the database so the counter retains its value.
+
+### Config and Published Files
+
+`main.py` always loads the committed `config.toml` beside the entry point and
+resolves the database and checkpoint destinations under that project root.
+The checkpoint file is published atomically before state and artifact metadata
+are updated. If persistence fails immediately after `SaveState` succeeds, the
+new checkpoint is removed; later or resumed persistence failures retain the
+last checkpoint as recovery evidence.
+
+Each failed-and-resumed demonstration creates two immutable JSON report-v1
+records in `reports/`. They preserve the original failure, the final outcome,
+canonical retry/failure information, and the full resume history separately.
 
 ### Artifact Recording
 

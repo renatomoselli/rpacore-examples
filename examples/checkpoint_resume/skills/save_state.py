@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
-import os
 from pathlib import Path
-import tempfile
 
-from rpacore import ProcessContext, Skill, get_logger
+from rpacore import ProcessContext, Skill, atomic_output_path, get_logger
 
 logger = get_logger(__name__)
 
@@ -33,20 +31,9 @@ class SaveState(Skill):
             ctx.require_config("checkpoint_path", str, action=self.name)
         )
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path: str | None = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                "w",
-                encoding="utf-8",
-                dir=checkpoint_path.parent,
-                delete=False,
-            ) as f:
-                temp_path = f.name
-                json.dump(counter_data, f, indent=2)
-            os.replace(temp_path, checkpoint_path)
-        finally:
-            if temp_path is not None and Path(temp_path).exists():
-                Path(temp_path).unlink()
+        with atomic_output_path(checkpoint_path) as temporary:
+            with temporary.open("w", encoding="utf-8") as stream:
+                json.dump(counter_data, stream, indent=2)
         logger.info("SaveState: wrote checkpoint to %s", checkpoint_path)
 
         ctx.state["counter"] = counter_data
