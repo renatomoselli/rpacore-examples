@@ -5,9 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from rpacore import (
+    ConfigField,
     Engine,
     EnvCredentialProvider,
     QueueItem,
+    QueueRunSummary,
     SqliteQueue,
     SystemException,
     Transaction,
@@ -16,6 +18,7 @@ from rpacore import (
     load_config,
     resolve_config_paths,
     run_queue_loop,
+    validate_config,
 )
 
 from skills.open_pdf import OpenPdf
@@ -32,6 +35,28 @@ _CONFIG_PATH_KEYS = (
     "results_dir",
     "output_csv",
     "queue.db_path",
+)
+_CONFIG_FIELDS = (
+    ConfigField("max_retries", int, min_value=0),
+    ConfigField(
+        "log_level",
+        str,
+        choices=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
+        allow_empty=False,
+    ),
+    ConfigField("transaction_db_path", str, allow_empty=False),
+    ConfigField("sample_data_dir", str, allow_empty=False),
+    ConfigField("results_dir", str, allow_empty=False),
+    ConfigField("output_csv", str, allow_empty=False),
+    ConfigField("max_pages", int, min_value=1),
+    ConfigField("queue.db_path", str, allow_empty=False),
+    ConfigField("queue.lease_timeout", int, min_value=1),
+    ConfigField("queue.max_retries", int, min_value=0),
+)
+_SUMMARY_FIELDS = (
+    "processed", "completed", "failed", "callback_errors", "persistence_errors",
+    "lifecycle_errors", "notification_errors", "retry_scheduled", "terminal_failed",
+    "lease_lost", "transition_unknown",
 )
 
 def _has_sample_pdfs(sample_data_dir: str) -> bool:
@@ -50,64 +75,34 @@ def _has_sample_pdfs(sample_data_dir: str) -> bool:
             return True
     return False
 
-def _validate_config(config: dict) -> None:
-    """Validate config has required keys with correct types and ranges."""
-    for key, expected_type in (
-        ("max_retries", int),
-        ("log_level", str),
-        ("transaction_db_path", str),
-        ("sample_data_dir", str),
-        ("results_dir", str),
-        ("output_csv", str),
-        ("max_pages", int),
+def _validate_config(config: dict[str, object]) -> None:
+    """Validate public field contracts and explicit whitespace domain rules."""
+    try:
+        validate_config(config, _CONFIG_FIELDS)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SystemException(f"Invalid config: {exc}", action="main") from exc
+    for key in (
+        "log_level", "transaction_db_path", "sample_data_dir", "results_dir", "output_csv",
     ):
-        if key not in config:
-            raise SystemException(f"Missing required config key: {key}", action="main")
-        if not isinstance(config[key], expected_type):
-            raise SystemException(
-                f"Config key '{key}' must be {expected_type.__name__}, got {type(config[key]).__name__}",
-                action="main",
-            )
-    if config["max_retries"] < 0:
-        raise SystemException(
-            f"Config key 'max_retries' must be >= 0, got {config['max_retries']}",
-            action="main",
-        )
-    if config["max_pages"] < 1:
-        raise SystemException(
-            f"Config key 'max_pages' must be >= 1, got {config['max_pages']}",
-            action="main",
-        )
-    if not config["output_csv"]:
-        raise SystemException(
-            "Config key 'output_csv' must be a non-empty string",
-            action="main",
-        )
+        value = config[key]
+        if not isinstance(value, str) or not value.strip():
+            raise SystemException(f"Config key '{key}' must be a non-empty string", action="main")
+    queue = config["queue"]
+    if not isinstance(queue, dict):
+        raise SystemException("Config key 'queue' must be a table", action="main")
+    db_path = queue["db_path"]
+    if not isinstance(db_path, str) or not db_path.strip():
+        raise SystemException("Config key 'queue.db_path' must be a non-empty string", action="main")
 
-    queue_config = config.get("queue")
-    if not isinstance(queue_config, dict):
-        raise SystemException("Missing required [queue] config section", action="main")
 
-    for key in ("db_path", "lease_timeout", "max_retries"):
-        if key not in queue_config:
-            raise SystemException(
-                f"Missing required [queue] config key: {key}", action="main"
-            )
+def _load_example_config() -> dict[str, object]:
+    config = load_config(PROJECT_ROOT / "config.toml", require_file=True)
+    _validate_config(config)
+    return resolve_config_paths(config, _CONFIG_PATH_KEYS, base_dir=PROJECT_ROOT, root=PROJECT_ROOT)
 
-    if not isinstance(queue_config["db_path"], str) or not queue_config["db_path"]:
-        raise SystemException(
-            "Config key 'queue.db_path' must be a non-empty string", action="main"
-        )
-    if not isinstance(queue_config["lease_timeout"], int) or queue_config["lease_timeout"] <= 0:
-        raise SystemException(
-            f"Config key 'queue.lease_timeout' must be a positive int, got {queue_config['lease_timeout']!r}",
-            action="main",
-        )
-    if not isinstance(queue_config["max_retries"], int) or queue_config["max_retries"] < 0:
-        raise SystemException(
-            f"Config key 'queue.max_retries' must be a non-negative int, got {queue_config['max_retries']!r}",
-            action="main",
-        )
+
+def _summary_values(summary: QueueRunSummary) -> dict[str, int]:
+    return {field: getattr(summary, field) for field in _SUMMARY_FIELDS}
 
 def ensure_sample_data(config: dict) -> None:
     """Generate demo invoices when a fresh checkout has no input PDFs."""
@@ -185,14 +180,7 @@ def build_transaction(item: QueueItem) -> Transaction:
     )
 
 def main() -> None:
-    config = load_config(str(PROJECT_ROOT / "config.toml"))
-    _validate_config(config)
-    config = resolve_config_paths(
-        config,
-        _CONFIG_PATH_KEYS,
-        base_dir=PROJECT_ROOT,
-        root=PROJECT_ROOT,
-    )
+    config = _load_example_config()
     configure_logger(level=str(config["log_level"]))
 
     engine = Engine(max_retries=int(config["max_retries"]))
@@ -216,10 +204,8 @@ def main() -> None:
     )
 
     logger.info(
-        "Queue processing complete: processed=%d completed=%d failed=%d",
-        summary.processed,
-        summary.completed,
-        summary.failed,
+        "Queue processing complete: %s",
+        " ".join(f"{field}={value}" for field, value in _summary_values(summary).items()),
     )
 
 if __name__ == "__main__":

@@ -116,9 +116,13 @@ Queue keys under `[queue]`:
 | `lease_timeout` | `30` | Seconds before an abandoned claim can be retried |
 | `max_retries` | `0` | Queue retry budget after engine retries are exhausted |
 
-The entrypoint loads `config.toml` relative to this example directory. Configured
+The entrypoint requires the committed `config.toml` beside `main.py`. Configured
 file and directory paths are resolved from that directory and must remain inside
 it, so running `main.py` does not depend on the caller's working directory.
+
+`failed` is a compatibility aggregate. The runner-owned disposition counters
+`retry_scheduled`, `terminal_failed`, `lease_lost`, and `transition_unknown`
+identify how each failed claim ended.
 
 ## Output
 
