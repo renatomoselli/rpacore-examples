@@ -10,8 +10,10 @@ import sys
 from pathlib import Path
 
 from rpacore import (
+    ConfigField,
     Engine,
     QueueItem,
+    QueueRunSummary,
     SqliteQueue,
     Status,
     SystemException,
@@ -20,8 +22,9 @@ from rpacore import (
     get_logger,
     load_config,
     run_queue_loop,
+    validate_config,
 )
-from rpacore import resolve_config_paths
+from rpacore import resolve_config_path, resolve_config_paths
 
 from skills._path_utils import unique_destination, validate_contained_path
 from skills.open_calculator import OpenCalculator
@@ -33,65 +36,58 @@ from skills.move_file import MoveFile
 
 logger = get_logger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent
+_CONFIG_FIELDS = (
+    ConfigField("engine_max_retries", int, min_value=0),
+    ConfigField(
+        "log_level",
+        str,
+        choices=("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"),
+        allow_empty=False,
+    ),
+    ConfigField("transaction_db_path", str, allow_empty=False),
+    ConfigField("input_dir", str, allow_empty=False),
+    ConfigField("output_dir", str, allow_empty=False),
+    ConfigField("done_dir", str, allow_empty=False),
+    ConfigField("failed_dir", str, allow_empty=False),
+    ConfigField("queue.db_path", str, allow_empty=False),
+    ConfigField("queue.lease_timeout", int, min_value=1),
+    ConfigField("queue.max_retries", int, choices=(0,)),
+    ConfigField("calculator_path", str, required=False, allow_empty=False),
+)
+_SUMMARY_FIELDS = (
+    "processed",
+    "completed",
+    "failed",
+    "callback_errors",
+    "persistence_errors",
+    "lifecycle_errors",
+    "notification_errors",
+    "retry_scheduled",
+    "terminal_failed",
+    "lease_lost",
+    "transition_unknown",
+)
 
 
-def _validate_config(config: dict) -> None:
-    for key, expected_type in (
-        ("engine_max_retries", int),
-        ("log_level", str),
-        ("transaction_db_path", str),
-        ("input_dir", str),
-        ("output_dir", str),
-        ("done_dir", str),
-        ("failed_dir", str),
+def _validate_config(config: dict[str, object]) -> None:
+    try:
+        validate_config(config, _CONFIG_FIELDS)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SystemException(f"Invalid config: {exc}", action="main") from exc
+    for key in (
+        "log_level",
+        "transaction_db_path",
+        "input_dir",
+        "output_dir",
+        "done_dir",
+        "failed_dir",
+        "calculator_path",
     ):
-        if key not in config:
-            raise SystemException(f"Missing required config key: {key}", action="main")
-        if type(config[key]) is not expected_type:
-            raise SystemException(
-                f"Config key '{key}' must be {expected_type.__name__}, "
-                f"got {type(config[key]).__name__}",
-                action="main",
-            )
-
-    calculator_path = config.get("calculator_path")
-    if calculator_path is not None and (
-        type(calculator_path) is not str or not calculator_path.strip()
-    ):
-        raise SystemException(
-            "Config key 'calculator_path' must be a non-empty string when provided",
-            action="main",
-        )
-
-    if config["engine_max_retries"] < 0:
-        raise SystemException(
-            "Config key 'engine_max_retries' must be non-negative",
-            action="main",
-        )
-
+        if key in config and not str(config[key]).strip():
+            raise SystemException(f"Config key '{key}' must be a non-empty string", action="main")
     queue_config = config.get("queue")
-    if not isinstance(queue_config, dict):
-        raise SystemException("Missing required [queue] config section", action="main")
-
-    for key in ("db_path", "lease_timeout", "max_retries"):
-        if key not in queue_config:
-            raise SystemException(f"Missing required [queue] config key: {key}", action="main")
-    if type(queue_config["db_path"]) is not str or not queue_config["db_path"]:
-        raise SystemException(
-            "Config key 'queue.db_path' must be a non-empty string", action="main"
-        )
-    if type(queue_config["lease_timeout"]) is not int or queue_config["lease_timeout"] <= 0:
-        raise SystemException(
-            f"Config key 'queue.lease_timeout' must be a positive int, "
-            f"got {queue_config['lease_timeout']!r}",
-            action="main",
-        )
-    if type(queue_config["max_retries"]) is not int or queue_config["max_retries"] < 0:
-        raise SystemException(
-            f"Config key 'queue.max_retries' must be a non-negative int, "
-            f"got {queue_config['max_retries']!r}",
-            action="main",
-        )
+    if isinstance(queue_config, dict) and not str(queue_config["db_path"]).strip():
+        raise SystemException("Config key 'queue.db_path' must be a non-empty string", action="main")
 
 
 def scan_inbox(config: dict, queue: SqliteQueue) -> int:
@@ -165,31 +161,38 @@ def _move_failed_file(item: QueueItem, config: dict) -> None:
         ) from exc
 
 
-def _load_example_config() -> dict:
-    config_path = Path(__file__).with_name("config.toml")
-    config = dict(load_config(str(config_path)))
-    return resolve_config_paths(
+def _load_example_config() -> dict[str, object]:
+    config = load_config(PROJECT_ROOT / "config.toml", require_file=True)
+    _validate_config(config)
+    resolved = resolve_config_paths(
         config,
-        [
+        (
             "input_dir",
             "output_dir",
             "done_dir",
             "failed_dir",
             "transaction_db_path",
             "queue.db_path",
-        ],
+        ),
         base_dir=PROJECT_ROOT,
         root=PROJECT_ROOT,
     )
+    if "calculator_path" in config:
+        resolved["calculator_path"] = resolve_config_path(
+            config["calculator_path"],
+            base_dir=PROJECT_ROOT,
+            key="calculator_path",
+        )
+    return resolved
+
+
+def _summary_values(summary: QueueRunSummary) -> dict[str, int]:
+    """Project all authoritative queue delivery counters in stable order."""
+    return {field: getattr(summary, field) for field in _SUMMARY_FIELDS}
 
 
 def main() -> None:
     config = _load_example_config()
-    _validate_config(config)
-
-    allowed_levels = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
-    if config["log_level"] not in allowed_levels:
-        raise SystemException(f"Invalid log_level: {config['log_level']!r}", action="main")
     configure_logger(level=str(config["log_level"]))
 
     for key in ("input_dir", "done_dir", "failed_dir"):
@@ -225,12 +228,10 @@ def main() -> None:
         transaction_db_path=str(config["transaction_db_path"]),
     )
 
+    summary_values = _summary_values(summary)
     logger.info(
-        "Queue run complete. processed=%d completed=%d failed=%d callback_errors=%d",
-        summary.processed,
-        summary.completed,
-        summary.failed,
-        summary.callback_errors,
+        "Queue run complete. %s",
+        " ".join(f"{field}={value}" for field, value in summary_values.items()),
     )
     if summary.failed > 0 or summary.callback_errors > 0:
         sys.exit(1)

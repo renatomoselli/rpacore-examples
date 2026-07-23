@@ -8,8 +8,8 @@ from typing import List, Dict, Any
 from pathlib import Path
 import csv
 import logging
-import os
-import tempfile
+
+from rpacore import atomic_output_path
 
 logger = logging.getLogger(__name__)
 
@@ -112,26 +112,11 @@ def write_csv_atomically(
 ) -> None:
     """Write a complete CSV before atomically publishing it."""
     destination = Path(output_path)
-    fd, temp_name = tempfile.mkstemp(
-        dir=destination.parent,
-        prefix=f".{destination.name}.",
-        suffix=".tmp",
-    )
-    temp_path = Path(temp_name)
-    try:
-        with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
-            fd = -1
+    with atomic_output_path(destination) as temp_path:
+        with temp_path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(rows)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(temp_path, destination)
-    except BaseException:
-        if fd >= 0:
-            os.close(fd)
-        temp_path.unlink(missing_ok=True)
-        raise
 
 
 if __name__ == "__main__":

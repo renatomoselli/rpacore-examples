@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from rpacore import ProcessContext, QueueItem, SystemException, Transaction
+from rpacore import ProcessContext, QueueItem, QueueRunSummary, SystemException, Transaction
 
 import main
 from skills.close_calculator import CloseCalculator
@@ -50,3 +50,33 @@ def test_close_calculator_releases_runtime_resource():
 
     interactor.close.assert_called_once_with()
     assert "interactor" not in ctx.resources
+
+
+def test_summary_values_projects_all_authoritative_delivery_counters():
+    summary = QueueRunSummary(
+        processed=1,
+        completed=2,
+        failed=3,
+        callback_errors=4,
+        persistence_errors=5,
+        lifecycle_errors=6,
+        notification_errors=7,
+        retry_scheduled=8,
+        terminal_failed=9,
+        lease_lost=10,
+        transition_unknown=11,
+    )
+
+    assert main._summary_values(summary) == {
+        "processed": 1,
+        "completed": 2,
+        "failed": 3,
+        "callback_errors": 4,
+        "persistence_errors": 5,
+        "lifecycle_errors": 6,
+        "notification_errors": 7,
+        "retry_scheduled": 8,
+        "terminal_failed": 9,
+        "lease_lost": 10,
+        "transition_unknown": 11,
+    }

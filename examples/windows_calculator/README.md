@@ -25,7 +25,8 @@ Copy-Item samples\expr_example.csv input\expr_example.csv
 windows-calculator  # or: python main.py
 ```
 
-The queue processes each CSV in `input/` exactly once. Runtime files move to
+The queue provides at-least-once delivery; stable references prevent duplicate
+enqueueing of the same inbox filename. Runtime files move to
 `done/` on success or `failed/` on validation or expression failure, while the
 tracked sample in `samples/` remains unchanged. Add CSVs with new filenames for
 later runs; remove the local queue and transaction databases to reset demo state.
@@ -59,13 +60,16 @@ failed/                     <- failed files moved here
 ```
 
 Each CSV file becomes one RPA Core transaction with 6 skills executed in sequence.
-The queue ensures exactly-once processing per file.
+Queue delivery counters are runner-owned terminal dispositions, including retry,
+terminal-failure, lease-loss, and unknown-transition outcomes.
 
 Configuration follows the current RPA Core API: top-level transaction
 persistence uses `transaction_db_path`, and queue leases use
 `[queue].lease_timeout` rather than the older queue claim-timeout key.
 Configured data paths are resolved inside this example directory, and queued
 source files are validated against `input/` before they are read or moved.
+The committed `config.toml` is required beside `main.py`; an optional
+`calculator_path` may point to an executable outside the project directory.
 
 ## CSV Schema
 

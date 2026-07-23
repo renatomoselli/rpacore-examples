@@ -124,12 +124,12 @@ def test_save_results_preserves_existing_file_when_publish_fails(tmp_path, monke
     output = tmp_path / "results.csv"
     output.write_text("previous\n", encoding="utf-8")
     monkeypatch.setattr(
-        calculator_csv_loader.os,
-        "replace",
-        lambda *_args: (_ for _ in ()).throw(OSError("replace failed")),
+        calculator_csv_loader.csv.DictWriter,
+        "writerows",
+        lambda *_args: (_ for _ in ()).throw(OSError("write failed")),
     )
 
-    with pytest.raises(OSError, match="replace failed"):
+    with pytest.raises(OSError, match="write failed"):
         save_results(
             [{"expression": "2+2", "expected_result": "4", "actual": "4", "passed": True}],
             str(output),
