@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 import sqlite3
 from pathlib import Path
@@ -28,29 +29,32 @@ def test_validate_config_rejects_missing_keys(tmp_path):
     config = _config(tmp_path, [repo])
     del config["output_file"]
 
-    with pytest.raises(SystemException, match="Missing required config key: output_file"):
+    with pytest.raises(SystemException) as error:
         workflow._validate_config(config)
+    assert "output_file" in str(error.value)
 
 
 @pytest.mark.parametrize(
-    ("key", "value", "message"),
+    ("key", "value"),
     [
-        ("max_retries", "two", "must be int"),
-        ("max_retries", -1, "must be >= 0"),
-        ("stale_branch_days", 0, "must be > 0"),
-        ("log_level", "TRACE", "must be one of"),
-        ("repos", [], "must be a non-empty list"),
-        ("repos", [""], "contains empty or invalid path"),
+        ("max_retries", "two"),
+        ("max_retries", True),
+        ("max_retries", -1),
+        ("stale_branch_days", 0),
+        ("log_level", "TRACE"),
+        ("repos", []),
+        ("repos", [""]),
     ],
 )
-def test_validate_config_rejects_invalid_values(tmp_path, key, value, message):
+def test_validate_config_rejects_invalid_values(tmp_path, key, value):
     repo = tmp_path / "repo"
     repo.mkdir()
     config = _config(tmp_path, [repo])
     config[key] = value
 
-    with pytest.raises(SystemException, match=message):
+    with pytest.raises(SystemException) as error:
         workflow._validate_config(config)
+    assert key in str(error.value)
 
 
 def test_validate_config_rejects_missing_repo_directory(tmp_path):
@@ -78,14 +82,90 @@ def test_resolve_repo_path_handles_relative_absolute_and_home_paths(tmp_path, mo
     assert home == str((Path.home() / "repo").resolve())
 
 
-def test_validate_config_rejects_output_paths_outside_project_root(tmp_path):
+@pytest.mark.parametrize("key", ("output_file", "transaction_db_path"))
+def test_validate_config_rejects_owned_paths_outside_project_root(
+    tmp_path, monkeypatch, key
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     config = _config(tmp_path, [repo])
-    config["output_file"] = "../outside.jsonl"
+    config[key] = "../outside"
+    monkeypatch.setattr(workflow, "PROJECT_ROOT", tmp_path)
 
-    with pytest.raises(SystemException, match="output_file resolves outside root"):
+    with pytest.raises(SystemException, match=f"{key} resolves outside root"):
         workflow._validate_config(config)
+
+
+def test_validate_config_normalizes_log_level_and_preserves_input(tmp_path, monkeypatch):
+    project_root = tmp_path / "example"
+    project_root.mkdir()
+    external_repo = tmp_path / "external-repo"
+    external_repo.mkdir()
+    config = _config(project_root, [external_repo])
+    config["log_level"] = "warning"
+    config["unsupported_option"] = "ignored"
+    original = deepcopy(config)
+    monkeypatch.setattr(workflow, "PROJECT_ROOT", project_root)
+
+    validated = workflow._validate_config(config)
+
+    assert config == original
+    assert validated["log_level"] == "WARNING"
+    assert validated["repos"] == [str(external_repo.resolve())]
+    assert validated["transaction_db_path"] == str(project_root / "rpacore.db")
+    assert validated["output_file"] == str(project_root / "health_report.jsonl")
+    assert "unsupported_option" not in validated
+
+
+def test_validate_config_rejects_legacy_db_path_without_mutating_input(tmp_path, monkeypatch):
+    project_root = tmp_path / "example"
+    project_root.mkdir()
+    repo = project_root / "repo"
+    repo.mkdir()
+    config = _config(project_root, [repo])
+    config["db_path"] = "legacy.db"
+    original = deepcopy(config)
+    monkeypatch.setattr(workflow, "PROJECT_ROOT", project_root)
+
+    with pytest.raises(SystemException, match="db_path.*transaction_db_path"):
+        workflow._validate_config(config)
+    assert config == original
+
+
+def test_load_example_config_requires_root_file_and_preserves_default_sample_intent(
+    tmp_path, monkeypatch
+):
+    project_root = tmp_path / "example"
+    project_root.mkdir()
+    config = _config(project_root, [])
+    config["repos"] = list(workflow.DEFAULT_SAMPLE_REPOS)
+    original = deepcopy(config)
+    loaded_paths = []
+    monkeypatch.setattr(workflow, "PROJECT_ROOT", project_root)
+    monkeypatch.chdir(tmp_path)
+
+    def fake_load_config(path, *, require_file):
+        loaded_paths.append(path)
+        assert require_file is True
+        return config
+
+    monkeypatch.setattr(workflow, "load_config", fake_load_config)
+
+    validated, uses_default = workflow._load_example_config()
+
+    assert loaded_paths == [project_root / "config.toml"]
+    assert uses_default is True
+    assert config == original
+    assert validated["repos"] == [
+        str((project_root / path).resolve()) for path in workflow.DEFAULT_SAMPLE_REPOS
+    ]
+
+
+def test_load_example_config_propagates_missing_required_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(workflow, "PROJECT_ROOT", tmp_path)
+
+    with pytest.raises(FileNotFoundError, match="config.toml"):
+        workflow._load_example_config()
 
 
 def test_main_validates_default_config_before_preparing_samples(tmp_path, monkeypatch):
@@ -98,7 +178,9 @@ def test_main_validates_default_config_before_preparing_samples(tmp_path, monkey
         nonlocal prepared
         prepared = True
 
-    monkeypatch.setattr(workflow, "load_config", lambda path: dict(config))
+    monkeypatch.setattr(
+        workflow, "load_config", lambda path, *, require_file: dict(config)
+    )
     monkeypatch.setattr(workflow, "prepare_sample_repos", prepare_sample_repos)
 
     with pytest.raises(SystemException, match="max_retries"):
@@ -155,7 +237,9 @@ def test_main_preserves_reports_when_summary_save_fails(tmp_path, monkeypatch):
         if tx.reference == "summary-report":
             raise sqlite3.Error("summary db locked")
 
-    monkeypatch.setattr(workflow, "load_config", lambda path: dict(config))
+    monkeypatch.setattr(
+        workflow, "load_config", lambda path, *, require_file: dict(config)
+    )
     monkeypatch.setattr(workflow, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(workflow, "Engine", FakeEngine)
     monkeypatch.setattr(workflow, "save_transaction", fail_summary_save)
@@ -194,7 +278,9 @@ def test_main_continues_after_repo_save_failure(tmp_path, monkeypatch):
         if tx.reference == "repo-alpha":
             raise sqlite3.Error("repo db locked")
 
-    monkeypatch.setattr(workflow, "load_config", lambda path: dict(config))
+    monkeypatch.setattr(
+        workflow, "load_config", lambda path, *, require_file: dict(config)
+    )
     monkeypatch.setattr(workflow, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(workflow, "Engine", FakeEngine)
     monkeypatch.setattr(workflow, "save_transaction", save_with_first_repo_failure)
@@ -228,7 +314,9 @@ def test_main_records_non_failed_transactions_without_health_report(tmp_path, mo
             else:
                 tx.skills[0].execute(ctx)
 
-    monkeypatch.setattr(workflow, "load_config", lambda path: dict(config))
+    monkeypatch.setattr(
+        workflow, "load_config", lambda path, *, require_file: dict(config)
+    )
     monkeypatch.setattr(workflow, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(workflow, "Engine", FakeEngine)
     monkeypatch.setattr(workflow, "save_transaction", lambda tx, *, db_path: None)

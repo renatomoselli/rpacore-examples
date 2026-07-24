@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from rpacore import (
     BusinessException,
+    ConfigField,
     Engine,
     ProcessContext,
     Status,
@@ -17,9 +18,10 @@ from rpacore import (
     configure_logger,
     get_logger,
     load_config,
+    resolve_config_paths,
     save_transaction,
+    validate_config,
 )
-from rpacore import resolve_config_paths
 
 from skills.check_working_tree import CheckWorkingTree
 from skills.capture_recent_commits import CaptureRecentCommits
@@ -34,6 +36,15 @@ logger = get_logger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent
 LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 DEFAULT_SAMPLE_REPOS = ["sample_repos/alpha", "sample_repos/beta"]
+_CONFIG_FIELDS = (
+    ConfigField("max_retries", int, min_value=0),
+    ConfigField("log_level", str, allow_empty=False),
+    ConfigField("transaction_db_path", str, allow_empty=False),
+    ConfigField("repos", list, allow_empty=False),
+    ConfigField("output_file", str, allow_empty=False),
+    ConfigField("stale_branch_days", int, min_value=1),
+)
+_CONFIG_PATH_KEYS = ("output_file", "transaction_db_path")
 
 
 def _uses_default_sample_repos(config: dict) -> bool:
@@ -76,54 +87,44 @@ def _failed_repo_record(repo_path: str, repo_tx: Transaction) -> dict[str, objec
         "last_commit": None,
     }
 
-def _validate_config(config: dict, *, allow_missing_repos: bool = False) -> dict:
-    """Validate config and resolve path values to absolute paths under PROJECT_ROOT."""
-    if "transaction_db_path" not in config and "db_path" in config:
-        logger.warning("Config key 'db_path' is deprecated; using it as 'transaction_db_path'.")
-        config["transaction_db_path"] = config.pop("db_path")
+def _validate_config(
+    config: dict[str, object], *, allow_missing_repos: bool = False
+) -> dict[str, object]:
+    """Validate config without mutating caller input and resolve owned paths."""
+    if "db_path" in config:
+        raise SystemException(
+            "Config key 'db_path' is unsupported; use 'transaction_db_path'.",
+            action="main",
+        )
+    try:
+        validated = validate_config(config, _CONFIG_FIELDS)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SystemException(f"Invalid config: {exc}", action="main") from exc
 
-    for key, expected_type in (
-        ("max_retries", int),
-        ("log_level", str),
-        ("transaction_db_path", str),
-        ("repos", list),
-        ("output_file", str),
-        ("stale_branch_days", int),
+    log_level = validated["log_level"]
+    transaction_db_path = validated["transaction_db_path"]
+    output_file = validated["output_file"]
+    repos = validated["repos"]
+    if (
+        not isinstance(log_level, str)
+        or not log_level.strip()
+        or not isinstance(transaction_db_path, str)
+        or not transaction_db_path.strip()
+        or not isinstance(output_file, str)
+        or not output_file.strip()
+        or not isinstance(repos, list)
     ):
-        if key not in config:
-            raise SystemException(
-                f"Missing required config key: {key}", action="main",
-            )
-        if type(config[key]) is not expected_type:
-            raise SystemException(
-                f"Config key '{key}' must be {expected_type.__name__}, "
-                f"got {type(config[key]).__name__}",
-                action="main",
-            )
+        raise SystemException("Invalid config field type", action="main")
 
-    if config["max_retries"] < 0:
+    normalized_log_level = log_level.upper()
+    if normalized_log_level not in LOG_LEVELS:
         raise SystemException(
-            f"Config key 'max_retries' must be >= 0, got {config['max_retries']}",
+            f"Config key 'log_level' must be one of {sorted(LOG_LEVELS)}, got {log_level!r}",
             action="main",
         )
-    if config["stale_branch_days"] <= 0:
-        raise SystemException(
-            f"Config key 'stale_branch_days' must be > 0, got {config['stale_branch_days']}",
-            action="main",
-        )
-    if config["log_level"].upper() not in LOG_LEVELS:
-        raise SystemException(
-            f"Config key 'log_level' must be one of {sorted(LOG_LEVELS)}, "
-            f"got {config['log_level']!r}",
-            action="main",
-        )
-    if not config["repos"]:
-        raise SystemException(
-            "Config key 'repos' must be a non-empty list",
-            action="main",
-        )
+    validated["log_level"] = normalized_log_level
     resolved_repos = []
-    for repo_path in config["repos"]:
+    for repo_path in repos:
         if not isinstance(repo_path, str) or not repo_path.strip():
             raise SystemException(
                 f"Config key 'repos' contains empty or invalid path: {repo_path!r}",
@@ -137,19 +138,27 @@ def _validate_config(config: dict, *, allow_missing_repos: bool = False) -> dict
             )
         resolved_repos.append(resolved_repo_path)
 
-    config = resolve_config_paths(
-        config,
-        ["output_file", "transaction_db_path"],
+    resolved_config = dict(validated)
+    resolved_config["repos"] = resolved_repos
+    return resolve_config_paths(
+        resolved_config,
+        _CONFIG_PATH_KEYS,
         base_dir=PROJECT_ROOT,
         root=PROJECT_ROOT,
     )
-    config["repos"] = resolved_repos
-    return config
+
+
+def _load_example_config() -> tuple[dict[str, object], bool]:
+    config = load_config(PROJECT_ROOT / "config.toml", require_file=True)
+    uses_default_sample_repos = _uses_default_sample_repos(config)
+    return (
+        _validate_config(config, allow_missing_repos=uses_default_sample_repos),
+        uses_default_sample_repos,
+    )
+
 
 def main() -> None:
-    config = load_config("config.toml")
-    uses_default_sample_repos = _uses_default_sample_repos(config)
-    config = _validate_config(config, allow_missing_repos=uses_default_sample_repos)
+    config, uses_default_sample_repos = _load_example_config()
     if uses_default_sample_repos:
         prepare_sample_repos(PROJECT_ROOT / "sample_repos")
     configure_logger(level=str(config["log_level"]))

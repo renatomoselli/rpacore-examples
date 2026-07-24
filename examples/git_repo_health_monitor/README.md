@@ -129,9 +129,15 @@ output_file = "health_report.jsonl"
 ```
 
 Use top-level `transaction_db_path` for RPA Core transaction persistence. The
-configured `output_file` and `transaction_db_path` values are resolved relative
-to this example directory and must stay inside it. Repository paths are resolved
-separately and may point to external local checkouts.
+entrypoint requires the committed `config.toml` beside `main.py`, regardless of
+the caller's working directory. Configured `output_file` and
+`transaction_db_path` values are resolved relative to this example directory
+and must stay inside it. Repository paths are resolved separately and may point
+to external local checkouts. The legacy top-level `db_path` key is rejected;
+use `transaction_db_path`.
+
+The local Git executable is required. The monitor uses local Git inspection
+commands only; configured remote URLs are recorded but never contacted.
 
 ## Testing
 
