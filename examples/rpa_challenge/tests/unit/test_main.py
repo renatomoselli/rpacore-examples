@@ -2,6 +2,8 @@ from __future__ import annotations
 
 """Unit tests for main.py helpers."""
 
+from copy import deepcopy
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -86,25 +88,102 @@ def test_format_failed_skills_keeps_registered_name_when_class_differs():
 
 
 def test_validate_config_accepts_required_keys():
-    rpa_main._validate_config(dict(VALID_CONFIG))
+    assert rpa_main._validate_config(dict(VALID_CONFIG)) == VALID_CONFIG
 
 
 @pytest.mark.parametrize(
-    ("config", "message"),
+    ("config", "key"),
     [
-        ({k: v for k, v in VALID_CONFIG.items() if k != "transaction_db_path"}, "Missing required config key"),
-        ({**VALID_CONFIG, "max_retries": "2"}, "must be int"),
-        ({**VALID_CONFIG, "max_retries": True}, "must be int"),
-        ({**VALID_CONFIG, "max_retries": -1}, "max_retries must be non-negative"),
+        ({k: v for k, v in VALID_CONFIG.items() if k != "transaction_db_path"}, "transaction_db_path"),
+        ({**VALID_CONFIG, "max_retries": "2"}, "max_retries"),
+        ({**VALID_CONFIG, "max_retries": True}, "max_retries"),
+        ({**VALID_CONFIG, "max_retries": -1}, "max_retries"),
+        ({**VALID_CONFIG, "max_page_load_retries": 0}, "max_page_load_retries"),
+        ({**VALID_CONFIG, "timeout_click": 0}, "timeout_click"),
+        ({**VALID_CONFIG, "headless": "true"}, "headless"),
+        ({**VALID_CONFIG, "log_level": ""}, "log_level"),
+        ({**VALID_CONFIG, "transaction_db_path": ""}, "transaction_db_path"),
+        ({**VALID_CONFIG, "xlsx_url": ""}, "xlsx_url"),
+        ({**VALID_CONFIG, "log_level": "   "}, "log_level"),
+        ({**VALID_CONFIG, "screenshot_dir": 42}, "screenshot_dir"),
         ({**VALID_CONFIG, "xlsx_allowed_hosts": 123}, "xlsx_allowed_hosts"),
         ({**VALID_CONFIG, "xlsx_allowed_hosts": ["www.rpachallenge.com", 123]}, "xlsx_allowed_hosts"),
     ],
 )
-def test_validate_config_rejects_invalid_values(config, message):
+def test_validate_config_rejects_invalid_values(config, key):
     with pytest.raises(SystemException) as exc_info:
         rpa_main._validate_config(config)
 
-    assert message in str(exc_info.value)
+    assert key in str(exc_info.value)
+
+
+def test_validate_config_projects_all_consumed_options_without_mutating_input():
+    config = {
+        **VALID_CONFIG,
+        "screenshot_dir": "screenshots",
+        "xlsx_url": "https://www.rpachallenge.com/assets/downloadFiles/challenge.xlsx",
+        "xlsx_allowed_hosts": ["www.rpachallenge.com"],
+        "max_page_load_retries": 1,
+        "headless": True,
+        "timeout_page_load": 1,
+        "timeout_click": 1,
+        "timeout_form_transition": 1,
+        "timeout_congratulations_check": 1,
+        "timeout_score_extraction": 1,
+        "unsupported_option": "ignored",
+    }
+    original = deepcopy(config)
+
+    validated = rpa_main._validate_config(config)
+
+    assert config == original
+    assert "unsupported_option" not in validated
+    assert validated["timeout_score_extraction"] == 1
+
+
+def test_load_example_config_requires_project_root_file_and_contained_paths(
+    tmp_path, monkeypatch
+):
+    project_root = tmp_path / "example"
+    project_root.mkdir()
+    config = {**VALID_CONFIG, "screenshot_dir": "screenshots"}
+    loaded_paths = []
+    monkeypatch.setattr(rpa_main, "PROJECT_ROOT", project_root)
+    monkeypatch.chdir(tmp_path)
+
+    def fake_load_config(path, *, require_file):
+        loaded_paths.append(path)
+        assert require_file is True
+        return config
+
+    monkeypatch.setattr(rpa_main, "load_config", fake_load_config)
+
+    validated = rpa_main._load_example_config()
+
+    assert loaded_paths == [project_root / "config.toml"]
+    assert validated["transaction_db_path"] == str(project_root / "rpacore.db")
+    assert validated["screenshot_dir"] == str(project_root / "screenshots")
+
+
+@pytest.mark.parametrize("key", ("transaction_db_path", "screenshot_dir"))
+def test_load_example_config_rejects_owned_paths_outside_project_root(
+    tmp_path, monkeypatch, key
+):
+    config = {**VALID_CONFIG, key: "../outside"}
+    monkeypatch.setattr(rpa_main, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(
+        rpa_main, "load_config", lambda _path, *, require_file: config
+    )
+
+    with pytest.raises(SystemException, match=f"{key} resolves outside root"):
+        rpa_main._load_example_config()
+
+
+def test_load_example_config_propagates_missing_required_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(rpa_main, "PROJECT_ROOT", tmp_path)
+
+    with pytest.raises(FileNotFoundError, match="config.toml"):
+        rpa_main._load_example_config()
 
 
 def test_main_aborts_when_row_transaction_fails(monkeypatch, tmp_path, capsys):
@@ -148,7 +227,9 @@ def test_main_aborts_when_row_transaction_fails(monkeypatch, tmp_path, capsys):
                 return
             tx.status = Status.SUCCESSFUL
 
-    monkeypatch.setattr(rpa_main, "load_config", lambda _path: config)
+    monkeypatch.setattr(
+        rpa_main, "load_config", lambda _path, *, require_file: config
+    )
     monkeypatch.setattr(rpa_main, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(rpa_main, "configure_logger", lambda **_kwargs: None)
     monkeypatch.setattr(rpa_main, "Engine", FakeEngine)
@@ -202,7 +283,9 @@ def test_main_shares_browser_resources_across_transactions(monkeypatch, tmp_path
                 ctx.transaction.state["score"] = "100%"
             ctx.transaction.status = Status.SUCCESSFUL
 
-    monkeypatch.setattr(rpa_main, "load_config", lambda _path: config)
+    monkeypatch.setattr(
+        rpa_main, "load_config", lambda _path, *, require_file: config
+    )
     monkeypatch.setattr(rpa_main, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(rpa_main, "configure_logger", lambda **_kwargs: None)
     monkeypatch.setattr(rpa_main, "Engine", FakeEngine)
@@ -252,7 +335,9 @@ def test_main_continues_when_transaction_persistence_warns(monkeypatch, tmp_path
                 ctx.transaction.state["score"] = "100%"
             ctx.transaction.status = Status.SUCCESSFUL
 
-    monkeypatch.setattr(rpa_main, "load_config", lambda _path: config)
+    monkeypatch.setattr(
+        rpa_main, "load_config", lambda _path, *, require_file: config
+    )
     monkeypatch.setattr(rpa_main, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(rpa_main, "configure_logger", lambda **_kwargs: None)
     monkeypatch.setattr(rpa_main, "Engine", FakeEngine)
@@ -295,7 +380,9 @@ def test_main_aborts_when_score_transaction_records_no_score(monkeypatch, tmp_pa
                 ]
             ctx.transaction.status = Status.SUCCESSFUL
 
-    monkeypatch.setattr(rpa_main, "load_config", lambda _path: config)
+    monkeypatch.setattr(
+        rpa_main, "load_config", lambda _path, *, require_file: config
+    )
     monkeypatch.setattr(rpa_main, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(rpa_main, "configure_logger", lambda **_kwargs: None)
     monkeypatch.setattr(rpa_main, "Engine", FakeEngine)
@@ -339,7 +426,9 @@ def test_main_aborts_when_browser_page_is_closed_before_row(monkeypatch, tmp_pat
                 ]
             ctx.transaction.status = Status.SUCCESSFUL
 
-    monkeypatch.setattr(rpa_main, "load_config", lambda _path: config)
+    monkeypatch.setattr(
+        rpa_main, "load_config", lambda _path, *, require_file: config
+    )
     monkeypatch.setattr(rpa_main, "PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(rpa_main, "configure_logger", lambda **_kwargs: None)
     monkeypatch.setattr(rpa_main, "Engine", FakeEngine)

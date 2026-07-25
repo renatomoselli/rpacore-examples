@@ -125,6 +125,20 @@ python main.py
 
 See `tests/README.md` for the test layout.
 
+## Configuration
+
+`main.py` requires the committed `config.toml` beside it, regardless of the
+caller’s working directory. `transaction_db_path` and an enabled
+`screenshot_dir` are resolved relative to this example and must remain inside
+it. Browser settings, timeouts, and workbook download options are validated as
+configuration values; URL/host, workbook-schema, browser, and DOM behavior
+remain explicit runtime checks.
+
+The setup, each non-idempotent row, and score capture remain separate
+transactions sharing Playwright resources. Persistence is traceability only;
+on any abort, restart the challenge from a fresh browser session. Cleanup is
+unconditional after the workflow exits.
+
 ## Related
 
 - [RPA Core](https://github.com/renatomoselli/rpacore)

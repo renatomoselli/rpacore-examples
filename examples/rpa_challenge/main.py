@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from rpacore import (
+    ConfigField,
     Engine,
     ProcessContext,
     Status,
@@ -12,9 +13,10 @@ from rpacore import (
     configure_logger,
     get_logger,
     load_config,
+    resolve_config_paths,
     save_transaction,
+    validate_config,
 )
-from rpacore import resolve_config_paths
 
 from skills.row import FillRow, SubmitRow
 from skills.score import RecordScore
@@ -23,27 +25,37 @@ from skills._utils import find_row_value
 
 logger = get_logger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent
+_CONFIG_FIELDS = (
+    ConfigField("max_retries", int, min_value=0),
+    ConfigField("log_level", str, allow_empty=False),
+    ConfigField("transaction_db_path", str, allow_empty=False),
+    ConfigField("screenshot_dir", str, required=False),
+    ConfigField("xlsx_url", str, required=False, allow_empty=False),
+    ConfigField("xlsx_allowed_hosts", (str, list), required=False),
+    ConfigField("max_page_load_retries", int, required=False, min_value=1),
+    ConfigField("headless", bool, required=False),
+    ConfigField("timeout_page_load", int, required=False, min_value=1),
+    ConfigField("timeout_click", int, required=False, min_value=1),
+    ConfigField("timeout_form_transition", int, required=False, min_value=1),
+    ConfigField("timeout_congratulations_check", int, required=False, min_value=1),
+    ConfigField("timeout_score_extraction", int, required=False, min_value=1),
+)
+_CONFIG_PATH_KEYS = ("transaction_db_path", "screenshot_dir")
 
 
-def _validate_config(config: dict) -> None:
-    """Validate config has required keys with correct types."""
-    for key, expected_type in (
-        ("max_retries", int),
-        ("log_level", str),
-        ("transaction_db_path", str),
-    ):
-        if key not in config:
-            raise SystemException(f"Missing required config key: {key}", action="main")
-        if type(config[key]) is not expected_type:
-            raise SystemException(
-                f"Config key '{key}' must be {expected_type.__name__}, got {type(config[key]).__name__}",
-                action="main",
-            )
+def _validate_config(config: dict[str, object]) -> dict[str, object]:
+    """Validate public scalars, including whitespace-only strings, and retain domain rules."""
+    try:
+        validated = validate_config(config, _CONFIG_FIELDS)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SystemException(f"Invalid config: {exc}", action="main") from exc
 
-    if config["max_retries"] < 0:
-        raise SystemException("max_retries must be non-negative", action="main")
+    for key in ("log_level", "transaction_db_path", "xlsx_url"):
+        value = validated.get(key)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise SystemException(f"Config key '{key}' must be a non-empty string", action="main")
 
-    allowed_hosts = config.get("xlsx_allowed_hosts")
+    allowed_hosts = validated.get("xlsx_allowed_hosts")
     if allowed_hosts is not None:
         valid_allowed_hosts = isinstance(allowed_hosts, str) or (
             isinstance(allowed_hosts, list) and all(isinstance(host, str) for host in allowed_hosts)
@@ -53,6 +65,7 @@ def _validate_config(config: dict) -> None:
                 "Config key 'xlsx_allowed_hosts' must be a string or list of strings",
                 action="main",
             )
+    return validated
 
 
 def _format_failed_skills(tx: Transaction) -> str:
@@ -94,18 +107,23 @@ def _browser_page_available(shared_resources: dict) -> bool:
         return False
 
 
-def main() -> None:
-    config = load_config("config.toml")
-    _validate_config(config)
-    path_keys = ["transaction_db_path"]
-    if str(config.get("screenshot_dir", "")):
-        path_keys.append("screenshot_dir")
-    config = resolve_config_paths(
+def _load_example_config() -> dict[str, object]:
+    config = _validate_config(load_config(PROJECT_ROOT / "config.toml", require_file=True))
+    path_keys = [
+        key
+        for key in _CONFIG_PATH_KEYS
+        if key == "transaction_db_path" or config.get(key)
+    ]
+    return resolve_config_paths(
         config,
         path_keys,
         base_dir=PROJECT_ROOT,
         root=PROJECT_ROOT,
     )
+
+
+def main() -> None:
+    config = _load_example_config()
     configure_logger(level=str(config["log_level"]))
 
     screenshot_dir = str(config.get("screenshot_dir", ""))
