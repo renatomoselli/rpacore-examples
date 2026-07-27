@@ -87,7 +87,7 @@ because `fail_on_first_run` is `false`.
 ## Prerequisites
 
 - Python 3.11+
-- `rpacore` package installed (`pip install rpacore`)
+- RPA Core installed through `requirements.txt` (`rpacore>=0.1.1,<0.2.0`)
 
 ## Setup
 

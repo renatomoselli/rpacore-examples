@@ -47,7 +47,7 @@ From this directory:
 
 ```powershell
 python -m pip install -r requirements.txt
-python -m pip install "rpacore[keyring]>=0.1.0,<0.2.0"
+python -m pip install "rpacore[keyring]>=0.1.1,<0.2.0"
 python -m playwright install chromium
 ```
 

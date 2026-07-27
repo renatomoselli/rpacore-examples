@@ -41,6 +41,13 @@ health_report.jsonl          # Per-repo report rows created at runtime
 health_report.summary.json   # Aggregate summary created at runtime
 ```
 
+## Setup
+
+```bash
+cd examples/git_repo_health_monitor
+python -m pip install -r requirements.txt
+```
+
 ## Usage
 
 ```bash

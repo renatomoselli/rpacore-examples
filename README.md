@@ -46,7 +46,7 @@ python -m venv .venv
 Install the released package:
 
 ```powershell
-python -m pip install "rpacore>=0.1.0,<0.2.0"
+python -m pip install "rpacore>=0.1.1,<0.2.0"
 ```
 
 Or, during release rehearsal, build and install a local wheel from a sibling

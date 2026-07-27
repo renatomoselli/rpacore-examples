@@ -14,7 +14,7 @@ setup(
     ],
     packages=["skills"],
     install_requires=[
-        "rpacore",
+        "rpacore>=0.1.1,<0.2.0",
         "pywinauto>=0.6.8",
     ],
     entry_points={
