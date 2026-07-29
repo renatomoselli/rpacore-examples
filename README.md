@@ -25,7 +25,7 @@ It exists to validate the real consumer workflow:
 
 ## Framework Compatibility
 
-These examples target the RPA Core `0.1.x` compatibility line.
+These examples target the RPA Core `0.2.x` compatibility line.
 
 Most example folders include their own `requirements.txt`; those files pin the
 compatible RPA Core release and any example-specific libraries. During release
@@ -46,7 +46,7 @@ python -m venv .venv
 Install the released package:
 
 ```powershell
-python -m pip install "rpacore>=0.1.1,<0.2.0"
+python -m pip install "rpacore>=0.2.0,<0.3.0"
 ```
 
 Or, during release rehearsal, build and install a local wheel from a sibling

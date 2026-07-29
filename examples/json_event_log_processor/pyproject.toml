@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Batch processor for JSON event logs using the RPA Core framework."
 requires-python = ">=3.12"
 dependencies = [
-    "rpacore>=0.1.1,<0.2.0",
+    "rpacore>=0.2.0,<0.3.0",
 ]
 
 [project.optional-dependencies]

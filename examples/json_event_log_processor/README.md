@@ -33,7 +33,7 @@ rpacore.db                   # SQLite database tracking transaction status
 ## Prerequisites
 
 - Python 3.12+
-- RPA Core installed through `requirements.txt` (`rpacore>=0.1.1,<0.2.0`)
+- RPA Core installed through `requirements.txt` (`rpacore>=0.2.0,<0.3.0`)
 
 ## Setup
 
