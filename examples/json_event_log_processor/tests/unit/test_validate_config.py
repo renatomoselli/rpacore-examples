@@ -2,11 +2,13 @@ from __future__ import annotations
 
 """Unit tests for JSON Event Log Processor config validation."""
 
+from pathlib import Path
+
 import pytest
 
-from rpacore import SystemException
+from rpacore import SystemException, load_config
 
-from main import _validate_config
+from main import PROJECT_ROOT, _validate_config
 
 
 def _valid_config() -> dict:
@@ -28,6 +30,21 @@ def test_validate_config_accepts_valid_config():
     assert validated["inbox_dir"].endswith("inbox")
     assert validated["results_dir"].endswith("results")
     assert config == _valid_config()
+
+
+def test_committed_config_uses_tracked_sample_data():
+    config = load_config(PROJECT_ROOT / "config.toml", require_file=True)
+
+    validated = _validate_config(config)
+
+    assert Path(validated["inbox_dir"]) == PROJECT_ROOT / "sample_data"
+    assert [path.name for path in sorted(Path(validated["inbox_dir"]).glob("*.json"))] == [
+        "events_001.json",
+        "events_002.json",
+        "events_003.json",
+        "events_004.json",
+        "events_005.json",
+    ]
 
 
 def test_validate_config_resolves_contained_paths_without_mutating_input(tmp_path, monkeypatch):

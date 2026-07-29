@@ -15,7 +15,7 @@ This example demonstrates processing JSON event logs through a 5-step pipeline:
 ## Architecture
 
 ```
-inbox/                    # Input: JSON event log files
+sample_data/              # Default committed input: JSON event log files
   ├── events_001.json     # Valid: 5 events
   ├── events_002.json     # Valid: 3 events
   ├── events_003.json     # Invalid: missing required fields
@@ -60,10 +60,14 @@ The configured database, inbox, and results paths must remain under the
 example directory.
 
 This will:
-1. Process all `.json` files in the `inbox/` folder
+1. Process all five committed `.json` files in `sample_data/`
 2. Output normalized JSONL files to the `results/` folder
 3. Write transaction history to `rpacore.db`
 4. Generate `results/error_report.json` with failed transaction and persistence details
+
+To process a different local directory, copy the sample data with `make sample`
+and set `inbox_dir = "inbox"` in `config.toml`, or point `inbox_dir` at another
+contained directory. The committed default stays reproducible for a fresh clone.
 
 ## Expected Behavior
 
