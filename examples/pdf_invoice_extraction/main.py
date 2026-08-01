@@ -28,6 +28,7 @@ from skills.normalize_record import NormalizeRecord
 from skills.write_output import WriteOutput
 
 logger = get_logger(__name__)
+DEFINITION_IDENTITY = "pdf-invoice-extraction/invoice/v1"
 PROJECT_ROOT = Path(__file__).resolve().parent
 _CONFIG_PATH_KEYS = (
     "transaction_db_path",
@@ -170,6 +171,7 @@ def build_transaction(item: QueueItem) -> Transaction:
         )
     return Transaction(
         reference=f"invoice-{original_name}",
+        definition_identity=DEFINITION_IDENTITY,
         skills=[
             OpenPdf(name="open_pdf", execution_order=1),
             ParseInvoice(name="parse_invoice", execution_order=2),

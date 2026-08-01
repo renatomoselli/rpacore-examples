@@ -29,6 +29,7 @@ from skills.read_report_file import ReadReportFile
 from skills.validate_schema import ValidateSchema
 
 logger = get_logger(__name__)
+DEFINITION_IDENTITY = "file-inbox-processor/report/v1"
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
@@ -122,6 +123,7 @@ def scan_inbox(config: dict, queue: SqliteQueue) -> int:
 def build_transaction(item: QueueItem) -> Transaction:
     return Transaction(
         reference=item.reference,
+        definition_identity=DEFINITION_IDENTITY,
         skills=[
             ReadReportFile(name="read_report_file", execution_order=1),
             ValidateSchema(name="validate_schema", execution_order=2),

@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from rpacore import Engine, ProcessContext, Status, Transaction, save_transaction
+from main import REPOSITORY_DEFINITION_IDENTITY
 from skills.check_working_tree import CheckWorkingTree
 from skills.capture_recent_commits import CaptureRecentCommits
 from skills.check_remotes import CheckRemotes
@@ -80,6 +81,7 @@ class TestFullWorkflow:
 
             repo_tx = Transaction(
                 reference=f"repo-{real_repo.name}",
+                definition_identity=REPOSITORY_DEFINITION_IDENTITY,
                 state={
                     "current_repo": str(real_repo),
                     "output_file": output_file,
@@ -119,6 +121,7 @@ class TestFullWorkflow:
 
             repo_tx = Transaction(
                 reference=f"repo-{real_repo.name}",
+                definition_identity=REPOSITORY_DEFINITION_IDENTITY,
                 state={
                     "current_repo": str(real_repo),
                     "output_file": output_file,
@@ -157,6 +160,7 @@ class TestFullWorkflow:
 
             repo_tx = Transaction(
                 reference=f"repo-{real_repo.name}",
+                definition_identity=REPOSITORY_DEFINITION_IDENTITY,
                 state={
                     "current_repo": str(real_repo),
                     "output_file": output_file,

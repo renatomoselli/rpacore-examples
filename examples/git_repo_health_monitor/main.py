@@ -32,6 +32,8 @@ from skills.write_summary import WriteSummary
 from create_sample_repos import prepare_sample_repos
 
 logger = get_logger(__name__)
+REPOSITORY_DEFINITION_IDENTITY = "git-repo-health-monitor/repository/v1"
+SUMMARY_DEFINITION_IDENTITY = "git-repo-health-monitor/summary/v1"
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
@@ -181,6 +183,7 @@ def main() -> None:
     for repo_path in repos:
         repo_tx = Transaction(
             reference=f"repo-{Path(repo_path).name}",
+            definition_identity=REPOSITORY_DEFINITION_IDENTITY,
             state={
                 "current_repo": repo_path,
                 "output_file": output_file,
@@ -241,6 +244,7 @@ def main() -> None:
     # --- Summary transaction ---
     summary_tx = Transaction(
         reference="summary-report",
+        definition_identity=SUMMARY_DEFINITION_IDENTITY,
         state={
             "repo_health_records": repo_health_records,
             "output_file": output_file,

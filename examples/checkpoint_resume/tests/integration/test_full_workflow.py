@@ -16,6 +16,7 @@ from rpacore import (
 
 from skills.save_state import SaveState
 from skills.fail_task import FailTask
+from main import DEFINITION_IDENTITY
 
 
 def _build_config(db_path: str, checkpoint_path: str, fail_on_first_run: bool) -> dict:
@@ -46,6 +47,7 @@ def _run_first_run(db_path: str, checkpoint_path: str, fail_on_first_run: bool =
     )
     tx = Transaction(
         reference="checkpoint-resume-demo",
+        definition_identity=DEFINITION_IDENTITY,
         state={},
         metadata={"example": "checkpoint_resume"},
         skills=_create_skills(),
@@ -74,6 +76,7 @@ def _resume_and_run(
         tx_id=persisted_tx.id,
         skills=_create_skills(),
         db_path=db_path,
+        definition_identity=DEFINITION_IDENTITY,
     )
     Engine(max_retries=0).run(
         ProcessContext(transaction=resumed_tx, config=config),
@@ -169,6 +172,7 @@ class TestFullWorkflow:
                 tx_id="non-existent-id",
                 skills=_create_skills(),
                 db_path=db_path,
+                definition_identity=DEFINITION_IDENTITY,
             )
 
     def test_resume_can_fail_again_when_recovered_state_is_invalid(self, tmp_path: Path) -> None:

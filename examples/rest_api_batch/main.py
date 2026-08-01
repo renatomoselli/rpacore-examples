@@ -31,6 +31,8 @@ from skills.write_output import WriteOutput
 from skills import API_MODES
 
 logger = get_logger(__name__)
+FETCH_DEFINITION_IDENTITY = "rest-api-batch/fetch/v1"
+POST_DEFINITION_IDENTITY = "rest-api-batch/post/v1"
 PROJECT_ROOT = Path(__file__).resolve().parent
 _CONFIG_FIELDS = (
     ConfigField("max_retries", int, min_value=0),
@@ -80,6 +82,7 @@ def main() -> None:
     # --- setup transaction: fetch all posts ---
     setup_tx = Transaction(
         reference="fetch-posts",
+        definition_identity=FETCH_DEFINITION_IDENTITY,
         state={},
         skills=[
             FetchPosts(name="fetch_posts", execution_order=1),
@@ -107,6 +110,7 @@ def main() -> None:
             post_id = post.get("id", "unknown")
             post_tx = Transaction(
                 reference=f"post-{post_id}",
+                definition_identity=POST_DEFINITION_IDENTITY,
                 state={"current_post": post},
                 skills=[
                     ValidatePost(name="validate_post", execution_order=1),

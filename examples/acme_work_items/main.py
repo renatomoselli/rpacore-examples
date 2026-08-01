@@ -43,6 +43,8 @@ from skills.write_summary import WriteSummary
 
 logger = get_logger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent
+ITEM_DEFINITION_IDENTITY = "acme-work-items/item/v1"
+SUMMARY_DEFINITION_IDENTITY = "acme-work-items/summary/v1"
 _CONFIG_PATH_KEYS = (
     "transaction_db_path",
     "queue.db_path",
@@ -201,6 +203,7 @@ def build_transaction(item: QueueItem, *, run_id: str = "manual") -> Transaction
         raise SystemException("Queue payload contains an invalid work_item_id", action="build_transaction") from exc
     return Transaction(
         reference=item.reference,
+        definition_identity=ITEM_DEFINITION_IDENTITY,
         metadata={"example": "acme_work_items", "work_item_id": work_item_id, "run_id": run_id},
         skills=[
             FetchWorkItem(name="fetch_work_item", execution_order=1),
@@ -285,6 +288,7 @@ def _run_summary_transaction(
 ) -> Transaction:
     transaction = Transaction(
         reference=f"acme-summary-{run_id}",
+        definition_identity=SUMMARY_DEFINITION_IDENTITY,
         state={
             "run_id": run_id,
             "records": records,

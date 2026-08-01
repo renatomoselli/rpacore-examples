@@ -6,6 +6,7 @@ import json
 import tempfile
 from pathlib import Path
 
+from main import FILE_DEFINITION_IDENTITY
 from rpacore import Engine, ProcessContext, Status, Transaction, save_transaction
 from skills.load_json_file import LoadJsonFile
 from skills.validate_events import ValidateEvents
@@ -65,6 +66,7 @@ class TestPartialFailure:
 
             file_tx = Transaction(
                 reference="json-file-events_001",
+                definition_identity=FILE_DEFINITION_IDENTITY,
                 state=shared_data,
                 skills=[
                     LoadJsonFile(name="load_json_file", execution_order=1),
@@ -138,6 +140,7 @@ class TestPartialFailure:
 
                 file_tx = Transaction(
                     reference=f"json-file-{json_file.stem}",
+                    definition_identity=FILE_DEFINITION_IDENTITY,
                     state=shared_data,
                     skills=[
                         LoadJsonFile(name="load_json_file", execution_order=1),

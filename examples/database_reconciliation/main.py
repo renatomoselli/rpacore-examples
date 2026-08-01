@@ -26,6 +26,9 @@ from skills.match_transaction import MatchTransaction
 from skills.write_reconciliation_report import WriteReconciliationReport
 
 logger = get_logger(__name__)
+SETUP_DEFINITION_IDENTITY = "database-reconciliation/setup/v1"
+PAYMENT_DEFINITION_IDENTITY = "database-reconciliation/payment/v1"
+REPORT_DEFINITION_IDENTITY = "database-reconciliation/report/v1"
 
 
 # The project root is the directory containing main.py.
@@ -112,6 +115,7 @@ def main() -> None:
     # --- Setup transaction: load internal records and bank statement ---
     setup_tx = Transaction(
         reference="load-reconciliation-inputs",
+        definition_identity=SETUP_DEFINITION_IDENTITY,
         state={},
         metadata={
             "example": "database_reconciliation",
@@ -154,6 +158,7 @@ def main() -> None:
     for payment in internal_records:
         payment_tx = Transaction(
             reference=f"payment-{payment.get('payment_id')}",
+            definition_identity=PAYMENT_DEFINITION_IDENTITY,
             state={
                 "current_payment": payment,
                 "bank_by_reference": bank_by_reference,
@@ -198,6 +203,7 @@ def main() -> None:
     # --- Report transaction ---
     report_tx = Transaction(
         reference="write-reconciliation-report",
+        definition_identity=REPORT_DEFINITION_IDENTITY,
         state={"reconciliation_results": reconciliation_results},
         metadata={
             "example": "database_reconciliation",

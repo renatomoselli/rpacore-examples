@@ -25,7 +25,15 @@ It exists to validate the real consumer workflow:
 
 ## Framework Compatibility
 
-These examples target the RPA Core `0.2.x` compatibility line.
+These examples target the unreleased RPA Core `0.3.x` development line. The
+latest published package remains `0.2.x`; clone the examples repository at its
+`v0.2.0` tag when using that published line.
+
+Each production transaction declares a named `definition_identity` constant.
+That token belongs to the automation definition, not to an individual run or
+the RPA Core package version. Keep it stable across compatible fixes and Core
+upgrades; change it only when an in-progress transaction must not resume under
+the changed automation definition.
 
 Most example folders include their own `requirements.txt`; those files pin the
 compatible RPA Core release and any example-specific libraries. During release
@@ -43,14 +51,14 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-Install the released package:
+Install the target RPA Core `0.3.x` package after it is published:
 
 ```powershell
-python -m pip install "rpacore>=0.2.0,<0.3.0"
+python -m pip install "rpacore>=0.3.0,<0.4.0"
 ```
 
-Or, during release rehearsal, build and install a local wheel from a sibling
-framework checkout:
+For the current unreleased development line, build and install a local wheel
+from a sibling framework checkout:
 
 ```powershell
 cd ..\rpacore

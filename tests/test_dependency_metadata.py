@@ -6,7 +6,7 @@ import tomllib
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES_ROOT = REPOSITORY_ROOT / "examples"
-RPACORE_REQUIREMENT = "rpacore>=0.2.0,<0.3.0"
+RPACORE_REQUIREMENT = "rpacore>=0.3.0,<0.4.0"
 REQUIREMENTS_FILES = (
     "acme_work_items/requirements.txt",
     "checkpoint_resume/requirements.txt",
@@ -29,7 +29,7 @@ def _requirement_lines(path: Path) -> list[str]:
     ]
 
 
-def test_all_examples_require_rpacore_v02() -> None:
+def test_all_examples_require_rpacore_v03() -> None:
     for relative_path in REQUIREMENTS_FILES:
         assert RPACORE_REQUIREMENT in _requirement_lines(
             EXAMPLES_ROOT / relative_path
@@ -50,3 +50,20 @@ def test_package_metadata_matches_example_requirements() -> None:
         encoding="utf-8"
     )
     assert f'"{RPACORE_REQUIREMENT}"' in setup_py
+
+
+def test_reader_documentation_has_no_previous_core_constraint() -> None:
+    reader_readmes = (
+        REPOSITORY_ROOT / "README.md",
+        *sorted(EXAMPLES_ROOT.glob("*/README.md")),
+    )
+    for readme in reader_readmes:
+        text = readme.read_text(encoding="utf-8")
+        assert "rpacore>=0.2.0,<0.3.0" not in text, readme
+        assert "rpacore[keyring]>=0.2.0,<0.3.0" not in text, readme
+
+
+def test_root_readme_targets_unreleased_v03_truthfully() -> None:
+    text = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
+    assert f'python -m pip install "{RPACORE_REQUIREMENT}"' in text
+    assert "Install the target RPA Core `0.3.x` package after it is published" in text

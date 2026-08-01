@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 import main as app_main
+from main import FILE_DEFINITION_IDENTITY
 from rpacore import Engine, ProcessContext, Status, Transaction, list_transactions, save_transaction
 from skills.load_json_file import LoadJsonFile
 from skills.validate_events import ValidateEvents
@@ -64,6 +65,7 @@ class TestFullWorkflow:
 
             file_tx = Transaction(
                 reference="json-file-events_001",
+                definition_identity=FILE_DEFINITION_IDENTITY,
                 state=shared_data,
                 skills=[
                     LoadJsonFile(name="load_json_file", execution_order=1),

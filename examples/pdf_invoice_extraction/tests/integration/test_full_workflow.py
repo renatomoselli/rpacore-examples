@@ -20,7 +20,7 @@ from rpacore import (
     run_queue_loop,
 )
 
-from main import scan_inbox, build_transaction
+from main import DEFINITION_IDENTITY, build_transaction, scan_inbox
 from skills.open_pdf import OpenPdf
 from skills.parse_invoice import ParseInvoice
 from skills.validate_invoice import ValidateInvoice
@@ -210,6 +210,7 @@ class TestFullWorkflow:
         def build_transaction_with_retry(item: QueueItem) -> Transaction:
             return Transaction(
                 reference=f"invoice-{item.payload.get('original_name', 'unknown')}",
+                definition_identity=DEFINITION_IDENTITY,
                 skills=[
                     FailingOpenPdf(name="open_pdf", execution_order=1),
                     ParseInvoice(name="parse_invoice", execution_order=2),

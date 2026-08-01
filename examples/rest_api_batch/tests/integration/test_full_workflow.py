@@ -18,6 +18,7 @@ import pytest
 # Add parent directory to path for importing skills
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from main import POST_DEFINITION_IDENTITY
 from skills.fetch_posts import FetchPosts
 from skills.fetch_user import FetchUser
 from skills.validate_post import ValidatePost
@@ -168,6 +169,7 @@ class TestFullWorkflow:
             for post in posts:
                 post_tx = Transaction(
                     reference=f"post-{post['id']}",
+                    definition_identity=POST_DEFINITION_IDENTITY,
                     state={"current_post": post},
                     skills=[
                         ValidatePost(name="validate_post", execution_order=1),
@@ -278,6 +280,7 @@ class TestFullWorkflow:
             for post in setup_tx.state["posts"]:
                 post_tx = Transaction(
                     reference=f"post-{post['id']}",
+                    definition_identity=POST_DEFINITION_IDENTITY,
                     state={"current_post": post},
                     skills=[
                         ValidatePost(name="validate_post", execution_order=1),

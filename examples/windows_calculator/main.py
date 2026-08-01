@@ -35,6 +35,7 @@ from skills.close_calculator import CloseCalculator
 from skills.move_file import MoveFile
 
 logger = get_logger(__name__)
+DEFINITION_IDENTITY = "windows-calculator/batch/v1"
 PROJECT_ROOT = Path(__file__).resolve().parent
 _CONFIG_FIELDS = (
     ConfigField("engine_max_retries", int, min_value=0),
@@ -120,6 +121,7 @@ def build_transaction(item: QueueItem) -> Transaction:
     """
     return Transaction(
         reference=item.reference,
+        definition_identity=DEFINITION_IDENTITY,
         skills=[
             LoadExpressions(name="load_expressions", execution_order=1),
             OpenCalculator(name="open_calculator", execution_order=2),

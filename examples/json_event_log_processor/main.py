@@ -27,6 +27,8 @@ from skills.write_output import WriteOutput
 from skills.write_error_report import WriteErrorReport
 
 logger = get_logger(__name__)
+FILE_DEFINITION_IDENTITY = "json-event-log-processor/file/v1"
+ERROR_REPORT_DEFINITION_IDENTITY = "json-event-log-processor/error-report/v1"
 
 # The project root is the directory containing main.py.
 # All config paths (inbox_dir, results_dir, transaction_db_path) must resolve
@@ -73,6 +75,7 @@ def _save_transaction_safely(tx: Transaction, db_path: str, config: dict[str, An
 def _make_error_report_tx(run_id: str, report_attempt: int = 1) -> Transaction:
     return Transaction(
         reference="error-report",
+        definition_identity=ERROR_REPORT_DEFINITION_IDENTITY,
         state={"run_id": run_id},
         metadata={
             "example": "json_event_log_processor",
@@ -161,6 +164,7 @@ def main() -> None:
     for json_file in json_files:
         file_tx = Transaction(
             reference=f"json-file-{json_file.stem}",
+            definition_identity=FILE_DEFINITION_IDENTITY,
             state={"current_file": str(json_file)},
             metadata={
                 "example": "json_event_log_processor",

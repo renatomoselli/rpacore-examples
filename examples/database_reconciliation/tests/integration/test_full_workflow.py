@@ -5,6 +5,11 @@ from pathlib import Path
 
 from rpacore import Engine, ProcessContext, Status, Transaction, save_transaction
 
+from main import (
+    PAYMENT_DEFINITION_IDENTITY,
+    REPORT_DEFINITION_IDENTITY,
+    SETUP_DEFINITION_IDENTITY,
+)
 from skills.classify_outcome import ClassifyOutcome
 from skills.load_bank_statement import LoadBankStatement
 from skills.load_internal_records import LoadInternalRecords
@@ -54,6 +59,7 @@ def test_full_workflow_writes_reconciliation_report(tmp_path):
 
     setup_tx = Transaction(
         reference="load-reconciliation-inputs",
+        definition_identity=SETUP_DEFINITION_IDENTITY,
         state={},
         skills=[
             LoadInternalRecords(name="load_internal_records", execution_order=1),
@@ -73,6 +79,7 @@ def test_full_workflow_writes_reconciliation_report(tmp_path):
     for payment in internal_records:
         payment_tx = Transaction(
             reference=f"payment-{payment.get('payment_id')}",
+            definition_identity=PAYMENT_DEFINITION_IDENTITY,
             state={
                 "current_payment": payment,
                 "bank_by_reference": bank_by_reference,
@@ -91,6 +98,7 @@ def test_full_workflow_writes_reconciliation_report(tmp_path):
 
     report_tx = Transaction(
         reference="write-reconciliation-report",
+        definition_identity=REPORT_DEFINITION_IDENTITY,
         state={"reconciliation_results": reconciliation_results},
         skills=[
             WriteReconciliationReport(name="write_reconciliation_report", execution_order=1),

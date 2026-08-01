@@ -27,6 +27,7 @@ from skills import (
 )
 
 logger = get_logger(__name__)
+DEFINITION_IDENTITY = "excel-reorganization/v1"
 
 # The project root is the directory containing main.py.
 # All config paths (csv_path, output_dir, transaction_db_path) must resolve
@@ -102,6 +103,7 @@ def main() -> None:
     # Create transaction with all skills and seed initial state
     tx = Transaction(
         reference="excel-reorganization",
+        definition_identity=DEFINITION_IDENTITY,
         state={
             "output_filename": output_filename,
         },

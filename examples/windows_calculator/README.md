@@ -7,7 +7,7 @@ Run arithmetic checks through the Windows Calculator app using RPA Core skills a
 - Windows with the built-in Calculator app available
 - Python 3.11+
 - UI automation access for the current desktop session
-- RPA Core installed by `pip install -e .` (`rpacore>=0.2.0,<0.3.0`)
+- RPA Core installed by `pip install -e .` (`rpacore>=0.3.0,<0.4.0`)
 
 ## Usage
 

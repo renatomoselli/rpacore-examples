@@ -24,6 +24,9 @@ from skills.setup import DownloadInputData, OpenChallengePage, StartChallenge
 from skills._utils import find_row_value
 
 logger = get_logger(__name__)
+SETUP_DEFINITION_IDENTITY = "rpa-challenge/setup/v1"
+ROW_DEFINITION_IDENTITY = "rpa-challenge/row/v1"
+SCORE_DEFINITION_IDENTITY = "rpa-challenge/score/v1"
 PROJECT_ROOT = Path(__file__).resolve().parent
 _CONFIG_FIELDS = (
     ConfigField("max_retries", int, min_value=0),
@@ -141,6 +144,7 @@ def main() -> None:
     try:
         setup_tx = Transaction(
             reference="rpa-challenge-setup",
+            definition_identity=SETUP_DEFINITION_IDENTITY,
             skills=[
                 OpenChallengePage(name="open_challenge_page", execution_order=1),
                 DownloadInputData(name="download_input_data", execution_order=2),
@@ -188,6 +192,7 @@ def main() -> None:
 
             row_tx = Transaction(
                 reference=ref,
+                definition_identity=ROW_DEFINITION_IDENTITY,
                 skills=[
                     FillRow(name="fill_row", execution_order=1, arguments={"row": row}),
                     SubmitRow(name="submit_row", execution_order=2),
@@ -205,6 +210,7 @@ def main() -> None:
 
         score_tx = Transaction(
             reference="rpa-challenge-score",
+            definition_identity=SCORE_DEFINITION_IDENTITY,
             skills=[
                 RecordScore(name="record_score", execution_order=1),
             ],

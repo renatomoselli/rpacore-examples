@@ -26,6 +26,7 @@ from skills.save_state import SaveState
 from skills.fail_task import FailTask
 
 logger = get_logger(__name__)
+DEFINITION_IDENTITY = "checkpoint-resume/v1"
 
 # The project root is the directory containing main.py.
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -118,6 +119,7 @@ def main() -> None:
     logger.info("=== Starting first run ===")
     tx = Transaction(
         reference="checkpoint-resume-demo",
+        definition_identity=DEFINITION_IDENTITY,
         state={},
         metadata={"example": "checkpoint_resume"},
         skills=_create_skills(),
@@ -148,6 +150,7 @@ def main() -> None:
             tx_id=tx.id,
             skills=_create_skills(),
             db_path=db_path,
+            definition_identity=DEFINITION_IDENTITY,
         )
         # Keep the existing checkpoint artifact if resume persistence fails; it
         # still represents the successful pre-resume state.
