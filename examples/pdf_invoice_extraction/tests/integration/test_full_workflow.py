@@ -21,11 +21,11 @@ from rpacore import (
 )
 
 from main import DEFINITION_IDENTITY, build_transaction, scan_inbox
-from skills.open_pdf import OpenPdf
-from skills.parse_invoice import ParseInvoice
-from skills.validate_invoice import ValidateInvoice
-from skills.normalize_record import NormalizeRecord
-from skills.write_output import WriteOutput
+from steps.open_pdf import OpenPdf
+from steps.parse_invoice import ParseInvoice
+from steps.validate_invoice import ValidateInvoice
+from steps.normalize_record import NormalizeRecord
+from steps.write_output import WriteOutput
 
 def _create_sample_pdf(pdf_path: Path, text: str) -> None:
     """Create a deterministic text-backed PDF fixture."""
@@ -211,7 +211,7 @@ class TestFullWorkflow:
             return Transaction(
                 reference=f"invoice-{item.payload.get('original_name', 'unknown')}",
                 definition_identity=DEFINITION_IDENTITY,
-                skills=[
+                steps=[
                     FailingOpenPdf(name="open_pdf", execution_order=1),
                     ParseInvoice(name="parse_invoice", execution_order=2),
                     ValidateInvoice(name="validate_invoice", execution_order=3),

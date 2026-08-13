@@ -1,4 +1,4 @@
-"""Unit tests for WriteOutput skill."""
+"""Unit tests for WriteOutput step."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ import pytest
 
 from rpacore import BusinessException, ProcessContext, Status, SystemException, Transaction
 
-from skills.write_output import WriteOutput, _output_csv_lock
+from steps.write_output import WriteOutput, _output_csv_lock
 
 class TestWriteOutput:
-    """Tests for WriteOutput skill."""
+    """Tests for WriteOutput step."""
 
     def _make_normalized_record(self, **overrides):
         base = {
@@ -33,17 +33,17 @@ class TestWriteOutput:
         base.update(overrides)
         return base
 
-    def _run_skill(self, record=None, file_path="/nonexistent/file.pdf", original_name=None, config=None):
+    def _run_step(self, record=None, file_path="/nonexistent/file.pdf", original_name=None, config=None):
         if record is None:
             record = self._make_normalized_record()
-        tx = Transaction(reference="test", skills=[WriteOutput(name="write_output", execution_order=1)])
+        tx = Transaction(reference="test", steps=[WriteOutput(name="write_output", execution_order=1)])
         tx.state["normalized_record"] = record
         tx.state["file_path"] = file_path
         if original_name is not None:
             tx.state["original_name"] = original_name
         ctx = ProcessContext(transaction=tx, config=config or {})
-        skill = WriteOutput(name="write_output", execution_order=1)
-        skill.execute(ctx)
+        step = WriteOutput(name="write_output", execution_order=1)
+        step.execute(ctx)
         return tx
 
     def test_write_output_csv_writing(self, tmp_env: Path):
@@ -53,7 +53,7 @@ class TestWriteOutput:
         os.makedirs(sample_data_dir, exist_ok=True)
         os.makedirs(results_dir, exist_ok=True)
 
-        tx = self._run_skill(config={"sample_data_dir": sample_data_dir, "results_dir": results_dir, "output_csv": output_csv})
+        tx = self._run_step(config={"sample_data_dir": sample_data_dir, "results_dir": results_dir, "output_csv": output_csv})
         assert tx.state.get("output_written") is True
 
         assert os.path.exists(output_csv)
@@ -75,8 +75,8 @@ class TestWriteOutput:
         os.makedirs(results_dir, exist_ok=True)
         cfg = {"sample_data_dir": sample_data_dir, "results_dir": results_dir, "output_csv": output_csv}
 
-        self._run_skill(record=self._make_normalized_record(invoice_number="INV-001"), config=cfg)
-        self._run_skill(record=self._make_normalized_record(invoice_number="INV-002"), config=cfg)
+        self._run_step(record=self._make_normalized_record(invoice_number="INV-001"), config=cfg)
+        self._run_step(record=self._make_normalized_record(invoice_number="INV-002"), config=cfg)
 
         with open(output_csv, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
@@ -94,7 +94,7 @@ class TestWriteOutput:
             return original_write(self, path, invoice, rows)
 
         monkeypatch.setattr(WriteOutput, "_write_csv_record", assert_locked)
-        self._run_skill(
+        self._run_step(
             config={
                 "sample_data_dir": str(tmp_env / "sample_data"),
                 "results_dir": str(output_csv.parent),
@@ -112,7 +112,7 @@ class TestWriteOutput:
         os.makedirs(sample_data_dir, exist_ok=True)
         os.makedirs(results_dir, exist_ok=True)
 
-        self._run_skill(config={"sample_data_dir": sample_data_dir, "results_dir": results_dir, "output_csv": output_csv})
+        self._run_step(config={"sample_data_dir": sample_data_dir, "results_dir": results_dir, "output_csv": output_csv})
 
         with open(output_csv, "r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -126,7 +126,7 @@ class TestWriteOutput:
         os.makedirs(sample_data_dir, exist_ok=True)
         os.makedirs(results_dir, exist_ok=True)
 
-        self._run_skill(
+        self._run_step(
             record=self._make_normalized_record(total=250.1, subtotal=100.0051),
             config={"sample_data_dir": sample_data_dir, "results_dir": results_dir, "output_csv": output_csv},
         )
@@ -144,7 +144,7 @@ class TestWriteOutput:
         os.makedirs(sample_data_dir, exist_ok=True)
         os.makedirs(results_dir, exist_ok=True)
 
-        self._run_skill(
+        self._run_step(
             record=self._make_normalized_record(
                 invoice_number="=cmd|' /C calc'!A0",
                 date="+2024-01-15",
@@ -171,22 +171,22 @@ class TestWriteOutput:
         assert row["currency"] == "'-USD"
 
     def test_write_output_missing_normalized_record(self, tmp_env: Path):
-        tx = Transaction(reference="test", skills=[WriteOutput(name="write_output", execution_order=1)])
+        tx = Transaction(reference="test", steps=[WriteOutput(name="write_output", execution_order=1)])
         tx.state["file_path"] = "/nonexistent/file.pdf"
         ctx = ProcessContext(transaction=tx, config={})
-        skill = WriteOutput(name="write_output", execution_order=1)
+        step = WriteOutput(name="write_output", execution_order=1)
 
         with pytest.raises(SystemException, match="normalized_record"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
     def test_write_output_missing_file_path(self, tmp_env: Path):
-        tx = Transaction(reference="test", skills=[WriteOutput(name="write_output", execution_order=1)])
+        tx = Transaction(reference="test", steps=[WriteOutput(name="write_output", execution_order=1)])
         tx.state["normalized_record"] = self._make_normalized_record()
         ctx = ProcessContext(transaction=tx, config={})
-        skill = WriteOutput(name="write_output", execution_order=1)
+        step = WriteOutput(name="write_output", execution_order=1)
 
         with pytest.raises(SystemException, match="file_path"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
     def test_write_output_file_move_to_done(self, tmp_env: Path):
         sample_data_dir = str(tmp_env / "sample_data")
@@ -198,7 +198,7 @@ class TestWriteOutput:
         pdf_path = tmp_env / "sample_data" / "test.pdf"
         pdf_path.write_text("fake pdf content")
 
-        tx = self._run_skill(
+        tx = self._run_step(
             file_path=str(pdf_path),
             original_name="test.pdf",
             config={"sample_data_dir": sample_data_dir, "results_dir": results_dir, "output_csv": output_csv},
@@ -218,17 +218,17 @@ class TestWriteOutput:
         cfg = {"sample_data_dir": sample_data_dir, "results_dir": results_dir, "output_csv": output_csv}
 
         # Write first record
-        self._run_skill(config=cfg)
+        self._run_step(config=cfg)
 
         # Try to write duplicate — should raise BusinessException
-        tx = Transaction(reference="test", skills=[WriteOutput(name="write_output", execution_order=1)])
+        tx = Transaction(reference="test", steps=[WriteOutput(name="write_output", execution_order=1)])
         tx.state["normalized_record"] = self._make_normalized_record()
         tx.state["file_path"] = "/nonexistent/file.pdf"
         ctx = ProcessContext(transaction=tx, config=cfg)
-        skill = WriteOutput(name="write_output", execution_order=1)
+        step = WriteOutput(name="write_output", execution_order=1)
 
         with pytest.raises(BusinessException, match="Duplicate invoice number"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
     def test_write_output_blank_invoice_number_is_business_failure(self, tmp_env: Path):
         """Blank invoice numbers should not bypass duplicate protection."""
@@ -239,7 +239,7 @@ class TestWriteOutput:
         os.makedirs(results_dir, exist_ok=True)
 
         with pytest.raises(BusinessException, match="Missing invoice number"):
-            self._run_skill(
+            self._run_step(
                 record=self._make_normalized_record(invoice_number=""),
                 config={
                     "sample_data_dir": sample_data_dir,
@@ -261,10 +261,10 @@ class TestWriteOutput:
         def fail_move(src, dst):
             raise OSError("locked")
 
-        monkeypatch.setattr("skills.write_output.shutil.move", fail_move)
+        monkeypatch.setattr("steps.write_output.shutil.move", fail_move)
 
         with pytest.raises(SystemException, match="Failed to move PDF"):
-            self._run_skill(
+            self._run_step(
                 file_path=str(pdf_path),
                 original_name="locked.pdf",
                 config={
@@ -289,7 +289,7 @@ class TestWriteOutput:
         pdf_path = tmp_env / "sample_data" / "invoice.pdf"
         pdf_path.write_text("fake pdf content", encoding="utf-8")
 
-        tx = Transaction(reference="test", skills=[WriteOutput(name="write_output", execution_order=1)])
+        tx = Transaction(reference="test", steps=[WriteOutput(name="write_output", execution_order=1)])
         tx.state["normalized_record"] = self._make_normalized_record()
         tx.state["file_path"] = str(pdf_path)
         tx.state["original_name"] = "invoice.pdf"
@@ -301,22 +301,22 @@ class TestWriteOutput:
                 "output_csv": output_csv,
             },
         )
-        skill = WriteOutput(name="write_output", execution_order=1)
+        step = WriteOutput(name="write_output", execution_order=1)
 
         def fail_replace(source, destination):
             raise OSError("csv unavailable")
 
         monkeypatch.setattr(os, "replace", fail_replace)
         with pytest.raises(SystemException, match="csv unavailable"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert pdf_path.exists()
         assert "done_path" not in tx.state
         assert not os.path.exists(output_csv)
 
         monkeypatch.undo()
-        retry_skill = WriteOutput(name="write_output", execution_order=1)
-        retry_skill.execute(ctx)
+        retry_step = WriteOutput(name="write_output", execution_order=1)
+        retry_step.execute(ctx)
 
         done_path = tx.state["done_path"]
         artifact_paths = [artifact.path for artifact in tx.artifacts]
@@ -331,7 +331,7 @@ class TestWriteOutput:
         pdf_path = sample_data_dir / "invoice.pdf"
         pdf_path.write_text("fake pdf content", encoding="utf-8")
 
-        tx = Transaction(reference="test", skills=[WriteOutput(name="write_output", execution_order=1)])
+        tx = Transaction(reference="test", steps=[WriteOutput(name="write_output", execution_order=1)])
         tx.state.update(
             normalized_record=self._make_normalized_record(),
             file_path=str(pdf_path),
@@ -345,7 +345,7 @@ class TestWriteOutput:
                 "output_csv": str(output_csv),
             },
         )
-        skill = WriteOutput(name="write_output", execution_order=1)
+        step = WriteOutput(name="write_output", execution_order=1)
         original_move = shutil.move
         move_count = 0
 
@@ -359,11 +359,11 @@ class TestWriteOutput:
         def fail_replace(source, destination):
             raise OSError("csv unavailable")
 
-        monkeypatch.setattr("skills.write_output.shutil.move", fail_restore)
+        monkeypatch.setattr("steps.write_output.shutil.move", fail_restore)
         monkeypatch.setattr(os, "replace", fail_replace)
 
         with pytest.raises(SystemException, match="Failed to restore PDF"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
         done_path = tx.state["done_path"]
         assert os.path.exists(done_path)
@@ -386,7 +386,7 @@ class TestWriteOutput:
             f.write("not,the,expected,header\n")
 
         with pytest.raises(BusinessException, match="Unexpected CSV header"):
-            self._run_skill(
+            self._run_step(
                 config={
                     "sample_data_dir": sample_data_dir,
                     "results_dir": results_dir,
@@ -402,14 +402,14 @@ class TestWriteOutput:
         os.makedirs(sample_data_dir, exist_ok=True)
         os.makedirs(results_dir, exist_ok=True)
 
-        tx = Transaction(reference="test", skills=[WriteOutput(name="write_output", execution_order=1)])
+        tx = Transaction(reference="test", steps=[WriteOutput(name="write_output", execution_order=1)])
         tx.state["normalized_record"] = self._make_normalized_record()
         tx.state["file_path"] = "/nonexistent/file.pdf"
         tx.state["validation_failed"] = True
         ctx = ProcessContext(transaction=tx, config={"sample_data_dir": sample_data_dir, "results_dir": results_dir, "output_csv": output_csv})
-        skill = WriteOutput(name="write_output", execution_order=1)
-        skill.execute(ctx)
-        assert skill.status == Status.SKIPPED
+        step = WriteOutput(name="write_output", execution_order=1)
+        step.execute(ctx)
+        assert step.status == Status.SKIPPED
         assert tx.state.get("output_written") is None
         assert not os.path.exists(output_csv)
 
@@ -422,7 +422,7 @@ class TestWriteOutput:
             real_close(fd)
             raise OSError("bad fd")
 
-        monkeypatch.setattr("skills.write_output.os.close", fail_close)
+        monkeypatch.setattr("steps.write_output.os.close", fail_close)
         with _output_csv_lock(output_csv, action="test"):
             assert output_csv.with_name("output.csv.lock").exists()
 

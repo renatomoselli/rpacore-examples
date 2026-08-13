@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from skills.git_utils import parse_git_datetime
+from steps.git_utils import parse_git_datetime
 
 
 @pytest.mark.parametrize(

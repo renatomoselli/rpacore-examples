@@ -118,10 +118,10 @@ Each line in the JSONL output follows this schema:
       "outcome_category": "business_failed",
       "retry_disposition": "not_requested",
       "failure_code": "json_event_log.validation.invalid_event",
-      "failed_skills": [
+      "failed_steps": [
         {
-          "skill_name": "validate_events",
-          "skill_order": 2,
+          "step_name": "validate_events",
+          "step_order": 2,
           "exception_type": "business",
           "message": "Event at index 1 missing required field: event_type"
         }
@@ -183,9 +183,9 @@ Run only integration tests:
 python -m pytest tests/integration/ -v
 ```
 
-## Skills
+## Steps
 
-| Skill | Order | Description |
+| Step | Order | Description |
 |-------|-------|-------------|
 | `LoadJsonFile` | 1 | Read and parse JSON files |
 | `ValidateEvents` | 2 | Validate event schema |
@@ -195,7 +195,7 @@ python -m pytest tests/integration/ -v
 
 ## Key Design Decisions
 
-1. **Validation short-circuit**: Unlike the `rest_api_batch` example where `BusinessException` doesn't stop execution, this pipeline raises validation errors with `stop=True` so downstream skills do not run for invalid files.
+1. **Validation short-circuit**: Unlike the `rest_api_batch` example where `BusinessException` doesn't stop execution, this pipeline raises validation errors with `halts_remaining_steps=True` so downstream steps do not run for invalid files.
 2. **JSONL output**: Each normalized event is written as a single JSON line, suitable for streaming and log analysis tools.
 3. **Per-file transactions**: Each input file is processed as a separate RPA Core transaction, enabling partial failure handling.
 4. **Persistence error visibility**: Transaction-save failures are captured in the error report while the remaining files continue processing.

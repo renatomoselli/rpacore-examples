@@ -4,8 +4,8 @@ import hashlib
 
 from rpacore import Status
 
-from skills.compute_security_hash import ComputeSecurityHash
-from tests.conftest import run_skill
+from steps.compute_security_hash import ComputeSecurityHash
+from tests.conftest import run_step
 
 
 def test_compute_security_hash_matches_known_vector(example_config) -> None:
@@ -16,7 +16,7 @@ def test_compute_security_hash_matches_known_vector(example_config) -> None:
         "work_item_id": "1001",
         "discovered_hash": "fingerprint",
     }
-    transaction = run_skill(
+    transaction = run_step(
         ComputeSecurityHash(name="compute", execution_order=1),
         state=state,
         config=example_config,

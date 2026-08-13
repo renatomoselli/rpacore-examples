@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from rpacore import BusinessException, SystemException
 
-from skills.group_by_month import GroupByMonth
+from steps.group_by_month import GroupByMonth
 from tests.conftest import make_context
 
 
@@ -33,7 +33,7 @@ def test_group_by_month_requires_sales_data():
         GroupByMonth(name="group_by_month", execution_order=1).execute(ctx)
 
 
-def test_group_by_month_missing_date_stops_downstream_skills():
+def test_group_by_month_missing_date_stops_downstream_steps():
     ctx = make_context(
         state={
             "sales_data": [
@@ -45,7 +45,7 @@ def test_group_by_month_missing_date_stops_downstream_skills():
     with pytest.raises(BusinessException, match="Row 1 missing date") as exc_info:
         GroupByMonth(name="group_by_month", execution_order=1).execute(ctx)
 
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_group_by_month_revalidates_date_format_when_state_is_seeded_directly():
@@ -60,4 +60,4 @@ def test_group_by_month_revalidates_date_format_when_state_is_seeded_directly():
     with pytest.raises(BusinessException, match="Row 1 has invalid date format") as exc_info:
         GroupByMonth(name="group_by_month", execution_order=1).execute(ctx)
 
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True

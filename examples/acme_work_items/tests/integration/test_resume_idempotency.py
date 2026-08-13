@@ -6,7 +6,7 @@ import pytest
 from rpacore import SystemException, list_transactions
 
 from main import run_example
-from skills._session import BrowserSession, RemoteConflictError
+from steps._session import BrowserSession, RemoteConflictError
 from tests.conftest import browser_session
 
 
@@ -75,7 +75,7 @@ def test_queue_resume_does_not_duplicate_remote_side_effect(
         if transaction.reference == "acme-1001"
     ]
     assert len(item_transactions) == 1
-    assert all(skill.status == "successful" for skill in item_transactions[0].skills)
+    assert all(step.status == "successful" for step in item_transactions[0].steps)
 
 
 def test_applied_hash_fast_path_rejects_changed_identity(

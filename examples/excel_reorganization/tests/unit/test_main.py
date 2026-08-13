@@ -5,7 +5,7 @@ from rpacore import (
     BusinessException,
     OutcomeCategory,
     RetryDisposition,
-    Skill,
+    Step,
     Status,
     SystemException,
     list_transactions,
@@ -133,10 +133,10 @@ def test_main_persists_failed_transaction_and_cleans_output(tmp_path, monkeypatc
     output_path.parent.mkdir()
     output_path.write_text("partial", encoding="utf-8")
 
-    class FailedLoad(Skill):
+    class FailedLoad(Step):
         def execute(self, ctx):
             ctx.transaction.state["output_path"] = str(output_path)
-            raise BusinessException("expected failure", action=self.name, stop=True)
+            raise BusinessException("expected failure", action=self.name, halts_remaining_steps=True)
 
     monkeypatch.setattr(main, "load_config", lambda *_args, **_kwargs: config)
     monkeypatch.setattr(main, "LoadSalesData", FailedLoad)

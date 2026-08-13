@@ -18,14 +18,14 @@ def sample_db_path(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def run_skill():
-    def _run_skill(skill: Any, state: dict | None = None, config: dict | None = None) -> Transaction:
+def run_step():
+    def _run_step(step: Any, state: dict | None = None, config: dict | None = None) -> Transaction:
         tx = Transaction(
-            reference=f"test-{skill.name}",
+            reference=f"test-{step.name}",
             state=state or {},
-            skills=[skill],
+            steps=[step],
         )
         Engine(max_retries=0).run(ProcessContext(transaction=tx, config=config or {}))
         return tx
 
-    return _run_skill
+    return _run_step

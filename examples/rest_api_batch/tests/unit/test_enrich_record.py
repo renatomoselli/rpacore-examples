@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-"""Unit tests for the EnrichRecord skill."""
+"""Unit tests for the EnrichRecord step."""
 
 import pytest
 
 from rpacore import BusinessException, ProcessContext, SystemException, Transaction
-from skills.enrich_record import EnrichRecord
+from steps.enrich_record import EnrichRecord
 
 
 class TestEnrichRecord:
-    """Test the EnrichRecord skill."""
+    """Test the EnrichRecord step."""
 
     def test_enriches_record_with_post_and_user(self):
         """Test that EnrichRecord merges post and user data correctly."""
@@ -30,8 +30,8 @@ class TestEnrichRecord:
         )
         ctx = ProcessContext(transaction=transaction)
 
-        skill = EnrichRecord("enrich_record", 3)
-        skill.execute(ctx)
+        step = EnrichRecord("enrich_record", 3)
+        step.execute(ctx)
 
         expected = {
             "postId": 1,
@@ -54,8 +54,8 @@ class TestEnrichRecord:
         )
         ctx = ProcessContext(transaction=transaction)
 
-        skill = EnrichRecord("enrich_record", 3)
-        skill.execute(ctx)
+        step = EnrichRecord("enrich_record", 3)
+        step.execute(ctx)
 
         assert ctx.state["enriched_record"]["userCity"] == ""
 
@@ -88,10 +88,10 @@ class TestEnrichRecord:
         )
         ctx = ProcessContext(transaction=transaction)
 
-        skill = EnrichRecord("enrich_record", 3)
+        step = EnrichRecord("enrich_record", 3)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert "Missing required state" in str(exc_info.value)
 
@@ -103,10 +103,10 @@ class TestEnrichRecord:
         )
         ctx = ProcessContext(transaction=transaction)
 
-        skill = EnrichRecord("enrich_record", 3)
+        step = EnrichRecord("enrich_record", 3)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert "Missing required state" in str(exc_info.value)
 
@@ -120,13 +120,13 @@ class TestEnrichRecord:
         )
         ctx = ProcessContext(transaction=transaction)
 
-        skill = EnrichRecord("enrich_record", 3)
+        step = EnrichRecord("enrich_record", 3)
 
         with pytest.raises(BusinessException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert "missing required field: id" in str(exc_info.value)
-        assert exc_info.value.stops_execution is True
+        assert exc_info.value.halts_remaining_steps is True
 
     def test_raises_on_zero_user_id(self):
         """Test that an enriched user id must be positive."""
@@ -152,13 +152,13 @@ class TestEnrichRecord:
         )
         ctx = ProcessContext(transaction=transaction)
 
-        skill = EnrichRecord("enrich_record", 3)
+        step = EnrichRecord("enrich_record", 3)
 
         with pytest.raises(BusinessException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert "missing required field: name" in str(exc_info.value)
-        assert exc_info.value.stops_execution is True
+        assert exc_info.value.halts_remaining_steps is True
 
     @pytest.mark.parametrize("name", ["   ", 123])
     def test_raises_on_invalid_user_name(self, name):
@@ -189,13 +189,13 @@ class TestEnrichRecord:
         )
         ctx = ProcessContext(transaction=transaction)
 
-        skill = EnrichRecord("enrich_record", 3)
+        step = EnrichRecord("enrich_record", 3)
 
         with pytest.raises(BusinessException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert "missing required field: email" in str(exc_info.value)
-        assert exc_info.value.stops_execution is True
+        assert exc_info.value.halts_remaining_steps is True
 
     @pytest.mark.parametrize("email", ["   ", 123])
     def test_raises_on_invalid_user_email(self, email):

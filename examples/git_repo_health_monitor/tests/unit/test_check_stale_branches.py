@@ -1,4 +1,4 @@
-"""Unit tests for the CheckStaleBranches skill."""
+"""Unit tests for the CheckStaleBranches step."""
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
@@ -6,12 +6,12 @@ from unittest.mock import Mock, patch
 import pytest
 
 from rpacore import SystemException
-from skills.check_stale_branches import CheckStaleBranches
+from steps.check_stale_branches import CheckStaleBranches
 from tests.conftest import make_context
 
 
 class TestCheckStaleBranches:
-    """Test the CheckStaleBranches skill."""
+    """Test the CheckStaleBranches step."""
 
     def setup_method(self):
         self.ctx = make_context(
@@ -29,8 +29,8 @@ class TestCheckStaleBranches:
         mock_ref_result.returncode = 0
 
         with patch("subprocess.run", side_effect=[mock_branch_result, mock_ref_result]):
-            skill = CheckStaleBranches("check_stale_branches", 4)
-            skill.execute(self.ctx)
+            step = CheckStaleBranches("check_stale_branches", 4)
+            step.execute(self.ctx)
 
         assert "master" in self.ctx.state["all_branches"]
         assert "feature-old" in self.ctx.state["all_branches"]
@@ -46,8 +46,8 @@ class TestCheckStaleBranches:
         mock_ref_result.returncode = 0
 
         with patch("subprocess.run", side_effect=[mock_branch_result, mock_ref_result]):
-            skill = CheckStaleBranches("check_stale_branches", 4)
-            skill.execute(self.ctx)
+            step = CheckStaleBranches("check_stale_branches", 4)
+            step.execute(self.ctx)
 
         assert "(HEAD detached at abc123)" not in self.ctx.state["all_branches"]
 
@@ -61,8 +61,8 @@ class TestCheckStaleBranches:
         mock_ref_result.returncode = 0
 
         with patch("subprocess.run", side_effect=[mock_branch_result, mock_ref_result]):
-            skill = CheckStaleBranches("check_stale_branches", 4)
-            skill.execute(self.ctx)
+            step = CheckStaleBranches("check_stale_branches", 4)
+            step.execute(self.ctx)
 
         assert "remotes/origin/feature-old" not in self.ctx.state["all_branches"]
 
@@ -79,8 +79,8 @@ class TestCheckStaleBranches:
         mock_ref_result.returncode = 0
 
         with patch("subprocess.run", side_effect=[mock_branch_result, mock_ref_result]):
-            skill = CheckStaleBranches("check_stale_branches", 4)
-            skill.execute(self.ctx)
+            step = CheckStaleBranches("check_stale_branches", 4)
+            step.execute(self.ctx)
 
         assert "master" in self.ctx.state["all_branches"]
         assert self.ctx.state["stale_branches"] == []
@@ -96,8 +96,8 @@ class TestCheckStaleBranches:
         mock_ref_result.returncode = 0
 
         with patch("subprocess.run", side_effect=[mock_branch_result, mock_ref_result]):
-            skill = CheckStaleBranches("check_stale_branches", 4)
-            skill.execute(self.ctx)
+            step = CheckStaleBranches("check_stale_branches", 4)
+            step.execute(self.ctx)
 
         assert self.ctx.state["stale_branches"] == ["master"]
 
@@ -111,8 +111,8 @@ class TestCheckStaleBranches:
         mock_ref_result.returncode = 0
 
         with patch("subprocess.run", side_effect=[mock_branch_result, mock_ref_result]):
-            skill = CheckStaleBranches("check_stale_branches", 4)
-            skill.execute(self.ctx)
+            step = CheckStaleBranches("check_stale_branches", 4)
+            step.execute(self.ctx)
 
         assert self.ctx.state["stale_branches"] == []
 
@@ -129,8 +129,8 @@ class TestCheckStaleBranches:
         mock_ref_result.returncode = 0
 
         with patch("subprocess.run", side_effect=[mock_branch_result, mock_ref_result]):
-            skill = CheckStaleBranches("check_stale_branches", 4)
-            skill.execute(self.ctx)
+            step = CheckStaleBranches("check_stale_branches", 4)
+            step.execute(self.ctx)
 
         assert self.ctx.state["stale_branches"] == ["master", "feature-old"]
 
@@ -144,29 +144,29 @@ class TestCheckStaleBranches:
         mock_ref_result.returncode = 0
 
         with patch("subprocess.run", side_effect=[mock_branch_result, mock_ref_result]):
-            skill = CheckStaleBranches("check_stale_branches", 4)
-            skill.execute(self.ctx)
+            step = CheckStaleBranches("check_stale_branches", 4)
+            step.execute(self.ctx)
 
         assert self.ctx.state["stale_branches"] == ["master"]
 
     def test_raises_on_missing_current_repo(self):
         ctx = make_context(config={"stale_branch_days": 30})
-        skill = CheckStaleBranches("check_stale_branches", 4)
+        step = CheckStaleBranches("check_stale_branches", 4)
         with pytest.raises(SystemException, match="current_repo"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
     def test_raises_on_git_not_found(self):
         with patch("subprocess.run", side_effect=FileNotFoundError()):
-            skill = CheckStaleBranches("check_stale_branches", 4)
+            step = CheckStaleBranches("check_stale_branches", 4)
             with pytest.raises(SystemException, match="git command not found"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)
 
     def test_raises_on_timeout(self):
         import subprocess
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("git", 30)):
-            skill = CheckStaleBranches("check_stale_branches", 4)
+            step = CheckStaleBranches("check_stale_branches", 4)
             with pytest.raises(SystemException, match="timed out"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)
 
     def test_raises_on_nonzero_git_branch_exit(self):
         mock_branch_result = Mock()
@@ -174,15 +174,15 @@ class TestCheckStaleBranches:
         mock_branch_result.stderr = "fatal: not a git repository"
 
         with patch("subprocess.run", return_value=mock_branch_result):
-            skill = CheckStaleBranches("check_stale_branches", 4)
+            step = CheckStaleBranches("check_stale_branches", 4)
             with pytest.raises(SystemException, match="git branch returned exit code 128"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)
 
     def test_raises_on_os_error_for_branch_list(self):
         with patch("subprocess.run", side_effect=PermissionError("denied")):
-            skill = CheckStaleBranches("check_stale_branches", 4)
+            step = CheckStaleBranches("check_stale_branches", 4)
             with pytest.raises(SystemException, match="git branch failed"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)
 
     def test_raises_on_os_error_for_each_ref(self):
         mock_branch_result = Mock()
@@ -193,9 +193,9 @@ class TestCheckStaleBranches:
             mock_branch_result,
             PermissionError("denied"),
         ]):
-            skill = CheckStaleBranches("check_stale_branches", 4)
+            step = CheckStaleBranches("check_stale_branches", 4)
             with pytest.raises(SystemException, match="git for-each-ref failed"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)
 
     def test_raises_on_missing_git_for_each_ref(self):
         mock_branch_result = Mock()
@@ -203,9 +203,9 @@ class TestCheckStaleBranches:
         mock_branch_result.returncode = 0
 
         with patch("subprocess.run", side_effect=[mock_branch_result, FileNotFoundError()]):
-            skill = CheckStaleBranches("check_stale_branches", 4)
+            step = CheckStaleBranches("check_stale_branches", 4)
             with pytest.raises(SystemException, match="git command not found"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)
 
     def test_raises_on_timeout_for_each_ref(self):
         import subprocess
@@ -217,9 +217,9 @@ class TestCheckStaleBranches:
             mock_branch_result,
             subprocess.TimeoutExpired("git", 30),
         ]):
-            skill = CheckStaleBranches("check_stale_branches", 4)
+            step = CheckStaleBranches("check_stale_branches", 4)
             with pytest.raises(SystemException, match="git for-each-ref timed out"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)
 
     def test_raises_on_nonzero_for_each_ref_exit(self):
         mock_branch_result = Mock()
@@ -231,6 +231,6 @@ class TestCheckStaleBranches:
         mock_ref_result.stderr = "fatal: not a git repository"
 
         with patch("subprocess.run", side_effect=[mock_branch_result, mock_ref_result]):
-            skill = CheckStaleBranches("check_stale_branches", 4)
+            step = CheckStaleBranches("check_stale_branches", 4)
             with pytest.raises(SystemException, match="git for-each-ref returned exit code 128"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)

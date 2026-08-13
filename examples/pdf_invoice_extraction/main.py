@@ -21,11 +21,11 @@ from rpacore import (
     validate_config,
 )
 
-from skills.open_pdf import OpenPdf
-from skills.parse_invoice import ParseInvoice
-from skills.validate_invoice import ValidateInvoice
-from skills.normalize_record import NormalizeRecord
-from skills.write_output import WriteOutput
+from steps.open_pdf import OpenPdf
+from steps.parse_invoice import ParseInvoice
+from steps.validate_invoice import ValidateInvoice
+from steps.normalize_record import NormalizeRecord
+from steps.write_output import WriteOutput
 
 logger = get_logger(__name__)
 DEFINITION_IDENTITY = "pdf-invoice-extraction/invoice/v1"
@@ -172,7 +172,7 @@ def build_transaction(item: QueueItem) -> Transaction:
     return Transaction(
         reference=f"invoice-{original_name}",
         definition_identity=DEFINITION_IDENTITY,
-        skills=[
+        steps=[
             OpenPdf(name="open_pdf", execution_order=1),
             ParseInvoice(name="parse_invoice", execution_order=2),
             ValidateInvoice(name="validate_invoice", execution_order=3),

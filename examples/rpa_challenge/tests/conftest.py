@@ -15,9 +15,9 @@ from unittest.mock import Mock
 import pytest
 
 from rpacore import ProcessContext, Transaction
-from skills._utils import find_row_value
+from steps._utils import find_row_value
 
-# Add parent directory to path for importing skills
+# Add parent directory to path for importing steps
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 

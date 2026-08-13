@@ -2,7 +2,7 @@
 
 This module provides the CalculatorInteractor class for opening the Windows
 Calculator app, typing expressions, and capturing results using pywinauto.
-It is used by the RPA Core skills in the skills/ directory.
+It is used by the RPA Core steps in the steps/ directory.
 """
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Unit tests for ParseInvoice skill."""
+"""Unit tests for ParseInvoice step."""
 
 from __future__ import annotations
 
@@ -6,20 +6,20 @@ import pytest
 
 from rpacore import BusinessException, ProcessContext, SystemException, Transaction
 
-from skills.normalize_record import NormalizeRecord
-from skills.parse_invoice import ParseInvoice
-from skills.validate_invoice import ValidateInvoice
+from steps.normalize_record import NormalizeRecord
+from steps.parse_invoice import ParseInvoice
+from steps.validate_invoice import ValidateInvoice
 
 class TestParseInvoice:
-    """Tests for ParseInvoice skill."""
+    """Tests for ParseInvoice step."""
 
     def test_parse_invoice_field_extraction(self, sample_invoice_text: str):
         """Test extraction of all invoice fields."""
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = sample_invoice_text
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
-        skill.execute(ctx)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
+        step.execute(ctx)
 
         parsed = tx.state["parsed_invoice"]
         assert parsed["invoice_number"] == "INV-2024-001"
@@ -39,11 +39,11 @@ class TestParseInvoice:
             ("Invoice Number: INV-001\nDate: 01-02-2024", "2024-02-01"),
         ]
         for text, expected_date in test_cases:
-            tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+            tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
             tx.state["pdf_text"] = text
             ctx = ProcessContext(transaction=tx, config={})
-            skill = ParseInvoice(name="parse_invoice", execution_order=1)
-            skill.execute(ctx)
+            step = ParseInvoice(name="parse_invoice", execution_order=1)
+            step.execute(ctx)
             assert tx.state["parsed_invoice"]["date"] == expected_date, f"Failed for text: {text}"
 
     def test_parse_invoice_currency_detection_from_total(self):
@@ -55,11 +55,11 @@ class TestParseInvoice:
             ("Total: ¥1000", "¥"),
         ]
         for text, expected_currency in texts:
-            tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+            tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
             tx.state["pdf_text"] = text
             ctx = ProcessContext(transaction=tx, config={})
-            skill = ParseInvoice(name="parse_invoice", execution_order=1)
-            skill.execute(ctx)
+            step = ParseInvoice(name="parse_invoice", execution_order=1)
+            step.execute(ctx)
             assert tx.state["parsed_invoice"]["currency"] == expected_currency
 
     @pytest.mark.parametrize(
@@ -76,7 +76,7 @@ class TestParseInvoice:
             f"Widget\t2\t{symbol}50.00\n"
             f"Total: {symbol}100.00"
         )
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
 
@@ -89,33 +89,33 @@ class TestParseInvoice:
 
     def test_parse_invoice_empty_text(self):
         """Test that empty text is a permanent business failure."""
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = ""
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
 
         with pytest.raises(BusinessException, match="No PDF text"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
     def test_parse_invoice_no_line_items(self):
         """Test parsing when no line items are present."""
         text = "INVOICE\nInvoice Number: INV-001\nDate: 2024-01-15\nBill From: Test Corp\nTotal: $100.00"
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
-        skill.execute(ctx)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
+        step.execute(ctx)
 
         assert tx.state["parsed_invoice"]["line_items"] == []
 
     def test_parse_invoice_vendor_casing_preserved(self):
         """Test that vendor casing is preserved from PDF text."""
         text = "INVOICE\nInvoice Number: INV-001\nDate: 2024-01-15\nBill From: Euro Parts GmbH\nTotal: $100.00"
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
-        skill.execute(ctx)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
+        step.execute(ctx)
 
         assert tx.state["parsed_invoice"]["vendor"] == "Euro Parts GmbH"
 
@@ -129,11 +129,11 @@ class TestParseInvoice:
             "Widget 1 $10.00\n"
             "Total: $10.00"
         )
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
-        skill.execute(ctx)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
+        step.execute(ctx)
 
         parsed = tx.state["parsed_invoice"]
         assert "\x00" not in parsed["invoice_number"]
@@ -153,11 +153,11 @@ class TestParseInvoice:
             "Notebook Pack 10 8.50\n"
             "Total: $660.00"
         )
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
-        skill.execute(ctx)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
+        step.execute(ctx)
 
         items = tx.state["parsed_invoice"]["line_items"]
         assert len(items) == 3
@@ -178,11 +178,11 @@ class TestParseInvoice:
             "Model 3 Adapter 10 15.00\n"
             "Total: $150.00"
         )
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
-        skill.execute(ctx)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
+        step.execute(ctx)
 
         items = tx.state["parsed_invoice"]["line_items"]
         assert len(items) == 1
@@ -198,7 +198,7 @@ class TestParseInvoice:
             "Total  5  $20.00\n"
             "Grand Total: $100.00"
         )
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
 
@@ -219,11 +219,11 @@ class TestParseInvoice:
             "Widget Bn5n$20.00\n"
             "Total: $250.00"
         )
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
-        skill.execute(ctx)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
+        step.execute(ctx)
 
         items = tx.state["parsed_invoice"]["line_items"]
         assert len(items) == 2
@@ -242,22 +242,22 @@ class TestParseInvoice:
             "Plan-n-Go 2$10.00\n"
             "Total: $20.00"
         )
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
-        skill.execute(ctx)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
+        step.execute(ctx)
 
         assert tx.state["parsed_invoice"]["line_items"] == []
 
     def test_parse_invoice_default_currency(self):
         """Test that currency defaults to USD when no symbol found."""
         text = "INVOICE\nInvoice Number: INV-001\nDate: 2024-01-15\nBill From: Test Corp\nTotal: 100.00"
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
-        skill.execute(ctx)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
+        step.execute(ctx)
 
         assert tx.state["parsed_invoice"]["currency"] == "USD"
 
@@ -272,11 +272,11 @@ class TestParseInvoice:
             "Tax: $10.00\n"
             "Net Total: $110.00"
         )
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
-        skill.execute(ctx)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
+        step.execute(ctx)
 
         assert tx.state["parsed_invoice"]["total"] == "$110.00"
 
@@ -290,49 +290,49 @@ class TestParseInvoice:
         ]
         for label in labels:
             text = f"{label}\nDate: 2024-01-15\nBill From: Test Corp\nTotal: $100.00"
-            tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+            tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
             tx.state["pdf_text"] = text
             ctx = ProcessContext(transaction=tx, config={})
-            skill = ParseInvoice(name="parse_invoice", execution_order=1)
-            skill.execute(ctx)
+            step = ParseInvoice(name="parse_invoice", execution_order=1)
+            step.execute(ctx)
             assert tx.state["parsed_invoice"]["invoice_number"] == label.split(":")[-1].strip()
 
     def test_parse_invoice_date_regex_fallback(self):
         """Test date extraction via regex path (non-ISO format)."""
         text = "INVOICE\nInvoice Number: INV-001\nDate: 15/03/2024\nBill From: Test Corp\nTotal: $100.00"
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
-        skill.execute(ctx)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
+        step.execute(ctx)
 
         assert tx.state["parsed_invoice"]["date"] == "2024-03-15"
 
     def test_parse_invoice_dash_separated_dates_eu_order(self):
         """Test dash-separated dates use EU (day-first) ordering."""
         text = "INVOICE\nInvoice Number: INV-001\nDate: 01-02-2024\nBill From: Test Corp\nTotal: $100.00"
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
-        skill.execute(ctx)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
+        step.execute(ctx)
 
         assert tx.state["parsed_invoice"]["date"] == "2024-02-01"
 
     def test_parse_invoice_brl_currency_detection(self):
         """Test Brazilian Real currency detection."""
         text = "INVOICE\nInvoice Number: INV-001\nDate: 2024-01-15\nBill From: Test Corp\nTotal: R$100.00"
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
-        skill.execute(ctx)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
+        step.execute(ctx)
 
         assert tx.state["parsed_invoice"]["currency"] == "BRL"
 
     def test_parse_invoice_bare_r_currency_detection(self):
         text = "INVOICE\nInvoice Number: INV-001\nDate: 2024-01-15\nBill From: Test Corp\nTotal: R100.00"
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
 
@@ -352,11 +352,11 @@ class TestParseInvoice:
             "Widget\t10\t$15.00\n"
             "Total: $150.00"
         )
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
-        skill = ParseInvoice(name="parse_invoice", execution_order=1)
-        skill.execute(ctx)
+        step = ParseInvoice(name="parse_invoice", execution_order=1)
+        step.execute(ctx)
 
         items = tx.state["parsed_invoice"]["line_items"]
         assert len(items) == 1
@@ -372,7 +372,7 @@ class TestParseInvoice:
             "Widget\t2\tUSD 150.00\n"
             "Total: USD 300.00"
         )
-        tx = Transaction(reference="test", skills=[ParseInvoice(name="parse_invoice", execution_order=1)])
+        tx = Transaction(reference="test", steps=[ParseInvoice(name="parse_invoice", execution_order=1)])
         tx.state["pdf_text"] = text
         ctx = ProcessContext(transaction=tx, config={})
 

@@ -8,18 +8,18 @@ from unittest.mock import MagicMock
 
 from rpacore import Engine, ProcessContext, Status, Transaction
 
-from skills.open_calculator import OpenCalculator
-from skills.load_expressions import LoadExpressions
-from skills.process_expressions import ProcessExpressions
-from skills.write_report import WriteReport
-from skills.close_calculator import CloseCalculator
-from skills.move_file import MoveFile
+from steps.open_calculator import OpenCalculator
+from steps.load_expressions import LoadExpressions
+from steps.process_expressions import ProcessExpressions
+from steps.write_report import WriteReport
+from steps.close_calculator import CloseCalculator
+from steps.move_file import MoveFile
 
 
 def _build_transaction():
     return Transaction(
         reference="calc-batch",
-        skills=[
+        steps=[
             LoadExpressions(name="load_expressions", execution_order=1),
             OpenCalculator(name="open_calculator", execution_order=2),
             ProcessExpressions(name="process_expressions", execution_order=3),
@@ -69,7 +69,7 @@ def test_full_workflow_pass_and_fail(tmp_path):
 
     tx = Transaction(
         reference="calc-batch",
-        skills=[
+        steps=[
             LoadExpressions(name="load_expressions", execution_order=1),
             ProcessExpressions(name="process_expressions", execution_order=2),
             CloseCalculator(name="close_calculator", execution_order=3),
@@ -107,7 +107,7 @@ def test_full_workflow_pass_and_fail(tmp_path):
 
 
 def test_validation_failure_skips_downstream(tmp_path):
-    """Missing columns triggers BusinessException; downstream skills skip."""
+    """Missing columns triggers BusinessException; downstream steps skip."""
     csv_file = tmp_path / "bad.csv"
     csv_file.write_text("wrong,columns\n1,2\n", encoding="utf-8")
 
@@ -121,7 +121,7 @@ def test_validation_failure_skips_downstream(tmp_path):
 
     tx = Transaction(
         reference="calc-bad",
-        skills=[
+        steps=[
             LoadExpressions(name="load_expressions", execution_order=1),
             OpenCalculator(name="open_calculator", execution_order=2),
             ProcessExpressions(name="process_expressions", execution_order=3),
@@ -165,7 +165,7 @@ def test_move_file_moves_to_done(tmp_path):
 
     tx = Transaction(
         reference="calc-move",
-        skills=[
+        steps=[
             LoadExpressions(name="load_expressions", execution_order=1),
             ProcessExpressions(name="process_expressions", execution_order=2),
             CloseCalculator(name="close_calculator", execution_order=3),
@@ -193,7 +193,7 @@ def test_short_csv_row_is_loaded_without_attribute_error(tmp_path):
     csv_file.write_text("expression,expected_result\n2+2\n", encoding="utf-8")
     tx = Transaction(
         reference="short-row",
-        skills=[LoadExpressions(name="load_expressions", execution_order=1)],
+        steps=[LoadExpressions(name="load_expressions", execution_order=1)],
     )
     tx.state["file_path"] = str(csv_file)
 
@@ -213,7 +213,7 @@ def test_load_rejects_source_outside_input_dir(tmp_path):
     outside.write_text("expression,expected_result\n2+2,4\n", encoding="utf-8")
     tx = Transaction(
         reference="outside",
-        skills=[LoadExpressions(name="load_expressions", execution_order=1)],
+        steps=[LoadExpressions(name="load_expressions", execution_order=1)],
     )
     tx.state["file_path"] = str(outside)
 

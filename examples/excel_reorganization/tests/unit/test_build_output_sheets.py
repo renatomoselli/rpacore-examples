@@ -4,10 +4,10 @@ import os
 
 import pytest
 from openpyxl import load_workbook
-import skills.build_output_sheets as build_output_sheets
+import steps.build_output_sheets as build_output_sheets
 from rpacore import BusinessException, SystemException
 
-from skills.build_output_sheets import BuildOutputSheets
+from steps.build_output_sheets import BuildOutputSheets
 from tests.conftest import make_context
 
 

@@ -1,4 +1,4 @@
-"""Unit tests for ReadReportFile skill."""
+"""Unit tests for ReadReportFile step."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ import pytest
 
 from rpacore import Engine, ProcessContext, Status, Transaction
 
-from skills.read_report_file import ReadReportFile
+from steps.read_report_file import ReadReportFile
 
 
 def _run(data, config=None):
     tx = Transaction(
         reference="read-report",
-        skills=[ReadReportFile(name="read_report_file", execution_order=1)],
+        steps=[ReadReportFile(name="read_report_file", execution_order=1)],
     )
     ctx = ProcessContext(transaction=tx, config=config or {})
     # Seed state from data dict
@@ -59,7 +59,7 @@ def test_relative_file_path_is_resolved_under_inbox(tmp_path):
 def test_missing_file_path_raises():
     tx = _run({})
     assert tx.status == Status.FAILED
-    failed = tx.failed_skills()[0]
+    failed = tx.failed_steps()[0]
     assert "file_path" in str(failed.exceptions[-1]).lower()
 
 
@@ -75,7 +75,7 @@ def test_file_not_found_raises(tmp_path):
         config=config,
     )
     assert tx.status == Status.FAILED
-    assert "Unable to read report file" in str(tx.failed_skills()[0].exceptions[-1])
+    assert "Unable to read report file" in str(tx.failed_steps()[0].exceptions[-1])
 
 
 def test_empty_csv(tmp_path):
@@ -99,7 +99,7 @@ def test_path_traversal_blocked(tmp_path):
         config=config,
     )
     assert tx.status == Status.FAILED
-    failed = tx.failed_skills()[0]
+    failed = tx.failed_steps()[0]
     assert "resolves outside root" in str(failed.exceptions[-1]).lower()
 
 
@@ -123,7 +123,7 @@ def test_symlink_escape_blocked(tmp_path):
         config=config,
     )
     assert tx.status == Status.FAILED
-    assert "resolves outside root" in str(tx.failed_skills()[0].exceptions[-1]).lower()
+    assert "resolves outside root" in str(tx.failed_steps()[0].exceptions[-1]).lower()
 
 
 def test_no_inbox_dir_skips_validation(tmp_path):

@@ -8,7 +8,7 @@ import pytest
 from rpacore import ProcessContext, QueueItem, QueueRunSummary, SystemException, Transaction
 
 import main
-from skills.close_calculator import CloseCalculator
+from steps.close_calculator import CloseCalculator
 
 
 def test_move_failed_file_propagates_move_error(tmp_path, monkeypatch):

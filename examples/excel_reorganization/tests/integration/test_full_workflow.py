@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from openpyxl import load_workbook
 
-from skills import BuildOutputSheets, GroupByMonth, LoadSalesData, VerifyOutput
+from steps import BuildOutputSheets, GroupByMonth, LoadSalesData, VerifyOutput
 from tests.conftest import make_context
 
 

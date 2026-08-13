@@ -9,11 +9,11 @@ from pathlib import Path
 import main as app_main
 from main import FILE_DEFINITION_IDENTITY
 from rpacore import Engine, ProcessContext, Status, Transaction, list_transactions, save_transaction
-from skills.load_json_file import LoadJsonFile
-from skills.validate_events import ValidateEvents
-from skills.normalize_events import NormalizeEvents
-from skills.write_output import WriteOutput
-from skills.write_error_report import WriteErrorReport
+from steps.load_json_file import LoadJsonFile
+from steps.validate_events import ValidateEvents
+from steps.normalize_events import NormalizeEvents
+from steps.write_output import WriteOutput
+from steps.write_error_report import WriteErrorReport
 
 
 class TestFullWorkflow:
@@ -67,7 +67,7 @@ class TestFullWorkflow:
                 reference="json-file-events_001",
                 definition_identity=FILE_DEFINITION_IDENTITY,
                 state=shared_data,
-                skills=[
+                steps=[
                     LoadJsonFile(name="load_json_file", execution_order=1),
                     ValidateEvents(name="validate_events", execution_order=2),
                     NormalizeEvents(name="normalize_events", execution_order=3),
@@ -300,5 +300,5 @@ class TestFullWorkflow:
         assert failure[0]["outcome_category"] == "system_failed"
         assert failure[0]["retry_disposition"] == "retry_exhausted"
         assert failure[0]["failure_code"] == "json_event_log.input.malformed_json"
-        assert failure[0]["failed_skills"][0]["skill_name"] == "load_json_file"
-        assert failure[0]["failed_skills"][0]["exception_type"] == "system"
+        assert failure[0]["failed_steps"][0]["step_name"] == "load_json_file"
+        assert failure[0]["failed_steps"][0]["exception_type"] == "system"

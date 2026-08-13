@@ -26,13 +26,13 @@ from rpacore import (
 )
 from rpacore import resolve_config_path, resolve_config_paths
 
-from skills._path_utils import unique_destination, validate_contained_path
-from skills.open_calculator import OpenCalculator
-from skills.load_expressions import LoadExpressions
-from skills.process_expressions import ProcessExpressions
-from skills.write_report import WriteReport
-from skills.close_calculator import CloseCalculator
-from skills.move_file import MoveFile
+from steps._path_utils import unique_destination, validate_contained_path
+from steps.open_calculator import OpenCalculator
+from steps.load_expressions import LoadExpressions
+from steps.process_expressions import ProcessExpressions
+from steps.write_report import WriteReport
+from steps.close_calculator import CloseCalculator
+from steps.move_file import MoveFile
 
 logger = get_logger(__name__)
 DEFINITION_IDENTITY = "windows-calculator/batch/v1"
@@ -114,7 +114,7 @@ def scan_inbox(config: dict, queue: SqliteQueue) -> int:
 
 
 def build_transaction(item: QueueItem) -> Transaction:
-    """Build a 6-skill transaction for one CSV file.
+    """Build a 6-step transaction for one CSV file.
 
     Note: transaction.state is seeded from item.payload by run_queue_loop()
     via _seed_transaction_state_from_payload() — no manual state= needed.
@@ -122,7 +122,7 @@ def build_transaction(item: QueueItem) -> Transaction:
     return Transaction(
         reference=item.reference,
         definition_identity=DEFINITION_IDENTITY,
-        skills=[
+        steps=[
             LoadExpressions(name="load_expressions", execution_order=1),
             OpenCalculator(name="open_calculator", execution_order=2),
             ProcessExpressions(name="process_expressions", execution_order=3),

@@ -8,17 +8,17 @@ from pathlib import Path
 
 from main import FILE_DEFINITION_IDENTITY
 from rpacore import Engine, ProcessContext, Status, Transaction, save_transaction
-from skills.load_json_file import LoadJsonFile
-from skills.validate_events import ValidateEvents
-from skills.normalize_events import NormalizeEvents
-from skills.write_output import WriteOutput
-from skills.write_error_report import WriteErrorReport
+from steps.load_json_file import LoadJsonFile
+from steps.validate_events import ValidateEvents
+from steps.normalize_events import NormalizeEvents
+from steps.write_output import WriteOutput
+from steps.write_error_report import WriteErrorReport
 
 
 class TestPartialFailure:
     """Test partial failure scenarios in the batch workflow."""
 
-    def test_validation_failure_stops_execution(self):
+    def test_validation_failure_halts_remaining_steps(self):
         """Test that validation failure stops execution (unlike rest_api_batch pattern).
 
         This is a key behavioral difference from rest_api_batch:
@@ -68,7 +68,7 @@ class TestPartialFailure:
                 reference="json-file-events_001",
                 definition_identity=FILE_DEFINITION_IDENTITY,
                 state=shared_data,
-                skills=[
+                steps=[
                     LoadJsonFile(name="load_json_file", execution_order=1),
                     ValidateEvents(name="validate_events", execution_order=2),
                     NormalizeEvents(name="normalize_events", execution_order=3),
@@ -142,7 +142,7 @@ class TestPartialFailure:
                     reference=f"json-file-{json_file.stem}",
                     definition_identity=FILE_DEFINITION_IDENTITY,
                     state=shared_data,
-                    skills=[
+                    steps=[
                         LoadJsonFile(name="load_json_file", execution_order=1),
                         ValidateEvents(name="validate_events", execution_order=2),
                         NormalizeEvents(name="normalize_events", execution_order=3),

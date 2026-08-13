@@ -240,7 +240,7 @@ coverage_html/
 # - requirements.txt
 # - main.py
 # - plans/ directory (gitignored — developer working docs)
-# - skills/ directory
+# - steps/ directory
 # - examples/rpa_challenge/README.md
 # - examples/rpa_challenge/config.toml
 # - examples/rpa_challenge/requirements-test.txt

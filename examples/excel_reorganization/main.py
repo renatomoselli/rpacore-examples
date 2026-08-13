@@ -19,7 +19,7 @@ from rpacore import (
     validate_config,
 )
 from rpacore import resolve_config_paths
-from skills import (
+from steps import (
     LoadSalesData,
     GroupByMonth,
     BuildOutputSheets,
@@ -76,7 +76,7 @@ def _validate_config(config: dict[str, object]) -> dict[str, object]:
 
 
 def _cleanup_failed_output(tx: Transaction, logger) -> None:
-    """Remove generated output when a later skill fails the transaction."""
+    """Remove generated output when a later step fails the transaction."""
     output_path = tx.state.get("output_path")
     if not isinstance(output_path, str):
         return
@@ -100,7 +100,7 @@ def main() -> None:
     # Ensure output directory exists
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    # Create transaction with all skills and seed initial state
+    # Create transaction with all steps and seed initial state
     tx = Transaction(
         reference="excel-reorganization",
         definition_identity=DEFINITION_IDENTITY,
@@ -111,7 +111,7 @@ def main() -> None:
             "example": "excel_reorganization",
             "source_csv": csv_path,
         },
-        skills=[
+        steps=[
             LoadSalesData(name="load_sales_data", execution_order=1),
             GroupByMonth(name="group_by_month", execution_order=2),
             BuildOutputSheets(name="build_output_sheets", execution_order=3),
@@ -134,9 +134,9 @@ def main() -> None:
         ) from exc
 
     if tx.status is not Status.SUCCESSFUL:
-        failed = tx.failed_skills()
+        failed = tx.failed_steps()
         details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed)
-        logger.error("Workflow failed (%s). Failed skill(s): %s", tx.status, details)
+        logger.error("Workflow failed (%s). Failed step(s): %s", tx.status, details)
         _cleanup_failed_output(tx, logger)
         sys.exit(1)
 

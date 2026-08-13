@@ -5,8 +5,8 @@ import pytest
 from rpacore import list_transactions
 
 import main as reconciliation_main
-from skills.classify_outcome import ClassifyOutcome
-from skills.match_transaction import MatchTransaction
+from steps.classify_outcome import ClassifyOutcome
+from steps.match_transaction import MatchTransaction
 
 
 def _valid_config(tmp_path):
@@ -131,17 +131,17 @@ def test_validate_config_wraps_path_resolution_os_error(tmp_path, monkeypatch):
 def test_last_failure_message_uses_exception_text():
     tx = reconciliation_main.Transaction(
         reference="failed",
-        skills=[ClassifyOutcome(name="classify_outcome", execution_order=1)],
+        steps=[ClassifyOutcome(name="classify_outcome", execution_order=1)],
     )
     tx.status = reconciliation_main.Status.FAILED
-    tx.skills[0].status = reconciliation_main.Status.FAILED
-    tx.skills[0].exceptions.append(RuntimeError("boom"))
+    tx.steps[0].status = reconciliation_main.Status.FAILED
+    tx.steps[0].exceptions.append(RuntimeError("boom"))
 
     assert reconciliation_main._last_failure_message(tx) == "boom"
 
 
 def test_last_failure_message_falls_back_to_status():
-    tx = reconciliation_main.Transaction(reference="failed", skills=[])
+    tx = reconciliation_main.Transaction(reference="failed", steps=[])
     tx.status = reconciliation_main.Status.FAILED
 
     assert reconciliation_main._last_failure_message(tx) == "failed"
@@ -150,14 +150,14 @@ def test_last_failure_message_falls_back_to_status():
 def test_missing_result_message_identifies_match_failure():
     tx = reconciliation_main.Transaction(
         reference="payment-PAY-1",
-        skills=[
+        steps=[
             MatchTransaction(name="match_transaction", execution_order=1),
             ClassifyOutcome(name="classify_outcome", execution_order=2),
         ],
     )
     tx.status = reconciliation_main.Status.FAILED
-    tx.skills[0].status = reconciliation_main.Status.FAILED
-    tx.skills[0].exceptions.append(RuntimeError("missing reference"))
+    tx.steps[0].status = reconciliation_main.Status.FAILED
+    tx.steps[0].exceptions.append(RuntimeError("missing reference"))
 
     message = reconciliation_main._missing_result_message({"payment_id": "PAY-1"}, tx)
 

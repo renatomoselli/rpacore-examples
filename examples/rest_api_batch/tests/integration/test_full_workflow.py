@@ -15,15 +15,15 @@ from unittest.mock import patch
 
 import pytest
 
-# Add parent directory to path for importing skills
+# Add parent directory to path for importing steps
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from main import POST_DEFINITION_IDENTITY
-from skills.fetch_posts import FetchPosts
-from skills.fetch_user import FetchUser
-from skills.validate_post import ValidatePost
-from skills.enrich_record import EnrichRecord
-from skills.write_output import WriteOutput
+from steps.fetch_posts import FetchPosts
+from steps.fetch_user import FetchUser
+from steps.validate_post import ValidatePost
+from steps.enrich_record import EnrichRecord
+from steps.write_output import WriteOutput
 
 
 # Sample data matching JSONPlaceholder structure
@@ -104,7 +104,7 @@ class TestFullWorkflow:
         setup_tx = Transaction(
             reference="fetch-posts",
             state={},
-            skills=[FetchPosts(name="fetch_posts", execution_order=1)],
+            steps=[FetchPosts(name="fetch_posts", execution_order=1)],
         )
         with patch("requests.get") as mock_get:
             engine.run(ProcessContext(transaction=setup_tx, config=config))
@@ -117,7 +117,7 @@ class TestFullWorkflow:
             post_tx = Transaction(
                 reference=f"post-{post['id']}",
                 state={"current_post": post},
-                skills=[
+                steps=[
                     ValidatePost(name="validate_post", execution_order=1),
                     FetchUser(name="fetch_user", execution_order=2),
                     EnrichRecord(name="enrich_record", execution_order=3),
@@ -156,7 +156,7 @@ class TestFullWorkflow:
             setup_tx = Transaction(
                 reference="fetch-posts",
                 state={},
-                skills=[FetchPosts(name="fetch_posts", execution_order=1)],
+                steps=[FetchPosts(name="fetch_posts", execution_order=1)],
             )
             engine = Engine(max_retries=0)
             engine.run(ProcessContext(transaction=setup_tx, config=config))
@@ -171,7 +171,7 @@ class TestFullWorkflow:
                     reference=f"post-{post['id']}",
                     definition_identity=POST_DEFINITION_IDENTITY,
                     state={"current_post": post},
-                    skills=[
+                    steps=[
                         ValidatePost(name="validate_post", execution_order=1),
                         FetchUser(name="fetch_user", execution_order=2),
                         EnrichRecord(name="enrich_record", execution_order=3),
@@ -209,9 +209,9 @@ class TestFullWorkflow:
 
     @patch("requests.get")
     def test_partial_batch_failure_with_empty_title(self, mock_get):
-        """Test that a post with empty title fails and is NOT in output (stop=True).
+        """Test that a post with empty title fails and is NOT in output (halts_remaining_steps=True).
 
-        With stop=True, BusinessException short-circuit prevents EnrichRecord
+        With halts_remaining_steps=True, BusinessException short-circuit prevents EnrichRecord
         and WriteOutput from running, so the failed post is excluded from output.
         """
         partial_posts = [
@@ -267,13 +267,13 @@ class TestFullWorkflow:
             setup_tx = Transaction(
                 reference="fetch-posts",
                 state={},
-                skills=[FetchPosts(name="fetch_posts", execution_order=1)],
+                steps=[FetchPosts(name="fetch_posts", execution_order=1)],
             )
             engine = Engine(max_retries=0)
             engine.run(ProcessContext(transaction=setup_tx, config=config))
             assert setup_tx.status == Status.SUCCESSFUL
 
-            # Process posts — post 2 fails (BusinessException with stop=True),
+            # Process posts — post 2 fails (BusinessException with halts_remaining_steps=True),
             # 1 and 3 succeed
             failed_ids = []
             post_statuses = {}  # post_id → transaction status
@@ -282,7 +282,7 @@ class TestFullWorkflow:
                     reference=f"post-{post['id']}",
                     definition_identity=POST_DEFINITION_IDENTITY,
                     state={"current_post": post},
-                    skills=[
+                    steps=[
                         ValidatePost(name="validate_post", execution_order=1),
                         FetchUser(name="fetch_user", execution_order=2),
                         EnrichRecord(name="enrich_record", execution_order=3),
@@ -302,7 +302,7 @@ class TestFullWorkflow:
             assert post_statuses[1] == Status.SUCCESSFUL
             assert post_statuses[3] == Status.SUCCESSFUL
 
-            # Verify JSONL file — post 2 is NOT in output due to stop=True short-circuit
+            # Verify JSONL file — post 2 is NOT in output due to halts_remaining_steps=True short-circuit
             content = Path(output_file).read_text(encoding="utf-8")
             lines = content.strip().split("\n")
             assert len(lines) == 2

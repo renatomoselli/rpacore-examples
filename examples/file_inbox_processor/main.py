@@ -22,11 +22,11 @@ from rpacore import (
     validate_config,
 )
 
-from skills.append_to_master import AppendToMaster
-from skills.compute_derived_fields import ComputeDerivedFields
-from skills.move_file import MoveFile
-from skills.read_report_file import ReadReportFile
-from skills.validate_schema import ValidateSchema
+from steps.append_to_master import AppendToMaster
+from steps.compute_derived_fields import ComputeDerivedFields
+from steps.move_file import MoveFile
+from steps.read_report_file import ReadReportFile
+from steps.validate_schema import ValidateSchema
 
 logger = get_logger(__name__)
 DEFINITION_IDENTITY = "file-inbox-processor/report/v1"
@@ -124,7 +124,7 @@ def build_transaction(item: QueueItem) -> Transaction:
     return Transaction(
         reference=item.reference,
         definition_identity=DEFINITION_IDENTITY,
-        skills=[
+        steps=[
             ReadReportFile(name="read_report_file", execution_order=1),
             ValidateSchema(name="validate_schema", execution_order=2),
             ComputeDerivedFields(name="compute_derived_fields", execution_order=3),
@@ -178,7 +178,6 @@ def main() -> None:
     configure_logger(
         level=str(config["log_level"]),
         fmt=str(config["log_format"]),
-        json_version=2,
     )
 
     for key in ("done_dir", "failed_dir"):

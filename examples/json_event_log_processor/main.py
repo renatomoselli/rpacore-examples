@@ -20,11 +20,11 @@ from rpacore import (
     validate_config,
 )
 
-from skills.load_json_file import LoadJsonFile
-from skills.validate_events import ValidateEvents
-from skills.normalize_events import NormalizeEvents
-from skills.write_output import WriteOutput
-from skills.write_error_report import WriteErrorReport
+from steps.load_json_file import LoadJsonFile
+from steps.validate_events import ValidateEvents
+from steps.normalize_events import NormalizeEvents
+from steps.write_output import WriteOutput
+from steps.write_error_report import WriteErrorReport
 
 logger = get_logger(__name__)
 FILE_DEFINITION_IDENTITY = "json-event-log-processor/file/v1"
@@ -83,7 +83,7 @@ def _make_error_report_tx(run_id: str, report_attempt: int = 1) -> Transaction:
             "transaction_kind": "error-report",
             "report_attempt": report_attempt,
         },
-        skills=[
+        steps=[
             WriteErrorReport(name="write_error_report", execution_order=1),
         ],
     )
@@ -171,7 +171,7 @@ def main() -> None:
                 "run_id": run_id,
                 "source_file": json_file.name,
             },
-            skills=[
+            steps=[
                 LoadJsonFile(name="load_json_file", execution_order=1),
                 ValidateEvents(name="validate_events", execution_order=2),
                 NormalizeEvents(name="normalize_events", execution_order=3),
@@ -182,9 +182,9 @@ def main() -> None:
         events = file_tx.state.get("events")
         if isinstance(events, list):
             file_tx.metadata["event_count"] = len(events)
-        failed_skills = file_tx.failed_skills()
+        failed_steps = file_tx.failed_steps()
         file_tx.metadata["error_count"] = sum(
-            len(skill.exceptions) for skill in failed_skills
+            len(step.exceptions) for step in failed_steps
         )
         persisted = _save_transaction_safely(file_tx, db_path, config)
 
@@ -197,8 +197,8 @@ def main() -> None:
                 logger.warning("Processed but could not persist: %s", json_file.name)
         elif file_tx.status == Status.FAILED:
             failed += 1
-            if failed_skills:
-                details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed_skills)
+            if failed_steps:
+                details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed_steps)
                 logger.warning("File %s failed: %s", json_file.name, details)
             else:
                 logger.warning("File %s: %s", json_file.name, file_tx.status)

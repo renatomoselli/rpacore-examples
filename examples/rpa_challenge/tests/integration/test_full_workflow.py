@@ -3,7 +3,7 @@ from __future__ import annotations
 """
 Integration tests for the full RPA workflow.
 
-These tests verify that all skills work together correctly.
+These tests verify that all steps work together correctly.
 """
 
 import io
@@ -19,14 +19,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from rpacore import ProcessContext, Transaction, SystemException
-from skills.setup import (
+from steps.setup import (
     OpenChallengePage,
     DownloadInputData,
     StartChallenge,
     DEFAULT_XLSX_URL,
 )
-from skills.row import FillRow, SubmitRow
-from skills.score import RecordScore
+from steps.row import FillRow, SubmitRow
+from steps.score import RecordScore
 
 pytestmark = pytest.mark.integration
 
@@ -58,8 +58,8 @@ class TestFullWorkflow:
         mock_pw = Mock()
         mock_browser = Mock()
 
-        with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve, \
-             patch("skills.setup.openpyxl.load_workbook") as mock_load_wb:
+        with patch("steps.setup.urllib.request.urlretrieve") as mock_urlretrieve, \
+             patch("steps.setup.openpyxl.load_workbook") as mock_load_wb:
 
             mock_urlretrieve.return_value = ("test.xlsx", Mock())
 
@@ -85,8 +85,8 @@ class TestFullWorkflow:
                 },
             )
 
-            skill2 = DownloadInputData("download_input_data", 2)
-            skill2.execute(ctx)
+            step2 = DownloadInputData("download_input_data", 2)
+            step2.execute(ctx)
 
             assert ctx.resources.get("page") == mock_page
             # Verify DownloadInputData populated durable state
@@ -99,10 +99,10 @@ class TestFullWorkflow:
         mock_page = Mock()
         mock_pw = Mock()
 
-        with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve, \
+        with patch("steps.setup.urllib.request.urlretrieve") as mock_urlretrieve, \
              patch("pathlib.Path.unlink"), \
              patch("tempfile.mkstemp", return_value=(123, "test.xlsx")), \
-             patch("skills.setup.openpyxl.load_workbook") as mock_load_wb:
+             patch("steps.setup.openpyxl.load_workbook") as mock_load_wb:
             mock_urlretrieve.side_effect = urllib.error.URLError("Network error")
             # Mock the browser download fallback via expect_download context manager
             mock_download = Mock()
@@ -133,9 +133,9 @@ class TestFullWorkflow:
                 },
             )
 
-            # Skill should use custom URL from config
-            skill = DownloadInputData("download_input_data", 2)
-            skill.execute(ctx)
+            # Step should use custom URL from config
+            step = DownloadInputData("download_input_data", 2)
+            step.execute(ctx)
 
             # Verify urlretrieve was called (it fails, then fallback happens)
             assert mock_urlretrieve.call_count >= 1
@@ -149,8 +149,8 @@ class TestFullWorkflow:
         mock_tx = Mock(spec=Transaction, reference="test-errors", state={})
         mock_page = Mock()
 
-        with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve, \
-             patch("skills.setup.openpyxl.load_workbook") as mock_load_wb:
+        with patch("steps.setup.urllib.request.urlretrieve") as mock_urlretrieve, \
+             patch("steps.setup.openpyxl.load_workbook") as mock_load_wb:
 
             mock_urlretrieve.return_value = ("test.xlsx", Mock())
             mock_wb = Mock()
@@ -169,7 +169,7 @@ class TestFullWorkflow:
 
             # Download should raise an exception on parse failure
             with pytest.raises(SystemException) as exc_info:
-                skill = DownloadInputData("download_input_data", 2)
-                skill.execute(ctx)
+                step = DownloadInputData("download_input_data", 2)
+                step.execute(ctx)
 
             assert "Failed to parse Excel file" in str(exc_info.value)

@@ -23,12 +23,12 @@ from rpacore import (
     validate_config,
 )
 
-from skills.check_working_tree import CheckWorkingTree
-from skills.capture_recent_commits import CaptureRecentCommits
-from skills.check_remotes import CheckRemotes
-from skills.check_stale_branches import CheckStaleBranches
-from skills.write_repo_report import WriteRepoReport
-from skills.write_summary import WriteSummary
+from steps.check_working_tree import CheckWorkingTree
+from steps.capture_recent_commits import CaptureRecentCommits
+from steps.check_remotes import CheckRemotes
+from steps.check_stale_branches import CheckStaleBranches
+from steps.write_repo_report import WriteRepoReport
+from steps.write_summary import WriteSummary
 from create_sample_repos import prepare_sample_repos
 
 logger = get_logger(__name__)
@@ -69,9 +69,9 @@ def _exception_kind(exc: BaseException | None) -> str:
 
 
 def _failed_repo_record(repo_path: str, repo_tx: Transaction) -> dict[str, object]:
-    failed_skills = repo_tx.failed_skills()
-    failed_skill = failed_skills[-1] if failed_skills else None
-    exception = failed_skill.exceptions[-1] if failed_skill and failed_skill.exceptions else None
+    failed_steps = repo_tx.failed_steps()
+    failed_step = failed_steps[-1] if failed_steps else None
+    exception = failed_step.exceptions[-1] if failed_step and failed_step.exceptions else None
     return {
         "repository": repo_path,
         "repo_name": Path(repo_path).name,
@@ -79,7 +79,7 @@ def _failed_repo_record(repo_path: str, repo_tx: Transaction) -> dict[str, objec
         "health_status": "failed",
         "failure_type": _exception_kind(exception),
         "classification": "technical_failure",
-        "failed_skill": failed_skill.name if failed_skill else "",
+        "failed_step": failed_step.name if failed_step else "",
         "error": str(exception) if exception is not None else str(repo_tx.status),
         "uncommitted_changes": len(repo_tx.state.get("uncommitted_changes", [])),
         "recent_commits": repo_tx.state.get("recent_commits", []),
@@ -192,7 +192,7 @@ def main() -> None:
                 "example": "git_repo_health_monitor",
                 "run_id": run_id,
             },
-            skills=[
+            steps=[
                 CheckWorkingTree(name="check_working_tree", execution_order=1),
                 CaptureRecentCommits(name="capture_recent_commits", execution_order=2),
                 CheckRemotes(name="check_remotes", execution_order=3),
@@ -213,7 +213,7 @@ def main() -> None:
                 "Repo %s: %s in %s",
                 Path(repo_path).name,
                 health["health_status"],
-                health["failed_skill"],
+                health["failed_step"],
             )
 
         try:
@@ -234,9 +234,9 @@ def main() -> None:
             successful += 1
         else:
             failed += 1
-            failed_skills = repo_tx.failed_skills()
-            if failed_skills:
-                details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed_skills)
+            failed_steps = repo_tx.failed_steps()
+            if failed_steps:
+                details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed_steps)
                 logger.warning("Repo %s failed: %s", Path(repo_path).name, details)
             else:
                 logger.warning("Repo %s: %s", Path(repo_path).name, repo_tx.status)
@@ -253,7 +253,7 @@ def main() -> None:
             "example": "git_repo_health_monitor",
             "run_id": run_id,
         },
-        skills=[
+        steps=[
             WriteSummary(name="write_summary", execution_order=1),
         ],
     )

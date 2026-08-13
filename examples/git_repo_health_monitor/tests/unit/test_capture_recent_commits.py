@@ -1,16 +1,16 @@
-"""Unit tests for the CaptureRecentCommits skill."""
+"""Unit tests for the CaptureRecentCommits step."""
 
 from unittest.mock import Mock, patch
 
 import pytest
 
 from rpacore import SystemException
-from skills.capture_recent_commits import CaptureRecentCommits
+from steps.capture_recent_commits import CaptureRecentCommits
 from tests.conftest import make_context
 
 
 class TestCaptureRecentCommits:
-    """Test the CaptureRecentCommits skill."""
+    """Test the CaptureRecentCommits step."""
 
     def setup_method(self):
         self.ctx = make_context(state={"current_repo": "/tmp/test_repo"})
@@ -24,8 +24,8 @@ class TestCaptureRecentCommits:
         mock_result.returncode = 0
 
         with patch("subprocess.run", return_value=mock_result):
-            skill = CaptureRecentCommits("capture_recent_commits", 2)
-            skill.execute(self.ctx)
+            step = CaptureRecentCommits("capture_recent_commits", 2)
+            step.execute(self.ctx)
 
         assert len(self.ctx.state["recent_commits"]) == 2
         assert self.ctx.state["recent_commits"][0]["commit_hash"] == "abc123"
@@ -38,8 +38,8 @@ class TestCaptureRecentCommits:
         mock_result.returncode = 0
 
         with patch("subprocess.run", return_value=mock_result):
-            skill = CaptureRecentCommits("capture_recent_commits", 2)
-            skill.execute(self.ctx)
+            step = CaptureRecentCommits("capture_recent_commits", 2)
+            step.execute(self.ctx)
 
         assert len(self.ctx.state["recent_commits"]) == 1
         assert self.ctx.state["recent_commits"][0]["subject"] == "Feature | Add new endpoint"
@@ -50,8 +50,8 @@ class TestCaptureRecentCommits:
         mock_result.returncode = 0
 
         with patch("subprocess.run", return_value=mock_result):
-            skill = CaptureRecentCommits("capture_recent_commits", 2)
-            skill.execute(self.ctx)
+            step = CaptureRecentCommits("capture_recent_commits", 2)
+            step.execute(self.ctx)
 
         assert self.ctx.state["recent_commits"][0]["timestamp"] == "2024-01-15T10:30:00+00:00"
 
@@ -61,8 +61,8 @@ class TestCaptureRecentCommits:
         mock_result.returncode = 0
 
         with patch("subprocess.run", return_value=mock_result):
-            skill = CaptureRecentCommits("capture_recent_commits", 2)
-            skill.execute(self.ctx)
+            step = CaptureRecentCommits("capture_recent_commits", 2)
+            step.execute(self.ctx)
 
         assert self.ctx.state["recent_commits"] == []
 
@@ -72,35 +72,35 @@ class TestCaptureRecentCommits:
         mock_result.returncode = 0
 
         with patch("subprocess.run", return_value=mock_result):
-            skill = CaptureRecentCommits("capture_recent_commits", 2)
-            skill.execute(self.ctx)
+            step = CaptureRecentCommits("capture_recent_commits", 2)
+            step.execute(self.ctx)
 
         assert self.ctx.state["recent_commits"][0]["timestamp"] == "unknown"
 
     def test_raises_on_missing_current_repo(self):
         ctx = make_context()
-        skill = CaptureRecentCommits("capture_recent_commits", 2)
+        step = CaptureRecentCommits("capture_recent_commits", 2)
         with pytest.raises(SystemException, match="current_repo"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
     def test_raises_on_git_not_found(self):
         with patch("subprocess.run", side_effect=FileNotFoundError()):
-            skill = CaptureRecentCommits("capture_recent_commits", 2)
+            step = CaptureRecentCommits("capture_recent_commits", 2)
             with pytest.raises(SystemException, match="git command not found"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)
 
     def test_raises_on_timeout(self):
         import subprocess
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("git", 30)):
-            skill = CaptureRecentCommits("capture_recent_commits", 2)
+            step = CaptureRecentCommits("capture_recent_commits", 2)
             with pytest.raises(SystemException, match="timed out"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)
 
     def test_raises_on_os_error(self):
         with patch("subprocess.run", side_effect=PermissionError("denied")):
-            skill = CaptureRecentCommits("capture_recent_commits", 2)
+            step = CaptureRecentCommits("capture_recent_commits", 2)
             with pytest.raises(SystemException, match="git log failed"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)
 
     def test_raises_on_nonzero_git_exit(self):
         mock_result = Mock()
@@ -108,6 +108,6 @@ class TestCaptureRecentCommits:
         mock_result.stderr = "fatal: not a git repository"
 
         with patch("subprocess.run", return_value=mock_result):
-            skill = CaptureRecentCommits("capture_recent_commits", 2)
+            step = CaptureRecentCommits("capture_recent_commits", 2)
             with pytest.raises(SystemException, match="git log returned exit code 128"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)

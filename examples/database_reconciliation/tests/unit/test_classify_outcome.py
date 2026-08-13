@@ -11,14 +11,14 @@ from rpacore import (
     save_transaction,
 )
 
-from skills.classify_outcome import ClassifyOutcome
+from steps.classify_outcome import ClassifyOutcome
 
 
 def _run(state):
     tx = Transaction(
         reference="payment-PAY-1",
         state=state,
-        skills=[ClassifyOutcome(name="classify_outcome", execution_order=1)],
+        steps=[ClassifyOutcome(name="classify_outcome", execution_order=1)],
     )
     Engine(max_retries=0).run(ProcessContext(transaction=tx))
     return tx
@@ -73,7 +73,7 @@ def test_classify_outcome_flags_missing_payment_as_business_exception():
     assert tx.failure_code == "database_reconciliation.payment.missing_from_bank"
     assert tx.state["reconciliation_result"]["status"] == "missing_from_bank"
     assert tx.state["reconciliation_result"]["reason_code"] == "missing_from_bank"
-    assert "missing from bank statement" in str(tx.failed_skills()[0].exceptions[-1])
+    assert "missing from bank statement" in str(tx.failed_steps()[0].exceptions[-1])
 
 
 def test_classify_outcome_flags_amount_mismatch_as_business_exception():
@@ -168,7 +168,7 @@ def test_classify_outcome_rejects_non_string_payment_amount():
     assert tx.state["reconciliation_result"]["status"] == "type_error"
     assert tx.state["reconciliation_result"]["reason_code"] == "type_error"
     assert "Current payment amount must be str, got 1250" in str(
-        tx.failed_skills()[0].exceptions[-1]
+        tx.failed_steps()[0].exceptions[-1]
     )
 
 
@@ -201,7 +201,7 @@ def test_classify_outcome_rejects_non_string_bank_amount():
     assert tx.state["reconciliation_result"]["reason_code"] == "type_error"
     assert tx.state["reconciliation_result"]["bank_amount"] == 1250
     assert "Bank candidate amount must be str, got 1250" in str(
-        tx.failed_skills()[0].exceptions[-1]
+        tx.failed_steps()[0].exceptions[-1]
     )
 
 
@@ -236,7 +236,7 @@ def test_classify_outcome_persists_canonical_mismatch_facts(tmp_path):
 
 
 def test_result_helper_uses_defaults_for_missing_bank_entry():
-    from skills.classify_outcome import _result
+    from steps.classify_outcome import _result
 
     result = _result(
         {

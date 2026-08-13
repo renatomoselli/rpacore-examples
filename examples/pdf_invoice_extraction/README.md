@@ -6,7 +6,7 @@ Queue-driven PDF invoice extraction example using `SqliteQueue` and
 ## Overview
 
 This example discovers PDF invoice files in `sample_data/`, enqueues them
-idempotently, processes each queued item through a five-skill pipeline, and
+idempotently, processes each queued item through a five-step pipeline, and
 writes normalized records to CSV output.
 
 ## Pipeline
@@ -16,7 +16,7 @@ scan_inbox -> open_pdf -> parse_invoice -> validate_invoice -> normalize_record 
 ```
 
 `scan_inbox` is a setup function in `main.py`. The remaining steps are RPA Core
-skills executed per queue item.
+steps executed per queue item.
 
 ## RPA Core Features Shown
 
@@ -24,7 +24,7 @@ skills executed per queue item.
 - `run_queue_loop(..., transaction_db_path=...)` binds queue items to durable
   transactions for retry and resume behavior.
 - Queue payload values are seeded into `ctx.state`.
-- `BusinessException(stop=True)` stops downstream normalization and output for
+- `BusinessException(halts_remaining_steps=True)` stops downstream normalization and output for
   invalid invoices.
 - `SystemException` marks unreadable or corrupt PDFs as retryable failures.
 - `ctx.add_artifact()` records the output CSV and moved source PDF with invoice
@@ -163,7 +163,7 @@ examples/pdf_invoice_extraction/
   sample_data/
     done/
     failed/
-  skills/
+  steps/
     __init__.py
     open_pdf.py
     parse_invoice.py

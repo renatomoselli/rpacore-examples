@@ -12,7 +12,7 @@ from rpacore import (
     QueueItem,
     QueueRunSummary,
     RetryDisposition,
-    Skill,
+    Step,
     SqliteQueue,
     Status,
     SystemException,
@@ -22,16 +22,16 @@ from rpacore import (
 
 import main as acme_main
 from main import _load_example_config, _project_outcome, _run_summary_transaction, _validate_config, build_transaction, scan_inbox
-from skills._session import DiscoveredItem
+from steps._session import DiscoveredItem
 from tests.conftest import FakeCredentials
 
 
-def test_build_transaction_has_explicit_five_skill_order() -> None:
+def test_build_transaction_has_explicit_five_step_order() -> None:
     transaction = build_transaction(
         QueueItem(reference="acme-1001", payload={"work_item_id": "1001", "discovered_hash": "v1"}),
         run_id="run",
     )
-    assert [skill.name for skill in transaction.ordered_skills()] == [
+    assert [step.name for step in transaction.ordered_steps()] == [
         "fetch_work_item",
         "validate_work_item",
         "compute_security_hash",
@@ -97,11 +97,11 @@ def test_validate_config_rejects_non_mapping_queue(example_config) -> None:
 @pytest.mark.parametrize(
     ("log_format", "expected_options"),
     [
-        ("json", {"fmt": "json", "json_version": 2}),
+        ("json", {"fmt": "json"}),
         ("text", {"fmt": "text"}),
     ],
 )
-def test_main_selects_json_schema_only_for_json_output(
+def test_main_passes_selected_log_format(
     monkeypatch,
     example_config,
     log_format,
@@ -246,10 +246,10 @@ def test_malformed_discovery_record_is_not_queued(example_config) -> None:
 
 def test_project_outcome_classifies_business_failure_without_full_state() -> None:
     item = QueueItem(reference="acme-1", payload={"work_item_id": "1", "discovered_hash": "v1"})
-    failed = SkillFailure(name="validate", execution_order=1)
+    failed = StepFailure(name="validate", execution_order=1)
     failed.status = Status.FAILED
-    failed.exceptions.append(BusinessException("bad data", action="validate", stop=True))
-    transaction = Transaction(reference="acme-1", state={"secret": "must-not-copy"}, skills=[failed])
+    failed.exceptions.append(BusinessException("bad data", action="validate", halts_remaining_steps=True))
+    transaction = Transaction(reference="acme-1", state={"secret": "must-not-copy"}, steps=[failed])
     transaction.status = Status.FAILED
     transaction.outcome_category = OutcomeCategory.BUSINESS_FAILED
     transaction.retry_disposition = RetryDisposition.NOT_REQUESTED
@@ -259,9 +259,9 @@ def test_project_outcome_classifies_business_failure_without_full_state() -> Non
         "retry_disposition": "not_requested",
         "failure_code": "",
     }
-    assert record["diagnostics"]["failed_skill"] == "validate"
+    assert record["diagnostics"]["failed_step"] == "validate"
     assert record["diagnostics"]["error_type"] == "business_exception"
-    assert record["report_record"]["report_format_version"] == 1
+    assert record["report_record"]["report_format_version"] == 2
     assert "secret" not in record
 
 
@@ -287,7 +287,7 @@ def test_project_outcome_sanitizes_persistence_error() -> None:
     item = QueueItem(reference="acme-1", payload={"work_item_id": "1", "discovered_hash": "v1"})
     record = _project_outcome(item, None, sqlite3.OperationalError("database path details"))
     assert record["diagnostics"] == {
-        "failed_skill": "",
+        "failed_step": "",
         "error_type": "unexpected_exception",
         "message": "Unexpected item-processing error",
     }
@@ -316,6 +316,6 @@ def test_failed_summary_transaction_is_persisted(monkeypatch, example_config) ->
     assert persisted[0].state["records"] == records
 
 
-class SkillFailure(Skill):
+class StepFailure(Step):
     def execute(self, ctx) -> None:
         return

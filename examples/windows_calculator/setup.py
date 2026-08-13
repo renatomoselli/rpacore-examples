@@ -12,7 +12,7 @@ setup(
         "calculator_utils",
         "main",
     ],
-    packages=["skills"],
+    packages=["steps"],
     install_requires=[
         "rpacore>=0.3.0,<0.4.0",
         "pywinauto>=0.6.8",

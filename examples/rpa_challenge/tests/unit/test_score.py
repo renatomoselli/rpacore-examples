@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-Unit tests for score.py skill (RecordScore).
+Unit tests for score.py step (RecordScore).
 
 These tests use mocked browser objects.
 """
@@ -10,14 +10,14 @@ import pytest
 from unittest.mock import Mock
 from rpacore import ProcessContext, Transaction, SystemException
 
-from skills.score import RecordScore
-from skills._utils import DEFAULT_TIMEOUTS
+from steps.score import RecordScore
+from steps._utils import DEFAULT_TIMEOUTS
 
 pytestmark = pytest.mark.unit
 
 
 class TestRecordScore:
-    """Test the RecordScore skill with mocked browser."""
+    """Test the RecordScore step with mocked browser."""
 
     def setup_method(self):
         """Set up test fixtures."""
@@ -34,8 +34,8 @@ class TestRecordScore:
         """Test that RecordScore reads the final score."""
         self.mock_page.text_content.return_value = "success rate is 85%. Congratulations!"
 
-        skill = RecordScore("record_score", 1)
-        skill.execute(self.mock_ctx)
+        step = RecordScore("record_score", 1)
+        step.execute(self.mock_ctx)
 
         self.mock_page.wait_for_selector.assert_called_with(
             ".congratulations",
@@ -48,8 +48,8 @@ class TestRecordScore:
         """Test that score is stored in ctx.state."""
         self.mock_page.text_content.return_value = "success rate is 92%. Congratulations!"
 
-        skill = RecordScore("record_score", 1)
-        skill.execute(self.mock_ctx)
+        step = RecordScore("record_score", 1)
+        step.execute(self.mock_ctx)
 
         assert self.mock_ctx.state["score"] == "92%"
 
@@ -57,8 +57,8 @@ class TestRecordScore:
         """Test that the regex extracts just the numeric score."""
         self.mock_page.text_content.return_value = "  success rate is 85%.  Congratulations!  "
 
-        skill = RecordScore("record_score", 1)
-        skill.execute(self.mock_ctx)
+        step = RecordScore("record_score", 1)
+        step.execute(self.mock_ctx)
 
         assert self.mock_ctx.state["score"] == "85%"
 
@@ -66,8 +66,8 @@ class TestRecordScore:
         """Test that minor score text format changes still parse."""
         self.mock_page.text_content.return_value = "success rate is 85. Congratulations!"
 
-        skill = RecordScore("record_score", 1)
-        skill.execute(self.mock_ctx)
+        step = RecordScore("record_score", 1)
+        step.execute(self.mock_ctx)
 
         assert self.mock_ctx.state["score"] == "85%"
 
@@ -75,8 +75,8 @@ class TestRecordScore:
         """Test that RecordScore no longer stops the browser (main.py owns lifecycle)."""
         self.mock_page.text_content.return_value = "success rate is 85%. Congratulations!"
 
-        skill = RecordScore("record_score", 1)
-        skill.execute(self.mock_ctx)
+        step = RecordScore("record_score", 1)
+        step.execute(self.mock_ctx)
 
         self.mock_pw.stop.assert_not_called()
         assert "_pw" in self.mock_ctx.resources
@@ -85,10 +85,10 @@ class TestRecordScore:
         """Test timeout when congratulations element not found."""
         self.mock_page.wait_for_selector.side_effect = Exception("Timeout")
 
-        skill = RecordScore("record_score", 1)
+        step = RecordScore("record_score", 1)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(self.mock_ctx)
+            step.execute(self.mock_ctx)
 
         assert "Failed to read final score" in str(exc_info.value)
 
@@ -97,10 +97,10 @@ class TestRecordScore:
         self.mock_page.wait_for_selector.return_value = None
         self.mock_page.text_content.side_effect = Exception("Body not found")
 
-        skill = RecordScore("record_score", 1)
+        step = RecordScore("record_score", 1)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(self.mock_ctx)
+            step.execute(self.mock_ctx)
 
         assert "Failed to read final score" in str(exc_info.value)
 
@@ -108,10 +108,10 @@ class TestRecordScore:
         """Test that RecordScore does not stop browser even on error."""
         self.mock_page.text_content.side_effect = Exception("Content failed")
 
-        skill = RecordScore("record_score", 1)
+        step = RecordScore("record_score", 1)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(self.mock_ctx)
+            step.execute(self.mock_ctx)
 
         assert "Failed to read final score" in str(exc_info.value)
         self.mock_pw.stop.assert_not_called()
@@ -120,8 +120,8 @@ class TestRecordScore:
         """Test that the correct CSS selector and API are used."""
         self.mock_page.text_content.return_value = "success rate is 77%. Congratulations!"
 
-        skill = RecordScore("record_score", 1)
-        skill.execute(self.mock_ctx)
+        step = RecordScore("record_score", 1)
+        step.execute(self.mock_ctx)
 
         self.mock_page.wait_for_selector.assert_called_with(
             ".congratulations",
@@ -134,8 +134,8 @@ class TestRecordScore:
         """Test fallback extracts a percentage from alternate congratulations text."""
         self.mock_page.text_content.return_value = "Congratulations! You scored 85%. Great job."
 
-        skill = RecordScore("record_score", 1)
-        skill.execute(self.mock_ctx)
+        step = RecordScore("record_score", 1)
+        step.execute(self.mock_ctx)
 
         self.mock_page.wait_for_selector.assert_called_with(
             ".congratulations",
@@ -146,18 +146,18 @@ class TestRecordScore:
     def test_fallback_congratulations_message_without_percent_sign(self):
         self.mock_page.text_content.return_value = "Congratulations! You scored 85. Great job."
 
-        skill = RecordScore("record_score", 1)
-        skill.execute(self.mock_ctx)
+        step = RecordScore("record_score", 1)
+        step.execute(self.mock_ctx)
 
         assert self.mock_ctx.state["score"] == "85%"
 
     def test_raises_when_congratulations_has_no_score(self):
         self.mock_page.text_content.return_value = "Congratulations! You have completed the challenge."
 
-        skill = RecordScore("record_score", 1)
+        step = RecordScore("record_score", 1)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(self.mock_ctx)
+            step.execute(self.mock_ctx)
 
         assert "Failed to read final score" in str(exc_info.value)
         assert "score" not in self.mock_ctx.state
@@ -166,10 +166,10 @@ class TestRecordScore:
         """Test that unparseable final page text fails loudly."""
         self.mock_page.text_content.return_value = "Some random page text with no score."
 
-        skill = RecordScore("record_score", 1)
+        step = RecordScore("record_score", 1)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(self.mock_ctx)
+            step.execute(self.mock_ctx)
 
         assert "Failed to read final score" in str(exc_info.value)
         assert "score" not in self.mock_ctx.state

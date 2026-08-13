@@ -24,8 +24,8 @@ from rpacore import (
 )
 
 from main import _move_failed_file_safely, build_transaction, scan_inbox
-from skills.append_to_master import AppendToMaster
-from skills.read_report_file import ReadReportFile
+from steps.append_to_master import AppendToMaster
+from steps.read_report_file import ReadReportFile
 
 
 def test_queue_workflow_processes_valid_files_and_moves_invalid_file(tmp_path):
@@ -154,7 +154,7 @@ def test_business_validation_failure_does_not_add_system_failure(tmp_path):
     tx.state["file_path"] = str(inbox_file)
     Engine(max_retries=1).run(ProcessContext(transaction=tx, config=config))
 
-    failed = tx.failed_skills()
+    failed = tx.failed_steps()
     assert len(failed) == 1
     assert failed[0].name == "validate_schema"
     assert isinstance(failed[0].exceptions[-1], BusinessException)
@@ -185,7 +185,7 @@ def test_path_traversal_fails_before_business_validation(tmp_path):
     tx.state["file_path"] = str(outside_file)
     Engine(max_retries=0).run(ProcessContext(transaction=tx, config=config))
 
-    failed = tx.failed_skills()
+    failed = tx.failed_steps()
     assert len(failed) == 1
     assert failed[0].name == "read_report_file"
     assert isinstance(failed[0].exceptions[-1], SystemException)
@@ -208,8 +208,8 @@ def test_master_append_is_idempotent_by_source_file(tmp_path):
     }
     config = {"master_csv": str(master_csv)}
     for _ in range(2):
-        skill = AppendToMaster(name="append_to_master", execution_order=1)
-        tx = Transaction(reference="append", skills=[skill])
+        step = AppendToMaster(name="append_to_master", execution_order=1)
+        tx = Transaction(reference="append", steps=[step])
         # Seed state from payload.
         for key, value in state.items():
             tx.state[key] = value

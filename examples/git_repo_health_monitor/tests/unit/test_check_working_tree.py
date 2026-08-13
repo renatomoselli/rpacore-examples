@@ -1,16 +1,16 @@
-"""Unit tests for the CheckWorkingTree skill."""
+"""Unit tests for the CheckWorkingTree step."""
 
 from unittest.mock import Mock, patch
 
 import pytest
 
 from rpacore import SystemException
-from skills.check_working_tree import CheckWorkingTree
+from steps.check_working_tree import CheckWorkingTree
 from tests.conftest import make_context
 
 
 class TestCheckWorkingTree:
-    """Test the CheckWorkingTree skill."""
+    """Test the CheckWorkingTree step."""
 
     def setup_method(self):
         self.ctx = make_context(state={"current_repo": "/tmp/test_repo"})
@@ -21,8 +21,8 @@ class TestCheckWorkingTree:
         mock_result.returncode = 0
 
         with patch("subprocess.run", return_value=mock_result) as mock_run:
-            skill = CheckWorkingTree("check_working_tree", 1)
-            skill.execute(self.ctx)
+            step = CheckWorkingTree("check_working_tree", 1)
+            step.execute(self.ctx)
 
         mock_run.assert_called_once_with(
             ["git", "-C", "/tmp/test_repo", "status", "--porcelain"],
@@ -38,8 +38,8 @@ class TestCheckWorkingTree:
         mock_result.returncode = 0
 
         with patch("subprocess.run", return_value=mock_result):
-            skill = CheckWorkingTree("check_working_tree", 1)
-            skill.execute(self.ctx)
+            step = CheckWorkingTree("check_working_tree", 1)
+            step.execute(self.ctx)
 
         assert self.ctx.state["uncommitted_changes"] == []
 
@@ -49,8 +49,8 @@ class TestCheckWorkingTree:
         mock_result.returncode = 0
 
         with patch("subprocess.run", return_value=mock_result):
-            skill = CheckWorkingTree("check_working_tree", 1)
-            skill.execute(self.ctx)
+            step = CheckWorkingTree("check_working_tree", 1)
+            step.execute(self.ctx)
 
         assert self.ctx.state["uncommitted_changes"] == ["  file_with_spaces"]
 
@@ -60,8 +60,8 @@ class TestCheckWorkingTree:
         mock_result.returncode = 0
 
         with patch("subprocess.run", return_value=mock_result):
-            skill = CheckWorkingTree("check_working_tree", 1)
-            skill.execute(self.ctx)
+            step = CheckWorkingTree("check_working_tree", 1)
+            step.execute(self.ctx)
 
         assert self.ctx.state["uncommitted_changes"] == ["new_name.txt"]
 
@@ -71,36 +71,36 @@ class TestCheckWorkingTree:
         mock_result.returncode = 0
 
         with patch("subprocess.run", return_value=mock_result):
-            skill = CheckWorkingTree("check_working_tree", 1)
-            skill.execute(self.ctx)
+            step = CheckWorkingTree("check_working_tree", 1)
+            step.execute(self.ctx)
 
         assert self.ctx.state["uncommitted_changes"] == ["copied.txt"]
 
     def test_raises_on_missing_current_repo(self):
         ctx = make_context()  # no state
-        skill = CheckWorkingTree("check_working_tree", 1)
+        step = CheckWorkingTree("check_working_tree", 1)
 
         with pytest.raises(SystemException, match="Missing required state key: current_repo"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
     def test_raises_on_git_not_found(self):
         with patch("subprocess.run", side_effect=FileNotFoundError()):
-            skill = CheckWorkingTree("check_working_tree", 1)
+            step = CheckWorkingTree("check_working_tree", 1)
             with pytest.raises(SystemException, match="git command not found"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)
 
     def test_raises_on_timeout(self):
         import subprocess
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("git", 30)):
-            skill = CheckWorkingTree("check_working_tree", 1)
+            step = CheckWorkingTree("check_working_tree", 1)
             with pytest.raises(SystemException, match="timed out"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)
 
     def test_raises_on_os_error(self):
         with patch("subprocess.run", side_effect=PermissionError("denied")):
-            skill = CheckWorkingTree("check_working_tree", 1)
+            step = CheckWorkingTree("check_working_tree", 1)
             with pytest.raises(SystemException, match="git status failed"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)
 
     def test_raises_on_git_error(self):
         import subprocess
@@ -109,6 +109,6 @@ class TestCheckWorkingTree:
         mock_result.stderr = "fatal: not a git repository"
 
         with patch("subprocess.run", return_value=mock_result):
-            skill = CheckWorkingTree("check_working_tree", 1)
+            step = CheckWorkingTree("check_working_tree", 1)
             with pytest.raises(SystemException, match="exit code 128"):
-                skill.execute(self.ctx)
+                step.execute(self.ctx)

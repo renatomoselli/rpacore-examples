@@ -12,5 +12,5 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def make_context(state: dict | None = None, config: dict | None = None) -> ProcessContext:
     """Build a ProcessContext for unit testing with real Transaction objects."""
-    tx = Transaction(reference="test", skills=[], state=state or {})
+    tx = Transaction(reference="test", steps=[], state=state or {})
     return ProcessContext(transaction=tx, config=config or {})

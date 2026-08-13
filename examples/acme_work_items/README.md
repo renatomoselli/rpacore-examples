@@ -28,7 +28,7 @@ The transaction order is explicit:
 
 1. `FetchWorkItem` reads a fresh remote snapshot.
 2. `ValidateWorkItem` rejects bad, stale, unsupported, or unexpectedly closed
-   items with `BusinessException(stop=True)`.
+   items with `BusinessException(halts_remaining_steps=True)`.
 3. `ComputeSecurityHash` computes `SHA1(clientID + WIID)` and checkpoints the
    deterministic update intent.
 4. `UpdateWorkItem` writes the deterministic hash comment and verifies the
@@ -38,7 +38,7 @@ The transaction order is explicit:
 
 Durable, JSON-safe values live in `ctx.state`. The browser, page, cookies, and
 credential provider live only in `ctx.resources`/`ctx.credentials`. Every
-browser skill re-establishes authentication and navigates independently, so a
+browser step re-establishes authentication and navigates independently, so a
 persisted transaction can resume under a fresh process and browser.
 
 ## Setup
@@ -75,7 +75,7 @@ package and operating-system backend.
 
 ## Outputs and resilience
 
-Item transactions and strict skill checkpoints are stored in `rpacore.db`; the
+Item transactions and strict step checkpoints are stored in `rpacore.db`; the
 queue is stored separately in `queue.db`. A run-level summary is written
 atomically under `reports/` and persisted as its own transaction. Item-close
 screenshots are stored under `screenshots/`. All paths are resolved relative to
@@ -87,7 +87,7 @@ item record references one screenshot artifact. Screenshot names are keyed by
 work-item ID, so a verified replay replaces that item's existing file; the
 directory may also contain screenshots from earlier runs.
 
-For every item transaction, the summary embeds RPA Core's immutable report-v1
+For every item transaction, the summary embeds RPA Core's immutable report-v2
 record and its canonical outcome category, retry disposition, failure code,
 and transaction retry count. A build failure with no transaction keeps only
 separate diagnostics; it never receives an invented report or outcome.
@@ -98,7 +98,7 @@ failed screenshot can produce a failed transaction whose idempotency outcome is
 still `closed`: the remote close is irreversible and must remain visible even
 when optional artifact capture fails.
 
-The update and close skills are deliberately idempotent. A process may stop
+The update and close steps are deliberately idempotent. A process may stop
 after the remote side effect but before its checkpoint. On retry, the update may
 re-submit the same deterministic comment and verify it again. The persisted
 close intent lets the close step recognize the matching already-completed item
@@ -114,7 +114,7 @@ Notifications use RPA Core's existing `[notification.email]` and
 `[notification.webhook]` configuration. No notification section is committed,
 so the default run sends nothing.
 
-The committed configuration emits protected JSON log format v2. Set
+The committed configuration emits protected JSON log format v3. Set
 `log_format = "text"` when a human-readable console log is more useful. The
 completion event reports the exact public queue-run disposition counters for
 that invocation, alongside the bounded summary transaction identity.

@@ -18,10 +18,10 @@ from rpacore import (
     validate_config,
 )
 
-from skills.row import FillRow, SubmitRow
-from skills.score import RecordScore
-from skills.setup import DownloadInputData, OpenChallengePage, StartChallenge
-from skills._utils import find_row_value
+from steps.row import FillRow, SubmitRow
+from steps.score import RecordScore
+from steps.setup import DownloadInputData, OpenChallengePage, StartChallenge
+from steps._utils import find_row_value
 
 logger = get_logger(__name__)
 SETUP_DEFINITION_IDENTITY = "rpa-challenge/setup/v1"
@@ -71,8 +71,8 @@ def _validate_config(config: dict[str, object]) -> dict[str, object]:
     return validated
 
 
-def _format_failed_skills(tx: Transaction) -> str:
-    failed = tx.failed_skills()
+def _format_failed_steps(tx: Transaction) -> str:
+    failed = tx.failed_steps()
     if not failed:
         return "none"
     return "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed)
@@ -145,7 +145,7 @@ def main() -> None:
         setup_tx = Transaction(
             reference="rpa-challenge-setup",
             definition_identity=SETUP_DEFINITION_IDENTITY,
-            skills=[
+            steps=[
                 OpenChallengePage(name="open_challenge_page", execution_order=1),
                 DownloadInputData(name="download_input_data", execution_order=2),
                 StartChallenge(name="start_challenge", execution_order=3),
@@ -158,8 +158,8 @@ def main() -> None:
             logger.warning("Could not persist setup transaction: %s", exc)
 
         if setup_tx.status is not Status.SUCCESSFUL:
-            details = _format_failed_skills(setup_tx)
-            print(f"Setup failed ({setup_tx.status}). Failed skill(s): {details}")
+            details = _format_failed_steps(setup_tx)
+            print(f"Setup failed ({setup_tx.status}). Failed step(s): {details}")
             sys.exit(1)
 
         print(
@@ -193,7 +193,7 @@ def main() -> None:
             row_tx = Transaction(
                 reference=ref,
                 definition_identity=ROW_DEFINITION_IDENTITY,
-                skills=[
+                steps=[
                     FillRow(name="fill_row", execution_order=1, arguments={"row": row}),
                     SubmitRow(name="submit_row", execution_order=2),
                 ],
@@ -204,14 +204,14 @@ def main() -> None:
             except OSError as exc:
                 logger.warning("Could not persist row %s transaction: %s", row_index, exc)
             if row_tx.status is not Status.SUCCESSFUL:
-                details = _format_failed_skills(row_tx)
-                print(f"Row {row_index} failed ({row_tx.status}). Failed skill(s): {details}")
+                details = _format_failed_steps(row_tx)
+                print(f"Row {row_index} failed ({row_tx.status}). Failed step(s): {details}")
                 sys.exit(1)
 
         score_tx = Transaction(
             reference="rpa-challenge-score",
             definition_identity=SCORE_DEFINITION_IDENTITY,
-            skills=[
+            steps=[
                 RecordScore(name="record_score", execution_order=1),
             ],
         )
@@ -224,8 +224,8 @@ def main() -> None:
         except OSError as exc:
             logger.warning("Could not persist score transaction: %s", exc)
         if score_tx.status is not Status.SUCCESSFUL:
-            details = _format_failed_skills(score_tx)
-            print(f"Score capture failed ({score_tx.status}). Failed skill(s): {details}")
+            details = _format_failed_steps(score_tx)
+            print(f"Score capture failed ({score_tx.status}). Failed step(s): {details}")
             sys.exit(1)
         score = score_tx.state.get("score")
         if not score:

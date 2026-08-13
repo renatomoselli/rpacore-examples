@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Unit tests for the WriteErrorReport skill."""
+"""Unit tests for the WriteErrorReport step."""
 
 import json
 import sqlite3
@@ -22,11 +22,11 @@ from rpacore import (
     save_transaction,
 )
 
-from skills.write_error_report import WriteErrorReport, _iter_run_transactions
+from steps.write_error_report import WriteErrorReport, _iter_run_transactions
 
 
 class TestWriteErrorReport:
-    """Test the WriteErrorReport skill."""
+    """Test the WriteErrorReport step."""
 
     @pytest.fixture(autouse=True)
     def setup(self, tmp_path: Path) -> None:
@@ -44,27 +44,27 @@ class TestWriteErrorReport:
         )
 
     def test_generates_report_with_failed_transactions(self) -> None:
-        from rpacore import Skill as RpaSkill
+        from rpacore import Step as RpaStep
         mock_tx = Transaction(
             reference="ok",
             status=Status.SUCCESSFUL,
             metadata={"run_id": "test-run"},
         )
-        failed_skill = RpaSkill(name="validate_events", execution_order=2)
-        failed_skill.exceptions = [BusinessException("Validation error", stop=True)]
+        failed_step = RpaStep(name="validate_events", execution_order=2)
+        failed_step.exceptions = [BusinessException("Validation error", halts_remaining_steps=True)]
         mock_failed_tx = Transaction(
             reference="fail",
             status=Status.FAILED,
-            skills=[failed_skill],
+            steps=[failed_step],
             metadata={"run_id": "test-run"},
         )
 
         results_dir = self.ctx.config["results_dir"]
 
-        with patch("skills.write_error_report._iter_run_transactions") as mock_transactions:
+        with patch("steps.write_error_report._iter_run_transactions") as mock_transactions:
             mock_transactions.return_value = iter([mock_tx, mock_failed_tx])
-            skill = WriteErrorReport("write_error_report", 5)
-            skill.execute(self.ctx)
+            step = WriteErrorReport("write_error_report", 5)
+            step.execute(self.ctx)
 
         report_path = Path(results_dir) / "error_report.json"
         assert report_path.exists()
@@ -82,13 +82,13 @@ class TestWriteErrorReport:
         assert artifact.metadata["persistence_error_count"] == 0
 
     def test_projects_canonical_outcome_facts_without_replacing_existing_fields(self) -> None:
-        from rpacore import Skill as RpaSkill
+        from rpacore import Step as RpaStep
 
-        validation_skill = RpaSkill(name="validate_events", execution_order=2)
-        validation_skill.exceptions = [
+        validation_step = RpaStep(name="validate_events", execution_order=2)
+        validation_step.exceptions = [
             BusinessException(
                 "invalid event payload",
-                stop=True,
+                halts_remaining_steps=True,
                 code="json_event_log.validation.invalid_event",
             )
         ]
@@ -99,11 +99,11 @@ class TestWriteErrorReport:
             outcome_category=OutcomeCategory.BUSINESS_FAILED,
             retry_disposition=RetryDisposition.NOT_REQUESTED,
             failure_code="json_event_log.validation.invalid_event",
-            skills=[validation_skill],
+            steps=[validation_step],
             metadata={"run_id": "test-run"},
         )
-        read_skill = RpaSkill(name="load_json_file", execution_order=1)
-        read_skill.exceptions = [
+        read_step = RpaStep(name="load_json_file", execution_order=1)
+        read_step.exceptions = [
             SystemException(
                 "unavailable input",
                 code="json_event_log.input.read_failed",
@@ -116,11 +116,11 @@ class TestWriteErrorReport:
             outcome_category=OutcomeCategory.SYSTEM_FAILED,
             retry_disposition=RetryDisposition.RETRY_EXHAUSTED,
             failure_code="json_event_log.input.read_failed",
-            skills=[read_skill],
+            steps=[read_step],
             metadata={"run_id": "test-run"},
         )
 
-        with patch("skills.write_error_report._iter_run_transactions", return_value=iter([business_tx, system_tx])):
+        with patch("steps.write_error_report._iter_run_transactions", return_value=iter([business_tx, system_tx])):
             WriteErrorReport("write_error_report", 5).execute(self.ctx)
 
         report = json.loads((Path(self.ctx.config["results_dir"]) / "error_report.json").read_text(encoding="utf-8"))
@@ -133,9 +133,9 @@ class TestWriteErrorReport:
             "outcome_category": "business_failed",
             "retry_disposition": "not_requested",
             "failure_code": "json_event_log.validation.invalid_event",
-            "failed_skills": [{
-                "skill_name": "validate_events",
-                "skill_order": 2,
+            "failed_steps": [{
+                "step_name": "validate_events",
+                "step_order": 2,
                 "exception_type": "business",
                 "message": "invalid event payload",
             }],
@@ -144,7 +144,7 @@ class TestWriteErrorReport:
         assert by_reference["system-failure"]["retry_disposition"] == "retry_exhausted"
         assert by_reference["system-failure"]["failure_code"] == "json_event_log.input.read_failed"
 
-    @pytest.mark.parametrize("failure_target", ["skills.write_error_report.json.dump", "rpacore.paths.os.replace"])
+    @pytest.mark.parametrize("failure_target", ["steps.write_error_report.json.dump", "rpacore.paths.os.replace"])
     def test_keeps_previous_report_and_removes_temporary_on_publication_failure(
         self,
         failure_target: str,
@@ -152,7 +152,7 @@ class TestWriteErrorReport:
         report_path = Path(self.ctx.config["results_dir"]) / "error_report.json"
         report_path.write_text("previous", encoding="utf-8")
 
-        with patch("skills.write_error_report._iter_run_transactions", return_value=iter(())):
+        with patch("steps.write_error_report._iter_run_transactions", return_value=iter(())):
             with patch(failure_target, side_effect=OSError("publication failed")):
                 with pytest.raises(SystemException, match="publication failed"):
                     WriteErrorReport("write_error_report", 5).execute(self.ctx)
@@ -163,10 +163,10 @@ class TestWriteErrorReport:
     def test_handles_empty_transaction_list(self) -> None:
         results_dir = self.ctx.config["results_dir"]
 
-        with patch("skills.write_error_report._iter_run_transactions") as mock_transactions:
+        with patch("steps.write_error_report._iter_run_transactions") as mock_transactions:
             mock_transactions.return_value = iter(())
-            skill = WriteErrorReport("write_error_report", 5)
-            skill.execute(self.ctx)
+            step = WriteErrorReport("write_error_report", 5)
+            step.execute(self.ctx)
 
         report_path = Path(results_dir) / "error_report.json"
         assert report_path.exists()
@@ -188,10 +188,10 @@ class TestWriteErrorReport:
             },
         ]
 
-        with patch("skills.write_error_report._iter_run_transactions") as mock_transactions:
+        with patch("steps.write_error_report._iter_run_transactions") as mock_transactions:
             mock_transactions.return_value = iter(())
-            skill = WriteErrorReport("write_error_report", 5)
-            skill.execute(self.ctx)
+            step = WriteErrorReport("write_error_report", 5)
+            step.execute(self.ctx)
 
         report_path = Path(self.ctx.config["results_dir"]) / "error_report.json"
         report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -204,10 +204,10 @@ class TestWriteErrorReport:
     def test_non_list_persistence_errors_are_treated_as_empty(self) -> None:
         self.ctx.config["persistence_errors"] = {"bad": "shape"}
 
-        with patch("skills.write_error_report._iter_run_transactions") as mock_transactions:
+        with patch("steps.write_error_report._iter_run_transactions") as mock_transactions:
             mock_transactions.return_value = iter(())
-            skill = WriteErrorReport("write_error_report", 5)
-            skill.execute(self.ctx)
+            step = WriteErrorReport("write_error_report", 5)
+            step.execute(self.ctx)
 
         report_path = Path(self.ctx.config["results_dir"]) / "error_report.json"
         report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -223,10 +223,10 @@ class TestWriteErrorReport:
             Transaction(reference="ok", status=Status.SUCCESSFUL, metadata={"run_id": "test-run"}),
         ]
 
-        with patch("skills.write_error_report._iter_run_transactions") as mock_transactions:
+        with patch("steps.write_error_report._iter_run_transactions") as mock_transactions:
             mock_transactions.return_value = iter(transactions)
-            skill = WriteErrorReport("write_error_report", 5)
-            skill.execute(self.ctx)
+            step = WriteErrorReport("write_error_report", 5)
+            step.execute(self.ctx)
 
         report_path = Path(self.ctx.config["results_dir"]) / "error_report.json"
         report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -238,24 +238,24 @@ class TestWriteErrorReport:
         assert self.transaction.metadata["unresolved_count"] == 2
 
     def test_write_failure_reports_target_path_without_name_error(self) -> None:
-        with patch("skills.write_error_report.Path.mkdir") as mock_mkdir:
+        with patch("steps.write_error_report.Path.mkdir") as mock_mkdir:
             mock_mkdir.side_effect = OSError("cannot create results")
-            with patch("skills.write_error_report._iter_run_transactions") as mock_transactions:
+            with patch("steps.write_error_report._iter_run_transactions") as mock_transactions:
                 mock_transactions.return_value = iter(())
-                skill = WriteErrorReport("write_error_report", 5)
+                step = WriteErrorReport("write_error_report", 5)
                 with pytest.raises(SystemException) as exc_info:
-                    skill.execute(self.ctx)
+                    step.execute(self.ctx)
 
         message = str(exc_info.value)
         assert "error_report.json" in message
         assert "cannot create results" in message
 
     def test_raises_on_db_read_failure(self) -> None:
-        with patch("skills.write_error_report._iter_run_transactions") as mock_transactions:
+        with patch("steps.write_error_report._iter_run_transactions") as mock_transactions:
             mock_transactions.side_effect = sqlite3.Error("DB error")
-            skill = WriteErrorReport("write_error_report", 5)
+            step = WriteErrorReport("write_error_report", 5)
             with pytest.raises(SystemException) as exc_info:
-                skill.execute(self.ctx)
+                step.execute(self.ctx)
             assert "Failed to read transactions" in str(exc_info.value)
 
     def test_raises_system_exception_for_malformed_query_page(self) -> None:
@@ -267,7 +267,7 @@ class TestWriteErrorReport:
         malformed_page = SimpleNamespace(transactions=(), has_more=True, next_cursor=None)
 
         with patch(
-            "skills.write_error_report.query_transactions",
+            "steps.write_error_report.query_transactions",
             return_value=malformed_page,
         ) as mock_query:
             with pytest.raises(SystemException, match="omitted its continuation cursor"):
@@ -285,8 +285,8 @@ class TestWriteErrorReport:
         transaction = Transaction(reference="removed", metadata={"run_id": "test-run"})
         save_transaction(transaction, db_path=db_path)
 
-        with patch("skills.write_error_report.load_transaction", side_effect=KeyError(transaction.id)):
-            with patch("skills.write_error_report.logger.warning") as mock_warning:
+        with patch("steps.write_error_report.load_transaction", side_effect=KeyError(transaction.id)):
+            with patch("steps.write_error_report.logger.warning") as mock_warning:
                 assert list(_iter_run_transactions(db_path, "test-run")) == []
 
         mock_warning.assert_called_once_with(
@@ -297,7 +297,7 @@ class TestWriteErrorReport:
     def test_logs_when_the_empty_batch_has_no_transaction_database(self, tmp_path: Path) -> None:
         db_path = str(tmp_path / "missing-rpacore.db")
 
-        with patch("skills.write_error_report.logger.info") as mock_info:
+        with patch("steps.write_error_report.logger.info") as mock_info:
             assert list(_iter_run_transactions(db_path, "test-run")) == []
 
         mock_info.assert_called_once_with(

@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-"""Unit tests for the ValidatePost skill."""
+"""Unit tests for the ValidatePost step."""
 
 import pytest
 
 from rpacore import BusinessException, ProcessContext, SystemException, Transaction
-from skills.validate_post import ValidatePost
+from steps.validate_post import ValidatePost
 
 
 class TestValidatePost:
-    """Test the ValidatePost skill."""
+    """Test the ValidatePost step."""
 
     def test_passes_for_valid_post(self):
         """Test that ValidatePost passes for a post with non-empty title and body."""
@@ -19,8 +19,8 @@ class TestValidatePost:
         )
         ctx = ProcessContext(transaction=transaction)
 
-        skill = ValidatePost("validate_post", 2)
-        skill.execute(ctx)  # Should not raise
+        step = ValidatePost("validate_post", 2)
+        step.execute(ctx)  # Should not raise
 
     def test_raises_on_empty_title(self):
         """Test that ValidatePost raises BusinessException for empty title."""
@@ -30,10 +30,10 @@ class TestValidatePost:
         )
         ctx = ProcessContext(transaction=transaction)
 
-        skill = ValidatePost("validate_post", 2)
+        step = ValidatePost("validate_post", 2)
 
         with pytest.raises(BusinessException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert "empty or missing title" in str(exc_info.value)
 
@@ -45,10 +45,10 @@ class TestValidatePost:
         )
         ctx = ProcessContext(transaction=transaction)
 
-        skill = ValidatePost("validate_post", 2)
+        step = ValidatePost("validate_post", 2)
 
         with pytest.raises(BusinessException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert "empty or missing body" in str(exc_info.value)
 
@@ -60,10 +60,10 @@ class TestValidatePost:
         )
         ctx = ProcessContext(transaction=transaction)
 
-        skill = ValidatePost("validate_post", 2)
+        step = ValidatePost("validate_post", 2)
 
         with pytest.raises(BusinessException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert "empty or missing title" in str(exc_info.value)
 
@@ -83,10 +83,10 @@ class TestValidatePost:
         transaction = Transaction(reference="test", state={})
         ctx = ProcessContext(transaction=transaction)
 
-        skill = ValidatePost("validate_post", 2)
+        step = ValidatePost("validate_post", 2)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert "Missing required state" in str(exc_info.value)
 
@@ -98,13 +98,13 @@ class TestValidatePost:
         )
         ctx = ProcessContext(transaction=transaction)
 
-        skill = ValidatePost("validate_post", 2)
+        step = ValidatePost("validate_post", 2)
 
         with pytest.raises(BusinessException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert "missing userId" in str(exc_info.value)
-        assert exc_info.value.stops_execution is True
+        assert exc_info.value.halts_remaining_steps is True
 
     @pytest.mark.parametrize("user_id", [0, -1, "1", True])
     def test_raises_on_invalid_user_id(self, user_id):

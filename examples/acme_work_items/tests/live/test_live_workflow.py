@@ -5,7 +5,7 @@ import os
 import pytest
 from rpacore import EnvCredentialProvider
 
-from skills._session import BrowserSession
+from steps._session import BrowserSession
 
 
 pytestmark = pytest.mark.live

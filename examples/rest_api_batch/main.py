@@ -23,12 +23,12 @@ from rpacore import (
 )
 from rpacore import resolve_config_paths
 
-from skills.fetch_posts import FetchPosts
-from skills.fetch_user import FetchUser
-from skills.validate_post import ValidatePost
-from skills.enrich_record import EnrichRecord
-from skills.write_output import WriteOutput
-from skills import API_MODES
+from steps.fetch_posts import FetchPosts
+from steps.fetch_user import FetchUser
+from steps.validate_post import ValidatePost
+from steps.enrich_record import EnrichRecord
+from steps.write_output import WriteOutput
+from steps import API_MODES
 
 logger = get_logger(__name__)
 FETCH_DEFINITION_IDENTITY = "rest-api-batch/fetch/v1"
@@ -84,7 +84,7 @@ def main() -> None:
         reference="fetch-posts",
         definition_identity=FETCH_DEFINITION_IDENTITY,
         state={},
-        skills=[
+        steps=[
             FetchPosts(name="fetch_posts", execution_order=1),
         ],
     )
@@ -92,10 +92,10 @@ def main() -> None:
     _persist_transaction(setup_tx, db_path=db_path, description="setup transaction")
 
     if setup_tx.status is not Status.SUCCESSFUL:
-        failed = setup_tx.failed_skills()
+        failed = setup_tx.failed_steps()
         if failed:
             details = "; ".join(f"{s.name}({s.__class__.__name__})" for s in failed)
-            logger.error("Setup failed (%s). Failed skill(s): %s", setup_tx.status, details)
+            logger.error("Setup failed (%s). Failed step(s): %s", setup_tx.status, details)
         else:
             logger.error("Setup failed (%s). Aborting.", setup_tx.status)
         sys.exit(1)
@@ -112,7 +112,7 @@ def main() -> None:
                 reference=f"post-{post_id}",
                 definition_identity=POST_DEFINITION_IDENTITY,
                 state={"current_post": post},
-                skills=[
+                steps=[
                     ValidatePost(name="validate_post", execution_order=1),
                     FetchUser(name="fetch_user", execution_order=2),
                     EnrichRecord(name="enrich_record", execution_order=3),
@@ -139,7 +139,7 @@ def main() -> None:
                     post.get("title", "")[:50],
                 )
             else:
-                failed = post_tx.failed_skills()
+                failed = post_tx.failed_steps()
                 if failed:
                     details = "; ".join(
                         f"{s.name}({s.__class__.__name__})" for s in failed

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from rpacore import SystemException
 
-from skills._csv_utils import read_csv
+from steps._csv_utils import read_csv
 
 
 def test_read_csv_returns_rows_for_valid_schema(tmp_path):

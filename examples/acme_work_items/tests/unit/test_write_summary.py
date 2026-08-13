@@ -5,14 +5,14 @@ from pathlib import Path
 
 from rpacore import Status
 
-from skills.write_summary import WriteSummary
-from tests.conftest import run_skill
+from steps.write_summary import WriteSummary
+from tests.conftest import run_step
 
 
 def test_write_summary_is_durable_atomic_and_registers_artifact(monkeypatch, example_config) -> None:
     fsync_calls: list[int] = []
     monkeypatch.setattr("rpacore.paths.os.fsync", fsync_calls.append)
-    transaction = run_skill(
+    transaction = run_step(
         WriteSummary(name="summary", execution_order=1),
         state={
             "run_id": "run-1",
@@ -35,7 +35,7 @@ def test_write_summary_failure_is_persistable(example_config, tmp_path) -> None:
     blocking_file = tmp_path / "not-a-directory"
     blocking_file.write_text("x", encoding="utf-8")
     example_config["report_dir"] = str(blocking_file)
-    transaction = run_skill(
+    transaction = run_step(
         WriteSummary(name="summary", execution_order=1),
         state={"run_id": "run-2", "records": [], "omitted_record_count": 0, "queue_summary": {}},
         config=example_config,
@@ -50,8 +50,8 @@ def test_write_summary_cleans_temp_file_after_serialization_failure(
     def fail_dump(*args, **kwargs) -> None:
         raise TypeError("not serializable")
 
-    monkeypatch.setattr("skills.write_summary.json.dump", fail_dump)
-    transaction = run_skill(
+    monkeypatch.setattr("steps.write_summary.json.dump", fail_dump)
+    transaction = run_step(
         WriteSummary(name="summary", execution_order=1),
         state={"run_id": "run-3", "records": [], "omitted_record_count": 0, "queue_summary": {}},
         config=example_config,

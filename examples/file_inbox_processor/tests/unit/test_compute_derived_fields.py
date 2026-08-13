@@ -1,4 +1,4 @@
-"""Unit tests for ComputeDerivedFields skill."""
+"""Unit tests for ComputeDerivedFields step."""
 
 from __future__ import annotations
 
@@ -6,15 +6,15 @@ import pytest
 
 from rpacore import Engine, ProcessContext, Status, Transaction
 
-from skills.compute_derived_fields import ComputeDerivedFields
+from steps.compute_derived_fields import ComputeDerivedFields
 
 
 def _run(data):
     tx = Transaction(
         reference="compute-report",
-        skills=[ComputeDerivedFields(name="compute_derived_fields", execution_order=1)],
+        steps=[ComputeDerivedFields(name="compute_derived_fields", execution_order=1)],
     )
-    # Seed state with validated_report (the input to this skill)
+    # Seed state with validated_report (the input to this step)
     for key, value in data.items():
         tx.state[key] = value
     Engine(max_retries=0).run(ProcessContext(transaction=tx))
@@ -51,13 +51,13 @@ def test_zero_headcount_raises():
         }
     )
     assert tx.status == Status.FAILED
-    assert "headcount" in str(tx.failed_skills()[0].exceptions[-1]).lower()
+    assert "headcount" in str(tx.failed_steps()[0].exceptions[-1]).lower()
 
 
 def test_missing_validated_report_raises():
     tx = _run({})
     assert tx.status == Status.FAILED
-    assert "validated_report" in str(tx.failed_skills()[0].exceptions[-1])
+    assert "validated_report" in str(tx.failed_steps()[0].exceptions[-1])
 
 
 def test_wrong_validated_report_types_have_specific_error():
@@ -72,7 +72,7 @@ def test_wrong_validated_report_types_have_specific_error():
         }
     )
     assert tx.status == Status.FAILED
-    message = str(tx.failed_skills()[0].exceptions[-1])
+    message = str(tx.failed_steps()[0].exceptions[-1])
     assert "revenue must be str" in message
     assert "headcount must be int" in message
 
@@ -89,7 +89,7 @@ def test_invalid_decimal_revenue_has_specific_error():
         }
     )
     assert tx.status == Status.FAILED
-    message = str(tx.failed_skills()[0].exceptions[-1])
+    message = str(tx.failed_steps()[0].exceptions[-1])
     assert "invalid revenue value" in message
     assert "unexpected types" not in message
 

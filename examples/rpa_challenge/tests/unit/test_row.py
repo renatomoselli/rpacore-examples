@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-Unit tests for row.py skills (FillRow, SubmitRow).
+Unit tests for row.py steps (FillRow, SubmitRow).
 
 These tests use mocked browser objects to avoid requiring actual Playwright.
 """
@@ -11,8 +11,8 @@ from unittest.mock import Mock, call, patch
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from rpacore import ProcessContext, Transaction, SystemException, BusinessException
 
-from skills.row import FillRow, SubmitRow, _FIELDS
-from skills._utils import (
+from steps.row import FillRow, SubmitRow, _FIELDS
+from steps._utils import (
     DEFAULT_TIMEOUTS,
     find_row_value as _find_row_value,
     get_timeout,
@@ -96,7 +96,7 @@ class TestGetTimeout:
 
 
 class TestFillRow:
-    """Test the FillRow skill with mocked browser."""
+    """Test the FillRow step with mocked browser."""
 
     def setup_method(self):
         self.mock_page = Mock()
@@ -121,8 +121,8 @@ class TestFillRow:
             "Phone Number": "input-7"
         }
 
-        skill = FillRow("fill_row", 1, arguments={"row": row})
-        skill.execute(self.mock_ctx)
+        step = FillRow("fill_row", 1, arguments={"row": row})
+        step.execute(self.mock_ctx)
 
         assert self.mock_page.evaluate.call_count >= 1
 
@@ -138,8 +138,8 @@ class TestFillRow:
         }
         self.mock_page.evaluate.return_value = {f: f"input-{i}" for i, f in enumerate(_FIELDS)}
 
-        skill = FillRow("fill_row", 1, arguments={"row": row})
-        skill.execute(self.mock_ctx)
+        step = FillRow("fill_row", 1, arguments={"row": row})
+        step.execute(self.mock_ctx)
 
         self.mock_page.evaluate.assert_called()
 
@@ -155,17 +155,17 @@ class TestFillRow:
         }
         self.mock_page.evaluate.return_value = {f: f"input-{i}" for i, f in enumerate(_FIELDS)}
 
-        skill = FillRow("fill_row", 1, arguments={"row": row})
-        skill.execute(self.mock_ctx)
+        step = FillRow("fill_row", 1, arguments={"row": row})
+        step.execute(self.mock_ctx)
 
         js_code = self.mock_page.evaluate.call_args.args[0]
         assert "100% Quality Co" in js_code
 
     def test_raises_business_exception_on_missing_fields(self):
-        skill = FillRow("fill_row", 1, arguments={"row": {"First Name": "John"}})
+        step = FillRow("fill_row", 1, arguments={"row": {"First Name": "John"}})
 
         with pytest.raises(BusinessException) as exc_info:
-            skill.execute(self.mock_ctx)
+            step.execute(self.mock_ctx)
 
         assert "missing required fields" in str(exc_info.value)
         assert "row_validation_failed" not in self.mock_ctx.state
@@ -181,10 +181,10 @@ class TestFillRow:
             "Phone Number": "555-1234"
         }
 
-        skill = FillRow("fill_row", 1, arguments={"row": row})
+        step = FillRow("fill_row", 1, arguments={"row": row})
 
         with pytest.raises(BusinessException) as exc_info:
-            skill.execute(self.mock_ctx)
+            step.execute(self.mock_ctx)
 
         assert "missing required fields" in str(exc_info.value)
         assert "Last Name" in str(exc_info.value)
@@ -201,8 +201,8 @@ class TestFillRow:
         }
         self.mock_page.evaluate.return_value = {f: f"input-{i}" for i, f in enumerate(_FIELDS)}
 
-        skill = FillRow("fill_row", 1, arguments={"row": row})
-        skill.execute(self.mock_ctx)
+        step = FillRow("fill_row", 1, arguments={"row": row})
+        step.execute(self.mock_ctx)
 
         self.mock_page.evaluate.assert_called()
 
@@ -215,15 +215,15 @@ class TestFillRow:
         }
         self.mock_page.evaluate.side_effect = Exception("JS execution failed")
 
-        skill = FillRow("fill_row", 1, arguments={"row": row})
+        step = FillRow("fill_row", 1, arguments={"row": row})
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(self.mock_ctx)
+            step.execute(self.mock_ctx)
 
         assert "Failed to fill field in row" in str(exc_info.value)
 
 class TestSubmitRow:
-    """Test the SubmitRow skill with mocked browser."""
+    """Test the SubmitRow step with mocked browser."""
 
     def setup_method(self):
         self.mock_page = Mock()
@@ -238,8 +238,8 @@ class TestSubmitRow:
         mock_locator = Mock()
         self.mock_page.locator.return_value = mock_locator
 
-        skill = SubmitRow("submit_row", 1)
-        skill.execute(self.mock_ctx)
+        step = SubmitRow("submit_row", 1)
+        step.execute(self.mock_ctx)
 
         self.mock_page.locator.assert_called_with('form input[type="submit"]')
         mock_locator.click.assert_called_with(timeout=DEFAULT_TIMEOUTS["click"])
@@ -248,8 +248,8 @@ class TestSubmitRow:
         mock_locator = Mock()
         self.mock_page.locator.return_value = mock_locator
 
-        skill = SubmitRow("submit_row", 1)
-        skill.execute(self.mock_ctx)
+        step = SubmitRow("submit_row", 1)
+        step.execute(self.mock_ctx)
 
         self.mock_page.wait_for_selector.assert_called_with(".congratulations", timeout=DEFAULT_TIMEOUTS["congratulations_check"])
 
@@ -258,17 +258,17 @@ class TestSubmitRow:
         self.mock_page.locator.return_value = mock_locator
         self.mock_page.wait_for_selector.side_effect = PlaywrightTimeoutError("Not found")
 
-        skill = SubmitRow("submit_row", 1)
-        skill.execute(self.mock_ctx)
+        step = SubmitRow("submit_row", 1)
+        step.execute(self.mock_ctx)
 
         self.mock_page.wait_for_function.assert_called_once()
 
     def test_raises_system_exception_on_click_failure(self):
         self.mock_page.locator.side_effect = Exception("Button not found")
 
-        skill = SubmitRow("submit_row", 1)
+        step = SubmitRow("submit_row", 1)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(self.mock_ctx)
+            step.execute(self.mock_ctx)
 
         assert "Failed to submit row" in str(exc_info.value)

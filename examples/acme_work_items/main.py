@@ -32,13 +32,13 @@ from rpacore import (
     validate_config,
 )
 
-from skills._session import BrowserSession, DiscoveredItem, validate_work_item_id
-from skills.close_work_item import CloseWorkItem
-from skills.compute_security_hash import ComputeSecurityHash
-from skills.fetch_work_item import FetchWorkItem
-from skills.update_work_item import UpdateWorkItem
-from skills.validate_work_item import ValidateWorkItem
-from skills.write_summary import WriteSummary
+from steps._session import BrowserSession, DiscoveredItem, validate_work_item_id
+from steps.close_work_item import CloseWorkItem
+from steps.compute_security_hash import ComputeSecurityHash
+from steps.fetch_work_item import FetchWorkItem
+from steps.update_work_item import UpdateWorkItem
+from steps.validate_work_item import ValidateWorkItem
+from steps.write_summary import WriteSummary
 
 
 logger = get_logger(__name__)
@@ -205,7 +205,7 @@ def build_transaction(item: QueueItem, *, run_id: str = "manual") -> Transaction
         reference=item.reference,
         definition_identity=ITEM_DEFINITION_IDENTITY,
         metadata={"example": "acme_work_items", "work_item_id": work_item_id, "run_id": run_id},
-        skills=[
+        steps=[
             FetchWorkItem(name="fetch_work_item", execution_order=1),
             ValidateWorkItem(name="validate_work_item", execution_order=2),
             ComputeSecurityHash(name="compute_security_hash", execution_order=3),
@@ -216,25 +216,25 @@ def build_transaction(item: QueueItem, *, run_id: str = "manual") -> Transaction
 
 
 def _failure_diagnostics(transaction: Transaction | None, error: Exception | None) -> dict[str, str]:
-    failed_skill = ""
+    failed_step = ""
     exception: BaseException | None = error
     if transaction is not None:
-        failed = transaction.failed_skills()
+        failed = transaction.failed_steps()
         if failed:
-            failed_skill = failed[-1].name
+            failed_step = failed[-1].name
             if failed[-1].exceptions:
                 exception = failed[-1].exceptions[-1]
     if isinstance(exception, BusinessException):
-        return {"failed_skill": failed_skill, "error_type": "business_exception", "message": str(exception)[:300]}
+        return {"failed_step": failed_step, "error_type": "business_exception", "message": str(exception)[:300]}
     if isinstance(exception, SystemException):
-        return {"failed_skill": failed_skill, "error_type": "system_exception", "message": str(exception)[:300]}
+        return {"failed_step": failed_step, "error_type": "system_exception", "message": str(exception)[:300]}
     if exception is not None:
         return {
-            "failed_skill": failed_skill,
+            "failed_step": failed_step,
             "error_type": "unexpected_exception",
             "message": "Unexpected item-processing error",
         }
-    return {"failed_skill": failed_skill} if failed_skill else {}
+    return {"failed_step": failed_step} if failed_step else {}
 
 
 def _project_outcome(
@@ -296,7 +296,7 @@ def _run_summary_transaction(
             "queue_summary": _queue_summary_state(queue_summary),
         },
         metadata={"example": "acme_work_items", "run_id": run_id, "summary": True},
-        skills=[WriteSummary(name="write_summary", execution_order=1)],
+        steps=[WriteSummary(name="write_summary", execution_order=1)],
     )
     execute_transaction(
         transaction,
@@ -390,8 +390,6 @@ def main() -> None:
     config = _load_example_config()
     log_format = str(config["log_format"])
     logger_options: dict[str, object] = {"level": str(config["log_level"]), "fmt": log_format}
-    if log_format == "json":
-        logger_options["json_version"] = 2
     configure_logger(**logger_options)
     result = run_example(config)
     _log_run_summary(result)

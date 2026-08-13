@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Unit tests for the WriteOutput skill."""
+"""Unit tests for the WriteOutput step."""
 
 import json
 import tempfile
@@ -10,11 +10,11 @@ from unittest.mock import Mock
 import pytest
 
 from rpacore import ProcessContext, SystemException, Transaction
-from skills.write_output import WriteOutput
+from steps.write_output import WriteOutput
 
 
 class TestWriteOutput:
-    """Test the WriteOutput skill."""
+    """Test the WriteOutput step."""
 
     def test_writes_jsonl_record(self):
         """Test that WriteOutput appends a JSONL record to the output file."""
@@ -35,8 +35,8 @@ class TestWriteOutput:
             )
             ctx = ProcessContext(transaction=transaction, config={"output_file": output_file})
 
-            skill = WriteOutput("write_output", 4)
-            skill.execute(ctx)
+            step = WriteOutput("write_output", 4)
+            step.execute(ctx)
 
             # Verify file was created and contains the record
             content = Path(output_file).read_text(encoding="utf-8")
@@ -60,12 +60,12 @@ class TestWriteOutput:
             )
             ctx = ProcessContext(transaction=transaction, config={"output_file": output_file})
 
-            skill = WriteOutput("write_output", 4)
-            skill.execute(ctx)
+            step = WriteOutput("write_output", 4)
+            step.execute(ctx)
 
             # Write second record
             transaction.state["enriched_record"] = {"postId": 2, "title": "Second"}
-            skill.execute(ctx)
+            step.execute(ctx)
 
             # Verify both records exist
             content = Path(output_file).read_text(encoding="utf-8")
@@ -86,8 +86,8 @@ class TestWriteOutput:
             )
             ctx = ProcessContext(transaction=transaction, config={"output_file": str(output_file)})
 
-            skill = WriteOutput("write_output", 4)
-            skill.execute(ctx)
+            step = WriteOutput("write_output", 4)
+            step.execute(ctx)
 
             lines = output_file.read_text(encoding="utf-8").strip().splitlines()
             assert len(lines) == 1
@@ -119,10 +119,10 @@ class TestWriteOutput:
         transaction = Transaction(reference="test", state={})
         ctx = ProcessContext(transaction=transaction, config={"output_file": "output.jsonl"})
 
-        skill = WriteOutput("write_output", 4)
+        step = WriteOutput("write_output", 4)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert "Missing required state" in str(exc_info.value)
 
@@ -137,14 +137,14 @@ class TestWriteOutput:
             config={"output_file": str(tmp_path / "output.jsonl")},
         )
         monkeypatch.setattr(
-            "skills.write_output.tempfile.mkstemp",
+            "steps.write_output.tempfile.mkstemp",
             Mock(side_effect=OSError("disk full")),
         )
 
-        skill = WriteOutput("write_output", 4)
+        step = WriteOutput("write_output", 4)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert "Failed to write" in str(exc_info.value)
 
@@ -162,7 +162,7 @@ class TestWriteOutput:
             config={"output_file": str(output_file)},
         )
         monkeypatch.setattr(
-            "skills.write_output.os.replace",
+            "steps.write_output.os.replace",
             Mock(side_effect=OSError("replace failed")),
         )
 

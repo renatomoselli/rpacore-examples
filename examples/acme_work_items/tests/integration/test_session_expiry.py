@@ -4,7 +4,7 @@ import pytest
 from rpacore import SystemException
 
 from main import run_example
-from skills._session import BrowserSession
+from steps._session import BrowserSession
 from tests.conftest import FakeCredentials
 
 

@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 from rpacore import BusinessException, Status, SystemException
 
-from skills._session import RemoteConflictError, RemoteWorkItem
-from skills.close_work_item import CloseWorkItem
-from tests.conftest import run_skill
+from steps._session import RemoteConflictError, RemoteWorkItem
+from steps.close_work_item import CloseWorkItem
+from tests.conftest import run_step
 
 
 class CloseSession:
@@ -64,8 +64,8 @@ def _state() -> dict[str, object]:
 
 
 def test_close_registers_real_screenshot_artifact(monkeypatch, example_config) -> None:
-    monkeypatch.setattr("skills.close_work_item.require_authenticated_session", lambda ctx: CloseSession())
-    transaction = run_skill(
+    monkeypatch.setattr("steps.close_work_item.require_authenticated_session", lambda ctx: CloseSession())
+    transaction = run_step(
         CloseWorkItem(name="close", execution_order=1),
         state=_state(),
         config=example_config,
@@ -77,10 +77,10 @@ def test_close_registers_real_screenshot_artifact(monkeypatch, example_config) -
 
 def test_close_recognizes_authorized_replay(monkeypatch, example_config) -> None:
     monkeypatch.setattr(
-        "skills.close_work_item.require_authenticated_session",
+        "steps.close_work_item.require_authenticated_session",
         lambda ctx: CloseSession(replay=True),
     )
-    transaction = run_skill(
+    transaction = run_step(
         CloseWorkItem(name="close", execution_order=1),
         state=_state(),
         config=example_config,
@@ -91,15 +91,15 @@ def test_close_recognizes_authorized_replay(monkeypatch, example_config) -> None
 
 def test_close_conflict_is_terminal_business_failure(monkeypatch, example_config) -> None:
     monkeypatch.setattr(
-        "skills.close_work_item.require_authenticated_session",
+        "steps.close_work_item.require_authenticated_session",
         lambda ctx: CloseSession(conflict=True),
     )
-    transaction = run_skill(
+    transaction = run_step(
         CloseWorkItem(name="close", execution_order=1),
         state=_state(),
         config=example_config,
     )
-    assert isinstance(transaction.failed_skills()[0].exceptions[-1], BusinessException)
+    assert isinstance(transaction.failed_steps()[0].exceptions[-1], BusinessException)
 
 
 @pytest.mark.parametrize(
@@ -114,24 +114,24 @@ def test_close_rejects_mismatched_durable_intent(close_intent, example_config) -
     state = _state()
     state["close_intent"] = close_intent
 
-    transaction = run_skill(
+    transaction = run_step(
         CloseWorkItem(name="close", execution_order=1),
         state=state,
         config=example_config,
     )
 
-    exception = transaction.failed_skills()[0].exceptions[-1]
+    exception = transaction.failed_steps()[0].exceptions[-1]
     assert isinstance(exception, BusinessException)
-    assert exception.stop is True
+    assert exception.halts_remaining_steps is True
     assert "does not authorize" in str(exception)
 
 
 def test_screenshot_failure_preserves_verified_remote_close_outcome(monkeypatch, example_config) -> None:
     monkeypatch.setattr(
-        "skills.close_work_item.require_authenticated_session",
+        "steps.close_work_item.require_authenticated_session",
         lambda ctx: CloseSession(screenshot_failure=True),
     )
-    transaction = run_skill(
+    transaction = run_step(
         CloseWorkItem(name="close", execution_order=1),
         state=_state(),
         config=example_config,

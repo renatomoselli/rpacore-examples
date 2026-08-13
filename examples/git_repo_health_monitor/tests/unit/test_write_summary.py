@@ -1,4 +1,4 @@
-"""Unit tests for the WriteSummary skill."""
+"""Unit tests for the WriteSummary step."""
 
 import json
 import os
@@ -8,12 +8,12 @@ from pathlib import Path
 import pytest
 
 from rpacore import SystemException
-from skills.write_summary import WriteSummary
+from steps.write_summary import WriteSummary
 from tests.conftest import make_context
 
 
 class TestWriteSummary:
-    """Test the WriteSummary skill."""
+    """Test the WriteSummary step."""
 
     def test_writes_jsonl_and_summary_json(self, tmp_path):
         """Test that WriteSummary writes the JSONL report and summary JSON atomically."""
@@ -28,8 +28,8 @@ class TestWriteSummary:
             "output_file": output_file,
         })
 
-        skill = WriteSummary("write_summary", 1)
-        skill.execute(ctx)
+        step = WriteSummary("write_summary", 1)
+        step.execute(ctx)
 
         assert Path(output_file).exists()
         with open(output_file, encoding="utf-8") as f:
@@ -66,8 +66,8 @@ class TestWriteSummary:
             "output_file": output_file,
         })
 
-        skill = WriteSummary("write_summary", 1)
-        skill.execute(ctx)
+        step = WriteSummary("write_summary", 1)
+        step.execute(ctx)
 
         assert len(ctx.transaction.artifacts) == 2
         artifact_names = [a.name for a in ctx.transaction.artifacts]
@@ -97,8 +97,8 @@ class TestWriteSummary:
             "output_file": output_file,
         })
 
-        skill = WriteSummary("write_summary", 1)
-        skill.execute(ctx)
+        step = WriteSummary("write_summary", 1)
+        step.execute(ctx)
 
         summary_path = str(Path(output_file).with_suffix(".summary.json"))
         with open(summary_path, encoding="utf-8") as f:
@@ -143,8 +143,8 @@ class TestWriteSummary:
             "output_file": output_file,
         })
 
-        skill = WriteSummary("write_summary", 1)
-        skill.execute(ctx)
+        step = WriteSummary("write_summary", 1)
+        step.execute(ctx)
 
         summary_path = Path(output_file).with_suffix(".summary.json")
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
@@ -162,15 +162,15 @@ class TestWriteSummary:
     def test_raises_on_missing_repo_health_records(self):
         """Test that WriteSummary raises when repo_health_records is missing."""
         ctx = make_context(state={"output_file": "/tmp/test.jsonl"})
-        skill = WriteSummary("write_summary", 1)
+        step = WriteSummary("write_summary", 1)
         with pytest.raises(SystemException, match="repo_health_records"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
     def test_raises_on_missing_output_file(self):
         ctx = make_context(state={"repo_health_records": []})
-        skill = WriteSummary("write_summary", 1)
+        step = WriteSummary("write_summary", 1)
         with pytest.raises(SystemException, match="output_file"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
     def test_raises_on_io_error(self, tmp_path, monkeypatch):
         """Test that WriteSummary raises SystemException when os.replace fails."""
@@ -185,9 +185,9 @@ class TestWriteSummary:
 
         monkeypatch.setattr(os, "replace", mock_replace)
 
-        skill = WriteSummary("write_summary", 1)
+        step = WriteSummary("write_summary", 1)
         with pytest.raises(SystemException, match="Failed to write reports"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert list(tmp_path.glob(".jsonl_*.tmp")) == []
         assert list(tmp_path.glob(".summary_*.tmp")) == []
@@ -211,9 +211,9 @@ class TestWriteSummary:
 
         monkeypatch.setattr(tempfile, "mkstemp", mock_mkstemp)
 
-        skill = WriteSummary("write_summary", 1)
+        step = WriteSummary("write_summary", 1)
         with pytest.raises(SystemException, match="Failed to write reports"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert list(tmp_path.glob(".jsonl_*.tmp")) == []
         assert list(tmp_path.glob(".summary_*.tmp")) == []
@@ -239,9 +239,9 @@ class TestWriteSummary:
 
         monkeypatch.setattr(os, "replace", mock_replace)
 
-        skill = WriteSummary("write_summary", 1)
+        step = WriteSummary("write_summary", 1)
         with pytest.raises(SystemException, match="Failed to write reports"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert [json.loads(line) for line in Path(output_file).read_text(encoding="utf-8").splitlines()] == records
         assert not Path(output_file).with_suffix(".summary.json").exists()

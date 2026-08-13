@@ -15,7 +15,7 @@ from rpacore import (
     OutcomeCategory,
     ProcessContext,
     RetryDisposition,
-    Skill,
+    Step,
     SystemException,
     Transaction,
 )
@@ -162,7 +162,7 @@ class TestMainRuntime:
 
         monkeypatch.setattr(main, "PROJECT_ROOT", tmp_path)
 
-        class FailingFetchPosts(Skill):
+        class FailingFetchPosts(Step):
             def execute(self, ctx):
                 raise SystemException("setup failed", action=self.name)
 
@@ -257,7 +257,7 @@ class TestMainRuntime:
         """Test that a successful empty batch publishes an empty result set."""
         import main
 
-        class EmptyFetchPosts(Skill):
+        class EmptyFetchPosts(Step):
             def execute(self, ctx):
                 ctx.state["posts"] = []
 
@@ -288,7 +288,7 @@ class TestMainRuntime:
         """Test that an all-rejected batch completes without publishing JSONL."""
         import main
 
-        class InvalidFetchPosts(Skill):
+        class InvalidFetchPosts(Step):
             def execute(self, ctx):
                 ctx.state["posts"] = [
                     {"id": 1, "title": "", "body": "Body", "userId": 1},
@@ -381,13 +381,13 @@ class TestMainRuntime:
         assert output_file.read_text(encoding="utf-8") == existing
         assert list(tmp_path.glob("*.backup")) == []
 
-    def test_main_restores_previous_output_after_exhausted_skill_retries(
+    def test_main_restores_previous_output_after_exhausted_step_retries(
         self, tmp_path, monkeypatch
     ):
         """Test that a technical post failure aborts without publishing partial output."""
         import main
 
-        class FailingWriteOutput(Skill):
+        class FailingWriteOutput(Step):
             def execute(self, ctx):
                 raise SystemException("disk full", action=self.name)
 
@@ -479,12 +479,12 @@ def test_load_example_config_rejects_database_path_outside_project(tmp_path, mon
 
 def test_post_rollback_uses_canonical_business_outcome() -> None:
     from main import _post_requires_batch_rollback
-    from skills.validate_post import ValidatePost
+    from steps.validate_post import ValidatePost
 
     transaction = Transaction(
         reference="post-invalid",
         state={"current_post": {"id": 1, "title": "", "body": "body", "userId": 1}},
-        skills=[ValidatePost(name="validate_post", execution_order=1)],
+        steps=[ValidatePost(name="validate_post", execution_order=1)],
     )
     Engine(max_retries=0).run(ProcessContext(transaction=transaction, config={}))
 
@@ -498,13 +498,13 @@ def test_post_rollback_uses_canonical_business_outcome() -> None:
 def test_post_rollback_uses_final_canonical_outcome_after_retry() -> None:
     from main import _post_requires_batch_rollback
 
-    class ChangesFailureKind(Skill):
+    class ChangesFailureKind(Step):
         def execute(self, ctx) -> None:
             if ctx.transaction.retry_count == 0:
                 raise SystemException("transient", action=self.name, code="rest_api_batch.http.request_failed")
-            raise BusinessException("rejected", action=self.name, stop=True, code="rest_api_batch.post.invalid")
+            raise BusinessException("rejected", action=self.name, halts_remaining_steps=True, code="rest_api_batch.post.invalid")
 
-    transaction = Transaction(reference="post-retried", skills=[ChangesFailureKind("post", 1)])
+    transaction = Transaction(reference="post-retried", steps=[ChangesFailureKind("post", 1)])
     Engine(max_retries=2).run(ProcessContext(transaction=transaction, config={}))
 
     assert transaction.outcome_category is OutcomeCategory.BUSINESS_FAILED
@@ -517,7 +517,7 @@ def test_post_rollback_uses_final_canonical_outcome_after_retry() -> None:
 def test_post_rollback_requires_zero_retry_system_failure() -> None:
     from main import _post_requires_batch_rollback
 
-    class AlwaysFails(Skill):
+    class AlwaysFails(Step):
         def execute(self, ctx) -> None:
             raise SystemException(
                 "request failed",
@@ -525,7 +525,7 @@ def test_post_rollback_requires_zero_retry_system_failure() -> None:
                 code="rest_api_batch.http.request_failed",
             )
 
-    transaction = Transaction(reference="post-zero-retry", skills=[AlwaysFails("post", 1)])
+    transaction = Transaction(reference="post-zero-retry", steps=[AlwaysFails("post", 1)])
     Engine(max_retries=0).run(ProcessContext(transaction=transaction, config={}))
 
     assert transaction.outcome_category is OutcomeCategory.SYSTEM_FAILED
@@ -539,10 +539,10 @@ def test_post_rollback_requires_exhausted_fetch_failure_and_preserves_output(
     tmp_path, monkeypatch
 ) -> None:
     from main import _post_requires_batch_rollback
-    from skills.enrich_record import EnrichRecord
-    from skills.fetch_user import FetchUser
-    from skills.validate_post import ValidatePost
-    from skills.write_output import WriteOutput
+    from steps.enrich_record import EnrichRecord
+    from steps.fetch_user import FetchUser
+    from steps.validate_post import ValidatePost
+    from steps.write_output import WriteOutput
 
     calls = 0
 
@@ -555,7 +555,7 @@ def test_post_rollback_requires_exhausted_fetch_failure_and_preserves_output(
             code="rest_api_batch.http.request_failed",
         )
 
-    monkeypatch.setattr("skills.fetch_user.fetch_json", timeout)
+    monkeypatch.setattr("steps.fetch_user.fetch_json", timeout)
     output_file = tmp_path / "output.jsonl"
     transaction = Transaction(
         reference="post-timeout",
@@ -567,7 +567,7 @@ def test_post_rollback_requires_exhausted_fetch_failure_and_preserves_output(
                 "userId": 1,
             }
         },
-        skills=[
+        steps=[
             ValidatePost(name="validate_post", execution_order=1),
             FetchUser(name="fetch_user", execution_order=2),
             EnrichRecord(name="enrich_record", execution_order=3),

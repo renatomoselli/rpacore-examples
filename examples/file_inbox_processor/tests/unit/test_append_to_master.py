@@ -1,4 +1,4 @@
-"""Unit tests for AppendToMaster skill."""
+"""Unit tests for AppendToMaster step."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ import pytest
 
 from rpacore import Engine, ProcessContext, Status, SystemException, Transaction
 
-from skills.append_to_master import AppendToMaster
+from steps.append_to_master import AppendToMaster
 
 
 def _run(data, config):
     tx = Transaction(
         reference="append-master",
-        skills=[AppendToMaster(name="append_to_master", execution_order=1)],
+        steps=[AppendToMaster(name="append_to_master", execution_order=1)],
     )
     # Seed state from data dict
     for key, value in data.items():
@@ -97,7 +97,7 @@ def test_master_read_error_fails_instead_of_appending_duplicate(tmp_path, monkey
     tx = _run(_make_report("same.csv"), {"master_csv": str(master)})
 
     assert tx.status == Status.FAILED
-    failed = tx.failed_skills()[0]
+    failed = tx.failed_steps()[0]
     assert isinstance(failed.exceptions[-1], SystemException)
     assert "Unable to inspect master CSV" in str(failed.exceptions[-1])
 
@@ -110,14 +110,14 @@ def test_master_read_error_fails_instead_of_appending_duplicate(tmp_path, monkey
 def test_raises_when_no_processed_report():
     tx = _run({}, {"master_csv": "/tmp/test.csv"})
     assert tx.status == Status.FAILED
-    assert "processed_report" in str(tx.failed_skills()[0].exceptions[-1])
+    assert "processed_report" in str(tx.failed_steps()[0].exceptions[-1])
 
 
 def test_raises_when_no_master_csv_config():
     data = _make_report()
     tx = _run(data, {})
     assert tx.status == Status.FAILED
-    assert "master_csv" in str(tx.failed_skills()[0].exceptions[-1]).lower()
+    assert "master_csv" in str(tx.failed_steps()[0].exceptions[-1]).lower()
 
 
 def test_path_traversal_blocked(tmp_path):
@@ -136,7 +136,7 @@ def test_path_traversal_blocked(tmp_path):
     config = {"master_csv": str(master), "inbox_dir": str(tmp_path / "inbox")}
     tx = _run(data, config)
     assert tx.status == Status.FAILED
-    assert "resolves outside root" in str(tx.failed_skills()[0].exceptions[-1]).lower()
+    assert "resolves outside root" in str(tx.failed_steps()[0].exceptions[-1]).lower()
 
 
 def test_no_inbox_dir_skips_path_validation(tmp_path):

@@ -6,7 +6,7 @@ This repository is intentionally separate from the main RPA Core framework repo.
 It exists to validate the real consumer workflow:
 
 - install RPA Core as a package
-- write custom skills in a separate project
+- write custom steps in a separate project
 - run automations without importing framework source files directly
 
 ## What Belongs Here
@@ -110,11 +110,11 @@ Each example under `examples/` follows a consistent structure:
 examples/<name>/
   main.py              # Entry point - run with python main.py
   config.toml          # Workflow configuration
-  skills/              # Individual skill modules
+  steps/              # Individual step modules
     __init__.py
-    <skill_name>.py
+    <step_name>.py
   tests/
-    unit/              # Unit tests per skill
+    unit/              # Unit tests per step
     integration/       # End-to-end workflow tests
 ```
 

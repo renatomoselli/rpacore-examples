@@ -89,7 +89,7 @@ def _database_snapshot(paths: tuple[Path, ...]) -> tuple[set[str], dict[Path, by
     return ({path.name for path in parent.iterdir()}, {path: path.read_bytes() for path in paths if path.exists()})
 
 
-def test_queue_run_emits_protected_v2_correlation_and_exact_summary(tmp_path):
+def test_queue_run_emits_protected_v3_correlation_and_exact_summary(tmp_path):
     config = _workflow_config(tmp_path)
     inbox = Path(str(config["inbox_dir"]))
     inbox.mkdir()
@@ -102,7 +102,7 @@ def test_queue_run_emits_protected_v2_correlation_and_exact_summary(tmp_path):
     assert scan_inbox(config, queue) == 1
 
     stream = io.StringIO()
-    configure_logger(level="INFO", fmt="json", json_version=2, stream=stream)
+    configure_logger(level="INFO", fmt="json", stream=stream)
     summary = run_queue_loop(
         queue,
         Engine(max_retries=0),
@@ -116,19 +116,20 @@ def test_queue_run_emits_protected_v2_correlation_and_exact_summary(tmp_path):
 
     records = [json.loads(line) for line in stream.getvalue().splitlines()]
     assert records
+    assert all(record["log_format_version"] == 3 for record in records)
     assert all(PROTECTED_ENVELOPE_FIELDS <= record.keys() for record in records)
     assert all(PROTECTED_ENVELOPE_FIELDS.isdisjoint(record["attributes"]) for record in records)
     assert str(inbox) not in stream.getvalue()
 
-    skill_started = next(record for record in records if record["event"] == "rpacore.skill.started")
-    correlation = skill_started["attributes"]
+    step_started = next(record for record in records if record["event"] == "rpacore.step.started")
+    correlation = step_started["attributes"]
     assert correlation["worker_id"] == "observability-worker"
     assert correlation["queue_item_id"]
     assert correlation["queue_reference"] == "branch-report-branch_101"
     assert correlation["transaction_id"]
     assert correlation["transaction_reference"] == "branch-report-branch_101"
-    assert correlation["skill_name"] == "read_report_file"
-    assert correlation["skill_execution_order"] == 1
+    assert correlation["step_name"] == "read_report_file"
+    assert correlation["step_execution_order"] == 1
     assert correlation["retry_count"] == 0
     assert "attempt_number" not in correlation
 
@@ -200,8 +201,10 @@ def test_doctor_inspects_existing_workflow_databases_without_mutation(tmp_path):
     assert str(transaction_db) not in result.stdout
     assert str(queue_db) not in result.stdout
     payload = json.loads(result.stdout)
+    assert payload["doctor_format_version"] == 1
     checks = {check["id"]: check for check in payload["checks"]}
     assert checks["transactions.schema"]["status"] == "pass"
+    assert checks["transactions.schema"]["details"]["version"] == 10
     assert checks["queue.schema"]["status"] == "pass"
     assert checks["queue.health"]["status"] == "pass"
 

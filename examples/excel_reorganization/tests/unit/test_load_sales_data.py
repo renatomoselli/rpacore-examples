@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from rpacore import BusinessException, SystemException
 
-from skills.load_sales_data import LoadSalesData
+from steps.load_sales_data import LoadSalesData
 from tests.conftest import make_context
 
 
@@ -47,7 +47,7 @@ def test_load_sales_data_invalid_date(tmp_path):
 
     with pytest.raises(BusinessException, match="invalid date format") as exc_info:
         LoadSalesData(name="load_sales_data", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_load_sales_data_sparse_row_reports_validation_error(tmp_path):

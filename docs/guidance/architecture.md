@@ -2,14 +2,14 @@
 
 ## Overview
 
-Example repository demonstrating **label-based form filling** and **transaction-based skill execution** for RPA (Robotic Process Automation) challenges. The project shows how to download employee data from Excel, launch a Chromium browser, fill 7 randomized form fields using label-based selectors, and persist all transactions to SQLite for resume capability.
+Example repository demonstrating **label-based form filling** and **transaction-based step execution** for RPA (Robotic Process Automation) challenges. The project shows how to download employee data from Excel, launch a Chromium browser, fill 7 randomized form fields using label-based selectors, and persist all transactions to SQLite for resume capability.
 
 ## Architecture
 
 ```mermaid
 graph TD
     A[examples/rpa_challenge/] --> B[main.py]
-    B --> C[skills/]
+    B --> C[steps/]
     C --> D[OpenChallengePage]
     C --> E[DownloadInputData]
     C --> F[StartChallenge]
@@ -23,18 +23,18 @@ graph TD
 
 ### Key Architectural Patterns
 
-**One Skill Per Resource** — Each skill is a single, testable, autonomous action with a single entry point (`execute()`) and single exit (success/failure).
+**One Step Per Resource** — Each step is a single, testable, autonomous action with a single entry point (`execute()`) and single exit (success/failure).
 
 **Transaction Per Row** — 10 individual transactions for 10 data rows (not batched) — each transaction has its own unique reference ID for resume capability.
 
-**Stateless Skills** — Skills read durable row data from `ctx.state` and runtime browser handles from `ctx.resources` — no internal state, no hidden dependencies.
+**Stateless Steps** — Steps read durable row data from `ctx.state` and runtime browser handles from `ctx.resources` — no internal state, no hidden dependencies.
 
 ## Module Structure
 
 | Directory | Role | Patterns | Dependencies |
 |-----------|------|----------|--------------|
-| `examples/rpa_challenge/` | Main application | One skill per form field, label-based selectors | `rpacore.Engine`, `playwright` |
-| `examples/rpa_challenge/skills/` | Skill definitions | One skill per autonomous action | `playwright`, `openpyxl` |
+| `examples/rpa_challenge/` | Main application | One step per form field, label-based selectors | `rpacore.Engine`, `playwright` |
+| `examples/rpa_challenge/steps/` | Step definitions | One step per autonomous action | `playwright`, `openpyxl` |
 | `examples/rpa_challenge/tests/` | Test pyramid | Mock-based unit tests + workflow tests | `unittest.mock`, `pytest` |
 
 ### Key Dependencies
@@ -42,16 +42,16 @@ graph TD
 | Dependency | Pattern Impact |
 |------------|----------------|
 | `rpacore.Engine` | Retry logic, transaction orchestration |
-| `rpacore.Skill` | Atomic actions with `execute()` contract |
+| `rpacore.Step` | Atomic actions with `execute()` contract |
 | `playwright.sync_api` | Label-based selectors, explicit timeouts |
 | `openpyxl` | Excel parsing with schema validation |
 | `sqlite3` | Transaction persistence and resume |
 
-## Important if you are adding a new skill
+## Important if you are adding a new step
 
-1. **Create Skill Class** — Inherit from `Skill` with `execute()` method
+1. **Create Step Class** — Inherit from `Step` with `execute()` method
 2. **Add to Transaction** — Define in `Transaction` with `execution_order`
-3. **Add to `__init__.py`** — Export the skill class
+3. **Add to `__init__.py`** — Export the step class
 
 ## Important if you are writing or modifying tests
 
@@ -64,13 +64,13 @@ graph TD
 
 1. **Define Transaction** — Create `Transaction` with unique reference
 2. **Execute Transaction** — Use `engine.run(ProcessContext(...))`
-3. **Check result** — Use `if tx.status is not Status.SUCCESSFUL` with `failed_skills()`
+3. **Check result** — Use `if tx.status is not Status.SUCCESSFUL` with `failed_steps()`
 
 ## Important if you are adding new selectors
 
 1. **Define Selector Constants** — `CHALLENGE_URL`, `START_BUTTON`, `DOWNLOAD_BUTTON`
 2. **Create Helper Functions** — `click_button()`, `fill_field()`, `wait_for_selector()`
-3. **Add to Transaction** — Skills already execute, no need to add to transaction
+3. **Add to Transaction** — Steps already execute, no need to add to transaction
 
 ## Important if you are adding a new test
 
@@ -85,13 +85,13 @@ Since this is a Python backend project, "frontend elements" refer to web pages a
 
 1. **Define Selector Constants** — `CHALLENGE_URL`, `START_BUTTON`, `DOWNLOAD_BUTTON`
 2. **Create Helper Functions** — `click_button()`, `fill_field()`, `wait_for_selector()`
-3. **Add to Transaction** — Skills already execute, no need to add to transaction
+3. **Add to Transaction** — Steps already execute, no need to add to transaction
 
 ## Important if you are adding a new entity (data row)
 
 1. **Define Transaction** — Create `Transaction` with unique reference `rpa-row-{email}`
 2. **Execute Transaction** — Use `engine.run(ProcessContext(...))`
-3. **Check result** — Use `if tx.status is not Status.SUCCESSFUL` with `failed_skills()`
+3. **Check result** — Use `if tx.status is not Status.SUCCESSFUL` with `failed_steps()`
 
 ## Important if you are adding a new configuration key
 

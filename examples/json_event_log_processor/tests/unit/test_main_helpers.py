@@ -13,7 +13,7 @@ from main import (
     _run_error_report,
     _save_transaction_safely,
 )
-from skills.write_error_report import WriteErrorReport
+from steps.write_error_report import WriteErrorReport
 
 
 def test_make_error_report_tx_sets_report_metadata() -> None:
@@ -25,8 +25,8 @@ def test_make_error_report_tx_sets_report_metadata() -> None:
     assert tx.metadata["run_id"] == "run-1"
     assert tx.metadata["transaction_kind"] == "error-report"
     assert tx.metadata["report_attempt"] == 2
-    assert len(tx.skills) == 1
-    assert isinstance(tx.skills[0], WriteErrorReport)
+    assert len(tx.steps) == 1
+    assert isinstance(tx.steps[0], WriteErrorReport)
 
 
 def test_record_persistence_error_appends_json_safe_details() -> None:

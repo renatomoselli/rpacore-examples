@@ -4,26 +4,26 @@ import pytest
 
 from rpacore import Status, SystemException
 
-from skills.fail_task import FailTask
+from steps.fail_task import FailTask
 
 
 class TestFailTask:
-    """Tests for the FailTask skill."""
+    """Tests for the FailTask step."""
 
-    def test_execute_raises_when_fail_on_first_run_true(self, run_skill) -> None:
-        tx = run_skill(
+    def test_execute_raises_when_fail_on_first_run_true(self, run_step) -> None:
+        tx = run_step(
             FailTask(name="fail_task", execution_order=2),
             config={"fail_on_first_run": True},
         )
         assert tx.status == Status.FAILED
-        assert len(tx.failed_skills()) == 1
-        assert isinstance(tx.failed_skills()[0].exceptions[-1], SystemException)
+        assert len(tx.failed_steps()) == 1
+        assert isinstance(tx.failed_steps()[0].exceptions[-1], SystemException)
         assert "Simulated failure on first run" in str(
-            tx.failed_skills()[0].exceptions[-1]
+            tx.failed_steps()[0].exceptions[-1]
         )
 
-    def test_execute_succeeds_when_fail_on_first_run_false(self, run_skill) -> None:
-        tx = run_skill(
+    def test_execute_succeeds_when_fail_on_first_run_false(self, run_step) -> None:
+        tx = run_step(
             FailTask(name="fail_task", execution_order=2),
             state={"counter": {"value": 1, "timestamp": "2024-01-01T00:00:00+00:00"}},
             config={"fail_on_first_run": False},
@@ -32,8 +32,8 @@ class TestFailTask:
         assert tx.state["counter"]["value"] == 2
         assert tx.state["resume_complete"] is True
 
-    def test_execute_sets_resume_complete(self, run_skill) -> None:
-        tx = run_skill(
+    def test_execute_sets_resume_complete(self, run_step) -> None:
+        tx = run_step(
             FailTask(name="fail_task", execution_order=2),
             state={"counter": {"value": 0}},
             config={"fail_on_first_run": False},
@@ -41,9 +41,9 @@ class TestFailTask:
         assert tx.status == Status.SUCCESSFUL
         assert tx.state["resume_complete"] is True
 
-    def test_execute_does_not_modify_state_on_failure(self, run_skill) -> None:
+    def test_execute_does_not_modify_state_on_failure(self, run_step) -> None:
         initial_state = {"counter": {"value": 1}}
-        tx = run_skill(
+        tx = run_step(
             FailTask(name="fail_task", execution_order=2),
             state=initial_state,
             config={"fail_on_first_run": True},
@@ -51,18 +51,18 @@ class TestFailTask:
         # State should be unchanged after the exception
         assert tx.state == initial_state
 
-    def test_execute_requires_counter_state(self, run_skill) -> None:
-        tx = run_skill(
+    def test_execute_requires_counter_state(self, run_step) -> None:
+        tx = run_step(
             FailTask(name="fail_task", execution_order=2),
             state={},  # No counter key
             config={"fail_on_first_run": False},
         )
         assert tx.status == Status.FAILED
-        assert "counter" in str(tx.failed_skills()[0].exceptions[-1]).lower()
+        assert "counter" in str(tx.failed_steps()[0].exceptions[-1]).lower()
 
-    def test_execute_with_missing_value_key(self, run_skill) -> None:
+    def test_execute_with_missing_value_key(self, run_step) -> None:
         """Counter dict exists but has no 'value' key — should default to 0."""
-        tx = run_skill(
+        tx = run_step(
             FailTask(name="fail_task", execution_order=2),
             state={"counter": {"timestamp": "2024-01-01T00:00:00+00:00"}},
             config={"fail_on_first_run": False},
@@ -71,12 +71,12 @@ class TestFailTask:
         assert tx.state["counter"]["value"] == 1
         assert tx.state["resume_complete"] is True
 
-    def test_execute_rejects_non_dict_counter(self, run_skill) -> None:
-        tx = run_skill(
+    def test_execute_rejects_non_dict_counter(self, run_step) -> None:
+        tx = run_step(
             FailTask(name="fail_task", execution_order=2),
             state={"counter": "bad_type"},
             config={"fail_on_first_run": False},
         )
 
         assert tx.status == Status.FAILED
-        assert isinstance(tx.failed_skills()[0].exceptions[-1], SystemException)
+        assert isinstance(tx.failed_steps()[0].exceptions[-1], SystemException)

@@ -1,4 +1,4 @@
-"""Unit tests for ValidateSchema skill."""
+"""Unit tests for ValidateSchema step."""
 
 from __future__ import annotations
 
@@ -6,15 +6,15 @@ import pytest
 
 from rpacore import Engine, ProcessContext, Status, SystemException, Transaction
 
-from skills.validate_schema import ValidateSchema
+from steps.validate_schema import ValidateSchema
 
 
 def _run(rows):
     tx = Transaction(
         reference="validate-report",
-        skills=[ValidateSchema(name="validate_schema", execution_order=1)],
+        steps=[ValidateSchema(name="validate_schema", execution_order=1)],
     )
-    # Seed state with report_rows (the input to this skill)
+    # Seed state with report_rows (the input to this step)
     tx.state["report_rows"] = rows
     Engine(max_retries=0).run(ProcessContext(transaction=tx))
     return tx
@@ -54,7 +54,7 @@ def test_validate_schema_rejects_zero_headcount():
 
     assert tx.status == Status.FAILED
     assert tx.state["validation_failed"] is True
-    failed = tx.failed_skills()[0]
+    failed = tx.failed_steps()[0]
     assert "headcount must be greater than zero" in str(failed.exceptions[-1])
 
 
@@ -62,14 +62,14 @@ def test_rejects_empty_rows():
     tx = _run([])
     assert tx.status == Status.FAILED
     assert tx.state["validation_failed"] is True
-    assert "got 0 rows" in str(tx.failed_skills()[0].exceptions[-1])
+    assert "got 0 rows" in str(tx.failed_steps()[0].exceptions[-1])
 
 
 def test_non_list_rows_is_system_error():
     tx = _run({"branch_id": "101"})
     assert tx.status == Status.FAILED
     assert "validation_failed" not in tx.state
-    failed = tx.failed_skills()[0]
+    failed = tx.failed_steps()[0]
     assert isinstance(failed.exceptions[-1], SystemException)
     assert "Expected report_rows to be a list" in str(failed.exceptions[-1])
 
@@ -84,7 +84,7 @@ def test_rejects_multiple_rows():
     tx = _run([row, row])
     assert tx.status == Status.FAILED
     assert tx.state["validation_failed"] is True
-    assert "exactly one data row" in str(tx.failed_skills()[0].exceptions[-1]).lower()
+    assert "exactly one data row" in str(tx.failed_steps()[0].exceptions[-1]).lower()
 
 
 def test_rejects_negative_revenue():
@@ -93,7 +93,7 @@ def test_rejects_negative_revenue():
     )
     assert tx.status == Status.FAILED
     assert tx.state["validation_failed"] is True
-    assert "revenue" in str(tx.failed_skills()[0].exceptions[-1]).lower()
+    assert "revenue" in str(tx.failed_steps()[0].exceptions[-1]).lower()
 
 
 def test_rejects_non_positive_branch_id():
@@ -102,7 +102,7 @@ def test_rejects_non_positive_branch_id():
     )
     assert tx.status == Status.FAILED
     assert tx.state["validation_failed"] is True
-    assert "branch_id" in str(tx.failed_skills()[0].exceptions[-1]).lower()
+    assert "branch_id" in str(tx.failed_steps()[0].exceptions[-1]).lower()
 
 
 def test_rejects_missing_required_column():
@@ -111,7 +111,7 @@ def test_rejects_missing_required_column():
     )
     assert tx.status == Status.FAILED
     assert tx.state["validation_failed"] is True
-    assert "headcount" in str(tx.failed_skills()[0].exceptions[-1]).lower()
+    assert "headcount" in str(tx.failed_steps()[0].exceptions[-1]).lower()
 
 
 def test_rejects_empty_string_column():
@@ -120,7 +120,7 @@ def test_rejects_empty_string_column():
     )
     assert tx.status == Status.FAILED
     assert tx.state["validation_failed"] is True
-    assert "revenue" in str(tx.failed_skills()[0].exceptions[-1]).lower()
+    assert "revenue" in str(tx.failed_steps()[0].exceptions[-1]).lower()
 
 
 def test_rejects_invalid_date_format():
@@ -129,7 +129,7 @@ def test_rejects_invalid_date_format():
     )
     assert tx.status == Status.FAILED
     assert tx.state["validation_failed"] is True
-    assert "invalid" in str(tx.failed_skills()[0].exceptions[-1]).lower()
+    assert "invalid" in str(tx.failed_steps()[0].exceptions[-1]).lower()
 
 
 def test_rejects_non_numeric_revenue():
@@ -138,10 +138,10 @@ def test_rejects_non_numeric_revenue():
     )
     assert tx.status == Status.FAILED
     assert tx.state["validation_failed"] is True
-    assert "invalid" in str(tx.failed_skills()[0].exceptions[-1]).lower()
+    assert "invalid" in str(tx.failed_steps()[0].exceptions[-1]).lower()
 
 
 def test_raises_when_no_rows():
     tx = _run(None)
     assert tx.status == Status.FAILED
-    assert "No report rows" in str(tx.failed_skills()[0].exceptions[-1])
+    assert "No report rows" in str(tx.failed_steps()[0].exceptions[-1])

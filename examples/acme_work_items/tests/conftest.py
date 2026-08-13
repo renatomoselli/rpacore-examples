@@ -5,11 +5,11 @@ import sys
 from pathlib import Path
 
 import pytest
-from rpacore import CredentialNotFoundError, CredentialProvider, Engine, ProcessContext, Skill, Transaction
+from rpacore import CredentialNotFoundError, CredentialProvider, Engine, ProcessContext, Step, Transaction
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from skills._session import BrowserSession
+from steps._session import BrowserSession
 from tests.fake_acme import FakeAcmeServer
 
 
@@ -79,15 +79,15 @@ def browser_session(config: dict[str, object]) -> BrowserSession:
     )
 
 
-def run_skill(
-    skill: Skill,
+def run_step(
+    step: Step,
     *,
     state: dict[str, object],
     config: dict[str, object],
     resources: dict[str, object] | None = None,
     credentials: CredentialProvider | None = None,
 ) -> Transaction:
-    transaction = Transaction(reference="unit", state=state, skills=[skill])
+    transaction = Transaction(reference="unit", state=state, steps=[step])
     Engine(max_retries=0).run(
         ProcessContext(
             transaction=transaction,

@@ -191,14 +191,14 @@ def test_main_validates_default_config_before_preparing_samples(tmp_path, monkey
 
 def test_failed_repo_record_preserves_system_failure_details(tmp_path):
     repo_path = str(tmp_path / "repo")
-    failed_skill = SimpleNamespace(
+    failed_step = SimpleNamespace(
         name="check_working_tree",
         exceptions=[SystemException("git status failed", action="check_working_tree")],
     )
     repo_tx = SimpleNamespace(
         status=Status.FAILED,
         state={"uncommitted_changes": ["dirty.txt"]},
-        failed_skills=lambda: [failed_skill],
+        failed_steps=lambda: [failed_step],
     )
 
     record = workflow._failed_repo_record(repo_path, repo_tx)
@@ -206,7 +206,7 @@ def test_failed_repo_record_preserves_system_failure_details(tmp_path):
     assert record["health_status"] == "failed"
     assert record["failure_type"] == "system"
     assert record["classification"] == "technical_failure"
-    assert record["failed_skill"] == "check_working_tree"
+    assert record["failed_step"] == "check_working_tree"
     assert record["uncommitted_changes"] == 1
 
 
@@ -231,7 +231,7 @@ def test_main_preserves_reports_when_summary_save_fails(tmp_path, monkeypatch):
                     "health_status": "healthy",
                 }
             else:
-                tx.skills[0].execute(ctx)
+                tx.steps[0].execute(ctx)
 
     def fail_summary_save(tx, *, db_path):
         if tx.reference == "summary-report":
@@ -272,7 +272,7 @@ def test_main_continues_after_repo_save_failure(tmp_path, monkeypatch):
                     "health_status": "healthy",
                 }
             else:
-                tx.skills[0].execute(ctx)
+                tx.steps[0].execute(ctx)
 
     def save_with_first_repo_failure(tx, *, db_path):
         if tx.reference == "repo-alpha":
@@ -312,7 +312,7 @@ def test_main_records_non_failed_transactions_without_health_report(tmp_path, mo
             if tx.reference.startswith("repo-"):
                 tx.status = Status.SKIPPED
             else:
-                tx.skills[0].execute(ctx)
+                tx.steps[0].execute(ctx)
 
     monkeypatch.setattr(
         workflow, "load_config", lambda path, *, require_file: dict(config)

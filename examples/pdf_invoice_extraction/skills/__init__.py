@@ -1,1 +1,0 @@
-# PDF Invoice Extraction — skills

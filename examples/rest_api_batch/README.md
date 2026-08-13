@@ -4,11 +4,11 @@ An RPA Core example that demonstrates batch processing of REST API records.
 
 ## Overview
 
-This example processes deterministic REST-shaped fixture data by default, enriches each post with user data, validates the records, and writes the valid results to a JSONL output file. The skills can also run against [JSONPlaceholder](https://jsonplaceholder.typicode.com/) by changing `api_mode` to `"live"`.
+This example processes deterministic REST-shaped fixture data by default, enriches each post with user data, validates the records, and writes the valid results to a JSONL output file. The steps can also run against [JSONPlaceholder](https://jsonplaceholder.typicode.com/) by changing `api_mode` to `"live"`.
 
 It demonstrates:
 - **Per-transaction processing**: Each post is processed as an independent transaction
-- **Retry on transient failures**: The RPA Core Engine retries skills that raise `SystemException`
+- **Retry on transient failures**: The RPA Core Engine retries steps that raise `SystemException`
 - **Business vs system exceptions**: Validation failures (`BusinessException`) are permanent; HTTP/network errors (`SystemException`) are retried
 - **Artifact reporting**: Successful output writes attach the JSONL path to the transaction audit trail
 - **Audit persistence**: Transaction state is persisted to SQLite after each transaction
@@ -34,7 +34,7 @@ python main.py
 This will:
 1. Load deterministic fixture posts without using the network
 2. Validate each post before fetching/enriching user data
-3. Skip invalid records via `BusinessException(stop=True)`
+3. Skip invalid records via `BusinessException(halts_remaining_steps=True)`
 4. Write valid enriched records to `output.jsonl`
 5. Persist transaction state to `rpacore.db` as an audit trail
 
@@ -75,7 +75,7 @@ pytest tests/ -v
 
 ```
 main.py              — Entry point, orchestrates setup + per-post transactions
-skills/
+steps/
   fetch_posts.py     — Fetches all posts from /posts
   fetch_user.py      — Fetches a single user from /users/{userId}
   validate_post.py   — Validates post has non-empty title and body
@@ -85,9 +85,9 @@ config.toml          — Configuration
 requirements.txt     — Dependencies (requests)
 ```
 
-## Skills
+## Steps
 
-| Skill | Transaction | Execution Order | Purpose |
+| Step | Transaction | Execution Order | Purpose |
 |-------|-----------|-----------------|---------|
 | FetchPosts | Setup (runs once) | 1 | Fetch all posts from fixture data or JSONPlaceholder |
 | ValidatePost | Per-post | 1 | Validate post has non-empty title, body, and userId |
@@ -102,7 +102,7 @@ requirements.txt     — Dependencies (requests)
 - **Canonical terminal truth**: Each persisted post transaction records its
   outcome category, retry disposition, and stable failure code. Batch rollback
   uses those terminal fields rather than rescanning exception history.
-- **Run boundaries**: Each successful run replaces `output.jsonl`, while `rpacore.db` retains the transaction history across runs. Output deduplication protects skill retries within the current run rather than serving as cross-run recovery.
+- **Run boundaries**: Each successful run replaces `output.jsonl`, while `rpacore.db` retains the transaction history across runs. Output deduplication protects step retries within the current run rather than serving as cross-run recovery.
 - **Aborted runs**: If a later post exhausts retries, the previous JSONL output is restored. Transactions already attempted in the aborted run remain in SQLite as execution history even though that run's JSONL is not published.
 
 ## License

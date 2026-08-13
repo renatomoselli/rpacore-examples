@@ -1,6 +1,6 @@
 # Windows Calculator
 
-Run arithmetic checks through the Windows Calculator app using RPA Core skills and pywinauto.
+Run arithmetic checks through the Windows Calculator app using RPA Core steps and pywinauto.
 
 ## Requirements
 
@@ -44,13 +44,13 @@ samples/
 
 input/                      <- runtime inbox (created automatically)
 
-skills/
-  load_expressions.py       <- Skill 1: parse and validate CSV
-  open_calculator.py        <- Skill 2: launch Calculator
-  process_expressions.py    <- Skill 3: type + compare
-  close_calculator.py       <- Skill 4: cleanup
-  write_report.py           <- Skill 5: write results CSV artifact
-  move_file.py              <- Skill 6: move successful files to done/
+steps/
+  load_expressions.py       <- Step 1: parse and validate CSV
+  open_calculator.py        <- Step 2: launch Calculator
+  process_expressions.py    <- Step 3: type + compare
+  close_calculator.py       <- Step 4: cleanup
+  write_report.py           <- Step 5: write results CSV artifact
+  move_file.py              <- Step 6: move successful files to done/
 
 output/
   expressions_results.csv   <- results written here
@@ -59,7 +59,7 @@ done/                       <- processed files moved here
 failed/                     <- failed files moved here
 ```
 
-Each CSV file becomes one RPA Core transaction with 6 skills executed in sequence.
+Each CSV file becomes one RPA Core transaction with 6 steps executed in sequence.
 Queue delivery counters are runner-owned terminal dispositions, including retry,
 terminal-failure, lease-loss, and unknown-transition outcomes.
 
@@ -86,4 +86,4 @@ python -m pytest tests/ -v
 ```
 
 Unit tests mock the Calculator interactor. Integration tests verify the
-full RPA Core skill pipeline with mocked automation.
+full RPA Core step pipeline with mocked automation.

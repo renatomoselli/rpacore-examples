@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-Unit tests for setup.py skills (OpenChallengePage, DownloadInputData, StartChallenge).
+Unit tests for setup.py steps (OpenChallengePage, DownloadInputData, StartChallenge).
 
 These tests use mocked browser objects to avoid requiring actual Playwright.
 """
@@ -12,14 +12,14 @@ from unittest.mock import Mock, patch
 import pytest
 from rpacore import ProcessContext, Transaction, SystemException
 
-from skills.setup import (
+from steps.setup import (
     OpenChallengePage,
     DownloadInputData,
     StartChallenge,
     DEFAULT_XLSX_URL,
     _validate_xlsx_url,
 )
-from skills._utils import DEFAULT_TIMEOUTS
+from steps._utils import DEFAULT_TIMEOUTS
 
 pytestmark = pytest.mark.unit
 
@@ -32,7 +32,7 @@ DEFAULT_CONFIG = {
 
 
 class TestOpenChallengePage:
-    """Test the OpenChallengePage skill."""
+    """Test the OpenChallengePage step."""
 
     def setup_method(self):
         """Set up test fixtures."""
@@ -41,7 +41,7 @@ class TestOpenChallengePage:
         self.mock_page = Mock()
         self.mock_tx = Mock(spec=Transaction, reference="open-challenge-page", state={})
 
-    @patch("skills.setup.sync_playwright")
+    @patch("steps.setup.sync_playwright")
     def test_opens_challenge_page(self, mock_sync_pw):
         """Test that OpenChallengePage opens the challenge page."""
         mock_sync_pw_instance = Mock()
@@ -50,9 +50,9 @@ class TestOpenChallengePage:
         self.mock_pw.chromium.launch.return_value = self.mock_browser
         self.mock_browser.new_page.return_value = self.mock_page
 
-        skill = OpenChallengePage("open_challenge_page", 1)
+        step = OpenChallengePage("open_challenge_page", 1)
         ctx = ProcessContext(transaction=self.mock_tx, config=DEFAULT_CONFIG)
-        skill.execute(ctx)
+        step.execute(ctx)
 
         self.mock_pw.chromium.launch.assert_called_once_with(headless=True)
         self.mock_browser.new_page.assert_called_once()
@@ -60,7 +60,7 @@ class TestOpenChallengePage:
         assert ctx.resources["page"] == self.mock_page
         assert ctx.resources["_pw"] == self.mock_pw
 
-    @patch("skills.setup.sync_playwright")
+    @patch("steps.setup.sync_playwright")
     def test_opens_challenge_page_headed(self, mock_sync_pw):
         """Test that OpenChallengePage opens with headed=False when config says so."""
         mock_sync_pw_instance = Mock()
@@ -69,16 +69,16 @@ class TestOpenChallengePage:
         self.mock_pw.chromium.launch.return_value = self.mock_browser
         self.mock_browser.new_page.return_value = self.mock_page
 
-        skill = OpenChallengePage("open_challenge_page", 1)
+        step = OpenChallengePage("open_challenge_page", 1)
         ctx = ProcessContext(
             transaction=self.mock_tx,
             config={**DEFAULT_CONFIG, "headless": "false"},
         )
-        skill.execute(ctx)
+        step.execute(ctx)
 
         self.mock_pw.chromium.launch.assert_called_once_with(headless=False)
 
-    @patch("skills.setup.sync_playwright")
+    @patch("steps.setup.sync_playwright")
     def test_raises_system_exception_on_launch_failure(self, mock_sync_pw):
         """Test that browser launch failure raises SystemException."""
         mock_sync_pw_instance = Mock()
@@ -86,28 +86,28 @@ class TestOpenChallengePage:
         mock_sync_pw_instance.start.return_value = self.mock_pw
         self.mock_pw.chromium.launch.side_effect = Exception("Launch failed")
 
-        skill = OpenChallengePage("open_challenge_page", 1)
+        step = OpenChallengePage("open_challenge_page", 1)
         ctx = ProcessContext(transaction=self.mock_tx, config=DEFAULT_CONFIG)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
         assert "launch" in str(exc_info.value).lower()
         self.mock_pw.stop.assert_called()
         assert exc_info.value.__cause__ is not None
 
     def test_raises_system_exception_for_invalid_page_load_retries(self):
-        skill = OpenChallengePage("open_challenge_page", 1)
+        step = OpenChallengePage("open_challenge_page", 1)
         ctx = ProcessContext(
             transaction=self.mock_tx,
             config={**DEFAULT_CONFIG, "max_page_load_retries": "many"},
         )
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
 
         assert "max_page_load_retries" in str(exc_info.value)
 
-    @patch("skills.setup.sync_playwright")
+    @patch("steps.setup.sync_playwright")
     def test_raises_system_exception_on_navigation_failure(self, mock_sync_pw):
         """Test that navigation failure raises SystemException."""
         mock_sync_pw_instance = Mock()
@@ -117,17 +117,17 @@ class TestOpenChallengePage:
         self.mock_browser.new_page.return_value = self.mock_page
         self.mock_page.goto.side_effect = Exception("Navigation failed")
 
-        skill = OpenChallengePage("open_challenge_page", 1)
+        step = OpenChallengePage("open_challenge_page", 1)
         ctx = ProcessContext(transaction=self.mock_tx, config=DEFAULT_CONFIG)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(ctx)
+            step.execute(ctx)
         assert "Failed to load page" in str(exc_info.value)
         assert self.mock_page.close.call_count == DEFAULT_CONFIG["max_page_load_retries"]
 
 
 class TestDownloadInputData:
-    """Test the DownloadInputData skill."""
+    """Test the DownloadInputData step."""
 
     def setup_method(self):
         """Set up test fixtures."""
@@ -182,10 +182,10 @@ class TestDownloadInputData:
             "xlsx_allowed_hosts": ["127.0.0.1"],
         }
 
-        skill = DownloadInputData("download_input_data", 1)
+        step = DownloadInputData("download_input_data", 1)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(self.mock_ctx)
+            step.execute(self.mock_ctx)
 
         assert "must not be a private" in str(exc_info.value)
 
@@ -196,18 +196,18 @@ class TestDownloadInputData:
             "xlsx_allowed_hosts": ["www.rpachallenge.com"],
         }
 
-        skill = DownloadInputData("download_input_data", 1)
+        step = DownloadInputData("download_input_data", 1)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(self.mock_ctx)
+            step.execute(self.mock_ctx)
 
         assert "host must be one of" in str(exc_info.value)
 
     def test_downloads_and_parses_excel(self):
         """Test that DownloadInputData downloads and parses Excel."""
-        with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve:
+        with patch("steps.setup.urllib.request.urlretrieve") as mock_urlretrieve:
             mock_urlretrieve.return_value = ("test.xlsx", Mock())
-            with patch("skills.setup.openpyxl.load_workbook") as mock_load_wb:
+            with patch("steps.setup.openpyxl.load_workbook") as mock_load_wb:
                 mock_wb = Mock()
                 mock_wb.active = Mock()
                 mock_wb.active.iter_rows.return_value = iter([
@@ -218,8 +218,8 @@ class TestDownloadInputData:
                 ])
                 mock_load_wb.return_value = mock_wb
 
-                skill = DownloadInputData("download_input_data", 1)
-                skill.execute(self.mock_ctx)
+                step = DownloadInputData("download_input_data", 1)
+                step.execute(self.mock_ctx)
 
                 mock_urlretrieve.assert_called_once()
                 mock_load_wb.assert_called_once()
@@ -231,9 +231,9 @@ class TestDownloadInputData:
             "xlsx_url": "http://custom-url.com/data.xlsx",
         }
 
-        with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve:
+        with patch("steps.setup.urllib.request.urlretrieve") as mock_urlretrieve:
             mock_urlretrieve.return_value = ("test.xlsx", Mock())
-            with patch("skills.setup.openpyxl.load_workbook") as mock_load_wb:
+            with patch("steps.setup.openpyxl.load_workbook") as mock_load_wb:
                 mock_wb = Mock()
                 mock_wb.active = Mock()
                 mock_wb.active.iter_rows.return_value = iter([
@@ -244,8 +244,8 @@ class TestDownloadInputData:
                 ])
                 mock_load_wb.return_value = mock_wb
 
-                skill = DownloadInputData("download_input_data", 1)
-                skill.execute(self.mock_ctx)
+                step = DownloadInputData("download_input_data", 1)
+                step.execute(self.mock_ctx)
 
                 mock_urlretrieve.assert_called_once()
                 args, _ = mock_urlretrieve.call_args
@@ -254,9 +254,9 @@ class TestDownloadInputData:
     def test_falls_back_to_browser_download_on_direct_failure(self):
         """Test that DownloadInputData falls back to browser download."""
         from unittest.mock import MagicMock
-        with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve:
+        with patch("steps.setup.urllib.request.urlretrieve") as mock_urlretrieve:
             mock_urlretrieve.side_effect = urllib.error.URLError("Download failed")
-            with patch("skills.setup.openpyxl.load_workbook") as mock_load_wb, \
+            with patch("steps.setup.openpyxl.load_workbook") as mock_load_wb, \
                  patch("pathlib.Path.unlink"), \
                  patch("tempfile.mkstemp", return_value=(123, "test.xlsx")):
                 mock_wb = Mock()
@@ -298,8 +298,8 @@ class TestDownloadInputData:
                     "xlsx_url": "http://example.com/file.xlsx",
                 }
 
-                skill = DownloadInputData("download_input_data", 1)
-                skill.execute(self.mock_ctx)
+                step = DownloadInputData("download_input_data", 1)
+                step.execute(self.mock_ctx)
 
                 # Should have tried urlretrieve first, then browser download
                 assert mock_urlretrieve.call_count >= 1
@@ -309,7 +309,7 @@ class TestDownloadInputData:
                 self.mock_page.expect_download.assert_called_once()
 
     def test_browser_download_failure_cleans_up_temp_file(self):
-        with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve, \
+        with patch("steps.setup.urllib.request.urlretrieve") as mock_urlretrieve, \
              patch("pathlib.Path.unlink") as mock_unlink, \
              patch("tempfile.mkstemp", return_value=(123, "test.xlsx")):
             mock_urlretrieve.side_effect = urllib.error.URLError("Download failed")
@@ -321,29 +321,29 @@ class TestDownloadInputData:
             mock_context_mgr.__exit__ = Mock(return_value=None)
             self.mock_page.expect_download = Mock(return_value=mock_context_mgr)
 
-            skill = DownloadInputData("download_input_data", 1)
+            step = DownloadInputData("download_input_data", 1)
 
             with pytest.raises(SystemException) as exc_info:
-                skill.execute(self.mock_ctx)
+                step.execute(self.mock_ctx)
 
             assert "Failed to download Excel file" in str(exc_info.value)
             mock_unlink.assert_called_once_with(missing_ok=True)
 
     def test_raises_system_exception_on_parse_failure(self):
         """Test that parse failure raises SystemException and cleans up temp file."""
-        with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve:
+        with patch("steps.setup.urllib.request.urlretrieve") as mock_urlretrieve:
             mock_urlretrieve.return_value = ("test.xlsx", Mock())
-            with patch("skills.setup.openpyxl.load_workbook") as mock_load_wb, \
+            with patch("steps.setup.openpyxl.load_workbook") as mock_load_wb, \
                  patch("pathlib.Path.unlink") as mock_unlink:
                 mock_wb = Mock()
                 mock_wb.active = Mock()
                 mock_wb.active.iter_rows.side_effect = Exception("Invalid Excel")
                 mock_load_wb.return_value = mock_wb
 
-                skill = DownloadInputData("download_input_data", 1)
+                step = DownloadInputData("download_input_data", 1)
 
                 with pytest.raises(SystemException) as exc_info:
-                    skill.execute(self.mock_ctx)
+                    step.execute(self.mock_ctx)
 
                 assert "Failed to parse Excel file" in str(exc_info.value)
                 # Verify state was not populated on failure
@@ -354,9 +354,9 @@ class TestDownloadInputData:
 
     def test_raises_system_exception_on_empty_data(self):
         """Test that empty Excel data fails setup before the browser is driven."""
-        with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve:
+        with patch("steps.setup.urllib.request.urlretrieve") as mock_urlretrieve:
             mock_urlretrieve.return_value = ("test.xlsx", Mock())
-            with patch("skills.setup.openpyxl.load_workbook") as mock_load_wb, \
+            with patch("steps.setup.openpyxl.load_workbook") as mock_load_wb, \
                  patch("pathlib.Path.unlink") as mock_unlink:
                 mock_wb = Mock()
                 mock_wb.active = Mock()
@@ -367,37 +367,37 @@ class TestDownloadInputData:
                 ])
                 mock_load_wb.return_value = mock_wb
 
-                skill = DownloadInputData("download_input_data", 1)
+                step = DownloadInputData("download_input_data", 1)
 
                 with pytest.raises(SystemException) as exc_info:
-                    skill.execute(self.mock_ctx)
+                    step.execute(self.mock_ctx)
 
                 assert "no data rows" in str(exc_info.value).lower()
                 mock_unlink.assert_called_once_with(missing_ok=True)
 
     def test_raises_system_exception_on_empty_workbook(self):
-        with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve:
+        with patch("steps.setup.urllib.request.urlretrieve") as mock_urlretrieve:
             mock_urlretrieve.return_value = ("test.xlsx", Mock())
-            with patch("skills.setup.openpyxl.load_workbook") as mock_load_wb, \
+            with patch("steps.setup.openpyxl.load_workbook") as mock_load_wb, \
                  patch("pathlib.Path.unlink") as mock_unlink:
                 mock_wb = Mock()
                 mock_wb.active = Mock()
                 mock_wb.active.iter_rows.return_value = iter([])
                 mock_load_wb.return_value = mock_wb
 
-                skill = DownloadInputData("download_input_data", 1)
+                step = DownloadInputData("download_input_data", 1)
 
                 with pytest.raises(SystemException) as exc_info:
-                    skill.execute(self.mock_ctx)
+                    step.execute(self.mock_ctx)
 
                 assert "empty (no headers)" in str(exc_info.value)
                 mock_unlink.assert_called_once_with(missing_ok=True)
 
     def test_raises_system_exception_on_missing_row_values(self):
         """Test invalid row data fails during setup before browser submission."""
-        with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve:
+        with patch("steps.setup.urllib.request.urlretrieve") as mock_urlretrieve:
             mock_urlretrieve.return_value = ("test.xlsx", Mock())
-            with patch("skills.setup.openpyxl.load_workbook") as mock_load_wb, \
+            with patch("steps.setup.openpyxl.load_workbook") as mock_load_wb, \
                  patch("pathlib.Path.unlink") as mock_unlink:
                 mock_wb = Mock()
                 mock_wb.active = Mock()
@@ -409,18 +409,18 @@ class TestDownloadInputData:
                 ])
                 mock_load_wb.return_value = mock_wb
 
-                skill = DownloadInputData("download_input_data", 1)
+                step = DownloadInputData("download_input_data", 1)
 
                 with pytest.raises(SystemException) as exc_info:
-                    skill.execute(self.mock_ctx)
+                    step.execute(self.mock_ctx)
 
                 assert "missing required value" in str(exc_info.value)
                 mock_unlink.assert_called_once_with(missing_ok=True)
 
     def test_numeric_zero_row_reaches_required_value_validation(self):
-        with patch("skills.setup.urllib.request.urlretrieve") as mock_urlretrieve:
+        with patch("steps.setup.urllib.request.urlretrieve") as mock_urlretrieve:
             mock_urlretrieve.return_value = ("test.xlsx", Mock())
-            with patch("skills.setup.openpyxl.load_workbook") as mock_load_wb, \
+            with patch("steps.setup.openpyxl.load_workbook") as mock_load_wb, \
                  patch("pathlib.Path.unlink") as mock_unlink:
                 mock_wb = Mock()
                 mock_wb.active = Mock()
@@ -431,10 +431,10 @@ class TestDownloadInputData:
                 ])
                 mock_load_wb.return_value = mock_wb
 
-                skill = DownloadInputData("download_input_data", 1)
+                step = DownloadInputData("download_input_data", 1)
 
                 with pytest.raises(SystemException) as exc_info:
-                    skill.execute(self.mock_ctx)
+                    step.execute(self.mock_ctx)
 
                 assert "missing required value" in str(exc_info.value)
                 assert "no data rows" not in str(exc_info.value).lower()
@@ -442,7 +442,7 @@ class TestDownloadInputData:
 
 
 class TestStartChallenge:
-    """Test the StartChallenge skill."""
+    """Test the StartChallenge step."""
 
     def setup_method(self):
         """Set up test fixtures."""
@@ -459,8 +459,8 @@ class TestStartChallenge:
         # query_selector returns None → button exists, needs clicking
         self.mock_page.query_selector.return_value = Mock()
 
-        skill = StartChallenge("start_challenge", 1)
-        skill.execute(self.mock_ctx)
+        step = StartChallenge("start_challenge", 1)
+        step.execute(self.mock_ctx)
 
         # Verify click uses the has-text selector
         self.mock_page.click.assert_called_with(
@@ -472,8 +472,8 @@ class TestStartChallenge:
         """Test that StartChallenge waits for form fields to appear."""
         self.mock_page.query_selector.return_value = Mock()
 
-        skill = StartChallenge("start_challenge", 1)
-        skill.execute(self.mock_ctx)
+        step = StartChallenge("start_challenge", 1)
+        step.execute(self.mock_ctx)
 
         # Verify wait_for_function was called with the rpa1-field check
         self.mock_page.wait_for_function.assert_called_once()
@@ -483,8 +483,8 @@ class TestStartChallenge:
         # query_selector returns None → START button not on page
         self.mock_page.query_selector.return_value = None
 
-        skill = StartChallenge("start_challenge", 1)
-        skill.execute(self.mock_ctx)
+        step = StartChallenge("start_challenge", 1)
+        step.execute(self.mock_ctx)
 
         self.mock_page.query_selector.assert_called_once_with('button:has-text("START")')
         # Should not click or wait for anything
@@ -495,9 +495,9 @@ class TestStartChallenge:
         """Test that start failure raises SystemException."""
         self.mock_page.query_selector.side_effect = Exception("Start failed")
 
-        skill = StartChallenge("start_challenge", 1)
+        step = StartChallenge("start_challenge", 1)
 
         with pytest.raises(SystemException) as exc_info:
-            skill.execute(self.mock_ctx)
+            step.execute(self.mock_ctx)
 
         assert "Failed to start the challenge" in str(exc_info.value)

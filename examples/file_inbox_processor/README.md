@@ -46,7 +46,7 @@ directory, so it can be launched from a nested working directory. Configured
 paths must stay within that directory; queue payload file paths are checked
 against the configured inbox before they are read, appended, or moved.
 
-The included configuration emits protected JSON log format v2. Set
+The included configuration emits protected JSON log format v3. Set
 `log_format = "text"` when a human-readable console log is more useful. The
 run-summary event reports the public `QueueRunSummary` fields for that
 invocation. Its `processed` and `failed` values are compatibility aggregates;

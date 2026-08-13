@@ -25,23 +25,23 @@ Expected output:
 
 ```text
 INFO | transaction_started | Transaction started | transaction_reference=rpa-challenge-setup
-INFO | skill_started | Skill started | skill_name=open_challenge_page
-INFO | skill_completed | Skill completed | skill_name=open_challenge_page skill_status=successful
-INFO | skill_started | Skill started | skill_name=download_input_data
-INFO | skill_completed | Skill completed | skill_name=download_input_data skill_status=successful
-INFO | skill_started | Skill started | skill_name=start_challenge
-INFO | skill_completed | Skill completed | skill_name=start_challenge skill_status=successful
+INFO | step_started | Step started | step_name=open_challenge_page
+INFO | step_completed | Step completed | step_name=open_challenge_page step_status=successful
+INFO | step_started | Step started | step_name=download_input_data
+INFO | step_completed | Step completed | step_name=download_input_data step_status=successful
+INFO | step_started | Step started | step_name=start_challenge
+INFO | step_completed | Step completed | step_name=start_challenge step_status=successful
 INFO | transaction_completed | Transaction completed | transaction_reference=rpa-challenge-setup transaction_status=successful
 INFO | transaction_started | Transaction started | transaction_reference=rpa-row-...
-INFO | skill_started | Skill started | skill_name=fill_row
-INFO | skill_completed | Skill completed | skill_name=fill_row skill_status=successful
-INFO | skill_started | Skill started | skill_name=submit_row
-INFO | skill_completed | Skill completed | skill_name=submit_row skill_status=successful
+INFO | step_started | Step started | step_name=fill_row
+INFO | step_completed | Step completed | step_name=fill_row step_status=successful
+INFO | step_started | Step started | step_name=submit_row
+INFO | step_completed | Step completed | step_name=submit_row step_status=successful
 INFO | transaction_completed | Transaction completed | transaction_reference=rpa-row-... transaction_status=successful
 ... (10 rows)
 INFO | transaction_started | Transaction started | transaction_reference=rpa-challenge-score
-INFO | skill_started | Skill started | skill_name=record_score
-INFO | skill_completed | Skill completed | skill_name=record_score skill_status=successful
+INFO | step_started | Step started | step_name=record_score
+INFO | step_completed | Step completed | step_name=record_score step_status=successful
 INFO | transaction_completed | Transaction completed | transaction_reference=rpa-challenge-score transaction_status=successful
 Final score: 100%
 ```
@@ -60,7 +60,7 @@ playwright install chromium
 
 | Package | Purpose |
 |---------|---------|
-| `rpacore` | Transaction engine, skills, state/resources, persistence |
+| `rpacore` | Transaction engine, steps, state/resources, persistence |
 | `playwright` | Browser automation |
 | `openpyxl` | Parsing the challenge workbook |
 
@@ -76,9 +76,9 @@ score:  [RecordScore]
 
 Each run submits all rows in one active browser session. Row transactions are persisted for traceability, but row-level resume is intentionally disabled because the challenge site's progress is not restored across fresh sessions. If the browser crashes or the challenge page is closed mid-run, restart the example to begin a fresh challenge session.
 
-### Skills
+### Steps
 
-| Skill | Purpose |
+| Step | Purpose |
 |-------|---------|
 | `OpenChallengePage` | Launch Playwright, navigate to the challenge site, and store runtime handles in `ctx.resources` |
 | `DownloadInputData` | Download and parse the workbook, then store JSON-safe rows in `ctx.state` |

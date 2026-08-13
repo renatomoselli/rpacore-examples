@@ -24,7 +24,7 @@ git_repo_health_monitor/
   main.py                    # Entry point and transaction orchestration
   config.toml                # Repo list, stale branch threshold, output paths
   create_sample_repos.py     # Creates deterministic sample repos for the default run
-  skills/
+  steps/
     check_working_tree.py
     capture_recent_commits.py
     check_remotes.py
@@ -94,7 +94,7 @@ Summary counters separate repository health from transaction failure semantics.
 counts failed transactions whose root exception was a `BusinessException`.
 `system_failed` counts failed transactions whose root exception was a
 `SystemException`. The `failed` health status is reserved for transactions that
-did not produce a normal repo health report, usually because an upstream skill
+did not produce a normal repo health report, usually because an upstream step
 failed before `WriteRepoReport` ran.
 
 ## RPA Core Behavior
@@ -103,7 +103,7 @@ Each repository is processed as its own transaction. The summary is written by a
 separate transaction after all repositories are checked.
 
 Repositories classified as degraded or unhealthy raise `BusinessException` in
-the final per-repo skill. The health report is written to `ctx.state` before that
+the final per-repo step. The health report is written to `ctx.state` before that
 exception is raised, so the summary can still include business-rule failures.
 
 Technical failures such as missing Git commands or invalid repository paths are
@@ -153,5 +153,5 @@ cd examples/git_repo_health_monitor
 python -m pytest tests/ -v
 ```
 
-The tests cover individual Git-checking skills, summary generation, config
+The tests cover individual Git-checking steps, summary generation, config
 validation, and the main orchestration behavior.

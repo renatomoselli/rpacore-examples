@@ -35,8 +35,8 @@ pytest tests/unit/ tests/integration/
 
 | Type | Description | Network Required |
 |------|-------------|------------------|
-| Unit | Individual skills and helpers with mocks | No |
-| Integration | Multi-skill workflow behavior with mocked browser/downloads | No |
+| Unit | Individual steps and helpers with mocks | No |
+| Integration | Multi-step workflow behavior with mocked browser/downloads | No |
 | Live | Actual browser run against rpachallenge.com via `python main.py` | Yes |
 
 Run the live validation only when Playwright browsers are installed and the public site is stable:

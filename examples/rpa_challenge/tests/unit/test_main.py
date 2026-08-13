@@ -10,8 +10,8 @@ import pytest
 
 import main as rpa_main
 from rpacore import Status, SystemException
-from main import _browser_page_available, _display_path, _format_failed_skills, _stop_playwright
-from skills.row import FillRow, SubmitRow
+from main import _browser_page_available, _display_path, _format_failed_steps, _stop_playwright
+from steps.row import FillRow, SubmitRow
 
 pytestmark = pytest.mark.unit
 
@@ -60,30 +60,30 @@ def test_display_path_prefers_project_relative_paths(monkeypatch, tmp_path):
     assert _display_path(str(db_path)) == "rpacore.db"
 
 
-def test_format_failed_skills_returns_none_when_no_failures():
+def test_format_failed_steps_returns_none_when_no_failures():
     tx = Mock()
-    tx.failed_skills.return_value = []
+    tx.failed_steps.return_value = []
 
-    assert _format_failed_skills(tx) == "none"
+    assert _format_failed_steps(tx) == "none"
 
 
-def test_format_failed_skills_includes_skill_names_and_classes():
+def test_format_failed_steps_includes_step_names_and_classes():
     fill = FillRow("fill_row", 1, arguments={"row": {}})
     submit = SubmitRow("submit_row", 2)
     fill.status = Status.FAILED
     submit.status = Status.FAILED
 
-    assert _format_failed_skills(Mock(failed_skills=lambda: [fill, submit])) == (
+    assert _format_failed_steps(Mock(failed_steps=lambda: [fill, submit])) == (
         "fill_row(FillRow); submit_row(SubmitRow)"
     )
 
 
-def test_format_failed_skills_keeps_registered_name_when_class_differs():
-    skill = Mock(name="custom_registered_skill")
-    skill.name = "custom_registered_skill"
+def test_format_failed_steps_keeps_registered_name_when_class_differs():
+    step = Mock(name="custom_registered_step")
+    step.name = "custom_registered_step"
 
-    assert _format_failed_skills(Mock(failed_skills=lambda: [skill])) == (
-        "custom_registered_skill(Mock)"
+    assert _format_failed_steps(Mock(failed_steps=lambda: [step])) == (
+        "custom_registered_step(Mock)"
     )
 
 
@@ -223,7 +223,7 @@ def test_main_aborts_when_row_transaction_fails(monkeypatch, tmp_path, capsys):
                 return
             if tx.reference.startswith("rpa-row-"):
                 tx.status = Status.FAILED
-                tx.skills[0].status = Status.FAILED
+                tx.steps[0].status = Status.FAILED
                 return
             tx.status = Status.SUCCESSFUL
 

@@ -12,12 +12,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from rpacore import Engine, ProcessContext, Status, Transaction, save_transaction
 from main import REPOSITORY_DEFINITION_IDENTITY
-from skills.check_working_tree import CheckWorkingTree
-from skills.capture_recent_commits import CaptureRecentCommits
-from skills.check_remotes import CheckRemotes
-from skills.check_stale_branches import CheckStaleBranches
-from skills.write_repo_report import WriteRepoReport
-from skills.write_summary import WriteSummary
+from steps.check_working_tree import CheckWorkingTree
+from steps.capture_recent_commits import CaptureRecentCommits
+from steps.check_remotes import CheckRemotes
+from steps.check_stale_branches import CheckStaleBranches
+from steps.write_repo_report import WriteRepoReport
+from steps.write_summary import WriteSummary
 
 
 def _create_test_repo(tmpdir: Path, name: str = "test_repo", add_remote: bool = False) -> Path:
@@ -86,7 +86,7 @@ class TestFullWorkflow:
                     "current_repo": str(real_repo),
                     "output_file": output_file,
                 },
-                skills=[
+                steps=[
                     CheckWorkingTree(name="check_working_tree", execution_order=1),
                     CaptureRecentCommits(name="capture_recent_commits", execution_order=2),
                     CheckRemotes(name="check_remotes", execution_order=3),
@@ -126,7 +126,7 @@ class TestFullWorkflow:
                     "current_repo": str(real_repo),
                     "output_file": output_file,
                 },
-                skills=[
+                steps=[
                     CheckWorkingTree(name="check_working_tree", execution_order=1),
                     CaptureRecentCommits(name="capture_recent_commits", execution_order=2),
                     CheckRemotes(name="check_remotes", execution_order=3),
@@ -165,7 +165,7 @@ class TestFullWorkflow:
                     "current_repo": str(real_repo),
                     "output_file": output_file,
                 },
-                skills=[
+                steps=[
                     CheckWorkingTree(name="check_working_tree", execution_order=1),
                     CaptureRecentCommits(name="capture_recent_commits", execution_order=2),
                     CheckRemotes(name="check_remotes", execution_order=3),
@@ -205,7 +205,7 @@ class TestFullWorkflow:
                         "current_repo": str(rp),
                         "output_file": output_file,
                     },
-                    skills=[
+                    steps=[
                         CheckWorkingTree(name="check_working_tree", execution_order=1),
                         CaptureRecentCommits(name="capture_recent_commits", execution_order=2),
                         CheckRemotes(name="check_remotes", execution_order=3),
@@ -229,7 +229,7 @@ class TestFullWorkflow:
                     "repo_health_records": repo_health_records,
                     "output_file": output_file,
                 },
-                skills=[WriteSummary(name="write_summary", execution_order=1)],
+                steps=[WriteSummary(name="write_summary", execution_order=1)],
             )
             engine.run(ProcessContext(transaction=summary_tx, config=config))
 

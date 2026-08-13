@@ -4,14 +4,14 @@ import csv
 
 from rpacore import Engine, ProcessContext, Status, Transaction
 
-from skills.write_reconciliation_report import WriteReconciliationReport
+from steps.write_reconciliation_report import WriteReconciliationReport
 
 
 def _run(config, state):
     tx = Transaction(
         reference="write-reconciliation-report",
         state=state,
-        skills=[WriteReconciliationReport(name="write_reconciliation_report", execution_order=1)],
+        steps=[WriteReconciliationReport(name="write_reconciliation_report", execution_order=1)],
     )
     Engine(max_retries=0).run(ProcessContext(transaction=tx, config=config))
     return tx
@@ -95,7 +95,7 @@ def test_write_reconciliation_report_fails_without_results(tmp_path):
     tx = _run({"report_file": str(report_file)}, {})
 
     assert tx.status == Status.FAILED
-    assert "reconciliation_results" in str(tx.failed_skills()[0].exceptions[-1])
+    assert "reconciliation_results" in str(tx.failed_steps()[0].exceptions[-1])
     assert not report_file.exists()
 
 

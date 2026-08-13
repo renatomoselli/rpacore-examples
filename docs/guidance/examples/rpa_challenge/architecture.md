@@ -8,7 +8,7 @@ Browser automation example demonstrating **label-based form filling** for a publ
 
 ```mermaid
 graph TD
-    A[main.py] --> B[skills/]
+    A[main.py] --> B[steps/]
     B --> C[OpenChallengePage]
     B --> D[DownloadInputData]
     B --> E[StartChallenge]
@@ -21,18 +21,18 @@ graph TD
 
 ### Key Architectural Patterns
 
-**One Skill Per Resource** — Each skill is a single, testable, autonomous action with a single entry point (`execute()`) and single exit (success/failure).
+**One Step Per Resource** — Each step is a single, testable, autonomous action with a single entry point (`execute()`) and single exit (success/failure).
 
 **Transaction Per Row** — 10 individual transactions for 10 data rows (not batched) — each transaction has its own unique reference ID for resume capability.
 
-**Stateless Skills** — Skills read durable row data from `ctx.state` and runtime browser handles from `ctx.resources` — no internal state, no hidden dependencies.
+**Stateless Steps** — Steps read durable row data from `ctx.state` and runtime browser handles from `ctx.resources` — no internal state, no hidden dependencies.
 
 ## Module Structure
 
 | Directory | Role | Patterns | Dependencies |
 |-----------|------|----------|--------------|
 | `main.py` | Transaction orchestrator | One transaction per row, reference tracking | `rpacore.Engine`, `sqlite3` |
-| `skills/` | Skill definitions | One skill per form field, label-based selectors | `playwright`, `openpyxl` |
+| `steps/` | Step definitions | One step per form field, label-based selectors | `playwright`, `openpyxl` |
 | `tests/unit/` | Mock-based tests | No browser, setup_method fixtures | `unittest.mock` |
 | `tests/integration/` | Workflow tests | End-to-end with mocked browser | `pytest` |
 
@@ -41,21 +41,21 @@ graph TD
 | Dependency | Pattern Impact |
 |------------|----------------|
 | `rpacore.Engine` | Retry logic, transaction orchestration |
-| `rpacore.Skill` | Atomic actions with `execute()` contract |
+| `rpacore.Step` | Atomic actions with `execute()` contract |
 | `playwright.sync_api` | Label-based selectors, explicit timeouts |
 | `openpyxl` | Excel parsing with schema validation |
 | `sqlite3` | Transaction persistence and resume |
 
 ## Key Patterns
 
-### Skill Layer (CRITICAL: Plain Skill Interface, NOT Result<T>)
+### Step Layer (CRITICAL: Plain Step Interface, NOT Result<T>)
 
 Atomic browser automation steps with explicit timeouts and error handling.
 
 ```python
-from rpacore import ProcessContext, Skill, SystemException
+from rpacore import ProcessContext, Step, SystemException
 
-class FillRow(Skill):
+class FillRow(Step):
     def execute(self, ctx: ProcessContext) -> None:
         page = ctx.resources["page"]
         row: dict = self.arguments["row"]
@@ -103,20 +103,20 @@ class FillRow(Skill):
 ```
 
 **Key aspects:**
-- **Plain Skill interface** — No Result<T> wrapper, direct exception handling
-- **void return type** — Skills execute side effects, no data returned
+- **Plain Step interface** — No Result<T> wrapper, direct exception handling
+- **void return type** — Steps execute side effects, no data returned
 - **Explicit error types** — SystemException for external failures, BusinessException for data validation
 - **Timeouts** — All browser operations have explicit timeouts (10_000ms)
 
 ### Process Context Boundary (CRITICAL: durable state plus runtime resources)
 
-Transaction creates context, skills access durable JSON-safe values via `ctx.state` and non-durable browser handles via `ctx.resources`.
+Transaction creates context, steps access durable JSON-safe values via `ctx.state` and non-durable browser handles via `ctx.resources`.
 
 ```python
 # Transaction definition
 row_tx = Transaction(
     reference=f"rpa-row-{email}",
-    skills=[
+    steps=[
         FillRow(name="fill_row", execution_order=1, arguments={"row": row}),
         SubmitRow(name="submit_row", execution_order=2),
     ],
@@ -136,7 +136,7 @@ engine.run(
 - **durable state** — JSON-safe workflow values live in `ctx.state`
 - **runtime resources** — Browser/page handles live in `ctx.resources` and are not persisted
 - **no Result<T>** — State is mutated explicitly, not returned
-- **arguments separate** — Skill-specific data in `self.arguments`
+- **arguments separate** — Step-specific data in `self.arguments`
 
 ### Error Handling Boundary (CRITICAL: SystemException vs BusinessException)
 
@@ -161,7 +161,7 @@ class BusinessException(Exception):
 **Key aspects:**
 - **SystemException** — External failures (browser, network, disk)
 - **BusinessException** — Data validation, business logic errors
-- **action field** — Identifies which skill failed
+- **action field** — Identifies which step failed
 - **exception chaining** — `from exc` preserves original traceback
 
 ### Browser Automation Pattern (CRITICAL: label-based selectors, NOT position-based)
@@ -226,8 +226,8 @@ class TestFillRow:
     def test_fills_all_fields(self):
         """Test that FillRow fills all 7 fields."""
         row = {"First Name": "John", "Last Name": "Doe", ...}
-        skill = FillRow("fill_row", 1, arguments={"row": row})
-        skill.execute(self.mock_ctx)
+        step = FillRow("fill_row", 1, arguments={"row": row})
+        step.execute(self.mock_ctx)
         
         # Verify label map was extracted and fields were filled via JS
         assert self.mock_page.evaluate.called
@@ -239,11 +239,11 @@ class TestFillRow:
 - **Mock spec** — `Mock(spec=Transaction)` for type checking
 - **pytest.raises** — Test exception types
 
-## Important if you are adding a new skill
+## Important if you are adding a new step
 
-1. **Create Skill Class** — Inherit from `Skill` with `execute()` method
+1. **Create Step Class** — Inherit from `Step` with `execute()` method
 2. **Add to Transaction** — Define in `Transaction` with `execution_order`
-3. **Add to `__init__.py`** — Export the skill class
+3. **Add to `__init__.py`** — Export the step class
 
 ## Important if you are writing or modifying tests
 
@@ -256,13 +256,13 @@ class TestFillRow:
 
 1. **Define Transaction** — Create `Transaction` with unique reference
 2. **Execute Transaction** — Use `engine.run(ProcessContext(...))`
-3. **Check result** — Use `if tx.status is not Status.SUCCESSFUL` with `failed_skills()`
+3. **Check result** — Use `if tx.status is not Status.SUCCESSFUL` with `failed_steps()`
 
 ## Important if you are adding new selectors
 
 1. **Define Selector Constants** — `CHALLENGE_URL`, `START_BUTTON`, `DOWNLOAD_BUTTON`
 2. **Create Helper Functions** — `click_button()`, `fill_field()`, `wait_for_selector()`
-3. **Add to Transaction** — Skills already execute, no need to add to transaction
+3. **Add to Transaction** — Steps already execute, no need to add to transaction
 
 ## Important if you are adding a new test
 
@@ -277,13 +277,13 @@ Since this is a Python backend project, "frontend elements" refer to web pages a
 
 1. **Define Selector Constants** — `CHALLENGE_URL`, `START_BUTTON`, `DOWNLOAD_BUTTON`
 2. **Create Helper Functions** — `click_button()`, `fill_field()`, `wait_for_selector()`
-3. **Add to Transaction** — Skills already execute, no need to add to transaction
+3. **Add to Transaction** — Steps already execute, no need to add to transaction
 
 ## Important if you are adding a new entity (data row)
 
 1. **Define Transaction** — Create `Transaction` with unique reference `rpa-row-{email}`
 2. **Execute Transaction** — Use `engine.run(ProcessContext(...))`
-3. **Check result** — Use `if tx.status is not Status.SUCCESSFUL` with `failed_skills()`
+3. **Check result** — Use `if tx.status is not Status.SUCCESSFUL` with `failed_steps()`
 
 ## Important if you are adding a new configuration key
 

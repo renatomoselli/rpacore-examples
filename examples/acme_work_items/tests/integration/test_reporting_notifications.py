@@ -98,14 +98,14 @@ def test_notifier_failure_is_counted_without_changing_item_outcome(
     assert result.queue_summary.notification_errors == 1
 
 
-def test_json_v2_logs_runner_correlation_and_canonical_summary(
+def test_json_v3_logs_runner_correlation_and_canonical_summary(
     example_config,
     acme_server,
     credentials,
 ) -> None:
     acme_server.state.add_item("1001", client_id="C-1", wiid="WI-1")
     stream = io.StringIO()
-    configure_logger(level="INFO", fmt="json", json_version=2, stream=stream)
+    configure_logger(level="INFO", fmt="json", stream=stream)
 
     result = run_example(
         example_config,
@@ -116,19 +116,20 @@ def test_json_v2_logs_runner_correlation_and_canonical_summary(
 
     records = [json.loads(line) for line in stream.getvalue().splitlines()]
     assert records
+    assert all(record["log_format_version"] == 3 for record in records)
     assert all(PROTECTED_ENVELOPE_FIELDS <= record.keys() for record in records)
     assert all(PROTECTED_ENVELOPE_FIELDS.isdisjoint(record["attributes"]) for record in records)
     assert str(example_config["transaction_db_path"]) not in stream.getvalue()
 
-    skill_started = next(record for record in records if record["event"] == "rpacore.skill.started")
-    correlation = skill_started["attributes"]
+    step_started = next(record for record in records if record["event"] == "rpacore.step.started")
+    correlation = step_started["attributes"]
     assert correlation["worker_id"].startswith("acme-")
     assert correlation["queue_item_id"]
     assert correlation["queue_reference"] == "acme-1001"
     assert correlation["transaction_id"]
     assert correlation["transaction_reference"] == "acme-1001"
-    assert correlation["skill_name"] == "fetch_work_item"
-    assert correlation["skill_execution_order"] == 1
+    assert correlation["step_name"] == "fetch_work_item"
+    assert correlation["step_execution_order"] == 1
     assert correlation["retry_count"] == 0
     assert "attempt_number" not in correlation
 

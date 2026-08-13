@@ -22,8 +22,8 @@ from rpacore import (
     validate_config,
 )
 
-from skills.save_state import SaveState
-from skills.fail_task import FailTask
+from steps.save_state import SaveState
+from steps.fail_task import FailTask
 
 logger = get_logger(__name__)
 DEFINITION_IDENTITY = "checkpoint-resume/v1"
@@ -40,7 +40,7 @@ _CONFIG_FIELDS = (
 )
 
 
-def _create_skills() -> list[SaveState | FailTask]:
+def _create_steps() -> list[SaveState | FailTask]:
     return [
         SaveState(name="save_state", execution_order=1),
         FailTask(name="fail_task", execution_order=2),
@@ -52,8 +52,8 @@ def _log_history(history: list[HistoryEntry]) -> None:
         logger.info(
             "  %s - %s (order %s)",
             entry.event.value,
-            entry.skill_name,
-            entry.skill_execution_order,
+            entry.step_name,
+            entry.step_execution_order,
         )
 
 
@@ -82,9 +82,9 @@ def _is_save_state_success_checkpoint(tx: Transaction) -> bool:
         return False
     event = tx.history[-1]
     return (
-        event.event is HistoryEvent.SKILL_SUCCEEDED
-        and event.skill_name == "save_state"
-        and event.skill_execution_order == 1
+        event.event is HistoryEvent.STEP_SUCCEEDED
+        and event.step_name == "save_state"
+        and event.step_execution_order == 1
     )
 
 
@@ -101,7 +101,7 @@ def _publish_report_record(tx: Transaction, report_dir: str, *, phase: str) -> P
     report = generate_report(tx)
     if report.record is None:
         raise SystemException("Unable to create canonical transaction report record", action="report")
-    destination = Path(report_dir) / f"{tx.id}.{phase}.report-v1.json"
+    destination = Path(report_dir) / f"{tx.id}.{phase}.report-v2.json"
     destination.parent.mkdir(parents=True, exist_ok=True)
     with atomic_output_path(destination) as temporary:
         temporary.write_text(report.record.payload_json, encoding="utf-8")
@@ -122,7 +122,7 @@ def main() -> None:
         definition_identity=DEFINITION_IDENTITY,
         state={},
         metadata={"example": "checkpoint_resume"},
-        skills=_create_skills(),
+        steps=_create_steps(),
     )
     engine.run(
         ProcessContext(transaction=tx, config=config),
@@ -148,7 +148,7 @@ def main() -> None:
 
         resumed_tx = resume_transaction(
             tx_id=tx.id,
-            skills=_create_skills(),
+            steps=_create_steps(),
             db_path=db_path,
             definition_identity=DEFINITION_IDENTITY,
         )

@@ -10,11 +10,11 @@ from main import (
     REPORT_DEFINITION_IDENTITY,
     SETUP_DEFINITION_IDENTITY,
 )
-from skills.classify_outcome import ClassifyOutcome
-from skills.load_bank_statement import LoadBankStatement
-from skills.load_internal_records import LoadInternalRecords
-from skills.match_transaction import MatchTransaction
-from skills.write_reconciliation_report import WriteReconciliationReport
+from steps.classify_outcome import ClassifyOutcome
+from steps.load_bank_statement import LoadBankStatement
+from steps.load_internal_records import LoadInternalRecords
+from steps.match_transaction import MatchTransaction
+from steps.write_reconciliation_report import WriteReconciliationReport
 
 
 def test_full_workflow_writes_reconciliation_report(tmp_path):
@@ -61,7 +61,7 @@ def test_full_workflow_writes_reconciliation_report(tmp_path):
         reference="load-reconciliation-inputs",
         definition_identity=SETUP_DEFINITION_IDENTITY,
         state={},
-        skills=[
+        steps=[
             LoadInternalRecords(name="load_internal_records", execution_order=1),
             LoadBankStatement(name="load_bank_statement", execution_order=2),
         ],
@@ -84,7 +84,7 @@ def test_full_workflow_writes_reconciliation_report(tmp_path):
                 "current_payment": payment,
                 "bank_by_reference": bank_by_reference,
             },
-            skills=[
+            steps=[
                 MatchTransaction(name="match_transaction", execution_order=1),
                 ClassifyOutcome(name="classify_outcome", execution_order=2),
             ],
@@ -100,7 +100,7 @@ def test_full_workflow_writes_reconciliation_report(tmp_path):
         reference="write-reconciliation-report",
         definition_identity=REPORT_DEFINITION_IDENTITY,
         state={"reconciliation_results": reconciliation_results},
-        skills=[
+        steps=[
             WriteReconciliationReport(name="write_reconciliation_report", execution_order=1),
         ],
     )
@@ -163,7 +163,7 @@ def test_workflow_matches_references_with_surrounding_whitespace(tmp_path):
     setup_tx = Transaction(
         reference="load-reconciliation-inputs",
         state={},
-        skills=[
+        steps=[
             LoadInternalRecords(name="load_internal_records", execution_order=1),
             LoadBankStatement(name="load_bank_statement", execution_order=2),
         ],
@@ -176,7 +176,7 @@ def test_workflow_matches_references_with_surrounding_whitespace(tmp_path):
             "current_payment": setup_tx.state["internal_records"][0],
             "bank_by_reference": setup_tx.state["bank_by_reference"],
         },
-        skills=[
+        steps=[
             MatchTransaction(name="match_transaction", execution_order=1),
             ClassifyOutcome(name="classify_outcome", execution_order=2),
         ],

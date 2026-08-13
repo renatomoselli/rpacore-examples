@@ -1,14 +1,14 @@
-"""Unit tests for the WriteRepoReport skill."""
+"""Unit tests for the WriteRepoReport step."""
 
 import pytest
 
 from rpacore import BusinessException, SystemException
-from skills.write_repo_report import WriteRepoReport
+from steps.write_repo_report import WriteRepoReport
 from tests.conftest import make_context
 
 
 class TestWriteRepoReport:
-    """Test the WriteRepoReport skill."""
+    """Test the WriteRepoReport step."""
 
     def setup_method(self):
         self.ctx = make_context(state={
@@ -26,8 +26,8 @@ class TestWriteRepoReport:
         self.ctx.state["stale_branches"] = []
         self.ctx.state["all_branches"] = ["master"]
 
-        skill = WriteRepoReport("write_repo_report", 5)
-        skill.execute(self.ctx)
+        step = WriteRepoReport("write_repo_report", 5)
+        step.execute(self.ctx)
 
         assert self.ctx.state["health_report"]["health_status"] == "healthy"
         assert self.ctx.state["health_report"]["repository"] == "/tmp/test_repo"
@@ -42,12 +42,12 @@ class TestWriteRepoReport:
         self.ctx.state["stale_branches"] = []
         self.ctx.state["all_branches"] = ["master"]
 
-        skill = WriteRepoReport("write_repo_report", 5)
+        step = WriteRepoReport("write_repo_report", 5)
 
         with pytest.raises(BusinessException) as exc_info:
-            skill.execute(self.ctx)
+            step.execute(self.ctx)
 
-        assert exc_info.value.stop is True
+        assert exc_info.value.halts_remaining_steps is True
         assert "degraded" in str(exc_info.value).lower()
         # Health data is persisted before the raise
         assert self.ctx.state["health_report"]["health_status"] == "degraded"
@@ -60,12 +60,12 @@ class TestWriteRepoReport:
         self.ctx.state["stale_branches"] = ["old-branch"]
         self.ctx.state["all_branches"] = ["master", "old-branch"]
 
-        skill = WriteRepoReport("write_repo_report", 5)
+        step = WriteRepoReport("write_repo_report", 5)
 
         with pytest.raises(BusinessException) as exc_info:
-            skill.execute(self.ctx)
+            step.execute(self.ctx)
 
-        assert exc_info.value.stop is True
+        assert exc_info.value.halts_remaining_steps is True
         assert "unhealthy" in str(exc_info.value).lower()
         # Health data persisted before raise
         assert self.ctx.state["health_report"]["health_status"] == "unhealthy"
@@ -81,10 +81,10 @@ class TestWriteRepoReport:
         self.ctx.state["stale_branches"] = []
         self.ctx.state["all_branches"] = ["master"]
 
-        skill = WriteRepoReport("write_repo_report", 5)
+        step = WriteRepoReport("write_repo_report", 5)
 
         with pytest.raises(BusinessException):
-            skill.execute(self.ctx)
+            step.execute(self.ctx)
 
         assert self.ctx.state["health_report"]["last_commit"] == "2024-01-15T10:00:00+00:00"
 
@@ -97,8 +97,8 @@ class TestWriteRepoReport:
         self.ctx.state["stale_branches"] = []
         self.ctx.state["all_branches"] = ["master"]
 
-        skill = WriteRepoReport("write_repo_report", 5)
-        skill.execute(self.ctx)
+        step = WriteRepoReport("write_repo_report", 5)
+        step.execute(self.ctx)
 
         assert self.ctx.state["health_report"]["last_commit"] == "unknown"
 
@@ -110,20 +110,20 @@ class TestWriteRepoReport:
         self.ctx.state["stale_branches"] = []
         self.ctx.state["all_branches"] = ["master"]
 
-        skill = WriteRepoReport("write_repo_report", 5)
-        skill.execute(self.ctx)
+        step = WriteRepoReport("write_repo_report", 5)
+        step.execute(self.ctx)
 
         # Should NOT have repo_health_records \u2014 that's main.py's job now
         assert "repo_health_records" not in self.ctx.state
 
     def test_raises_on_missing_current_repo(self):
         ctx = make_context(state={"output_file": "/tmp/output.jsonl"})
-        skill = WriteRepoReport("write_repo_report", 5)
+        step = WriteRepoReport("write_repo_report", 5)
         with pytest.raises(SystemException, match="current_repo"):
-            skill.execute(ctx)
+            step.execute(ctx)
 
     def test_raises_on_missing_output_file(self):
         ctx = make_context(state={"current_repo": "/tmp/test_repo"})
-        skill = WriteRepoReport("write_repo_report", 5)
+        step = WriteRepoReport("write_repo_report", 5)
         with pytest.raises(SystemException, match="output_file"):
-            skill.execute(ctx)
+            step.execute(ctx)

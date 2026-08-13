@@ -10,35 +10,35 @@ from rpacore import HistoryEntry, HistoryEvent, Status, SystemException, Transac
 import main as checkpoint_main
 
 
-def test_create_skills_returns_ordered_checkpoint_pipeline() -> None:
-    skills = checkpoint_main._create_skills()
+def test_create_steps_returns_ordered_checkpoint_pipeline() -> None:
+    steps = checkpoint_main._create_steps()
 
-    assert [skill.name for skill in skills] == ["save_state", "fail_task"]
-    assert [skill.execution_order for skill in skills] == [1, 2]
+    assert [step.name for step in steps] == ["save_state", "fail_task"]
+    assert [step.execution_order for step in steps] == [1, 2]
 
 
 def test_log_history_logs_each_entry(monkeypatch: pytest.MonkeyPatch) -> None:
     messages: list[tuple[str, str | None, int | None]] = []
 
-    def fake_info(message: str, event: str, skill_name: str | None, order: int | None) -> None:
-        messages.append((event, skill_name, order))
+    def fake_info(message: str, event: str, step_name: str | None, order: int | None) -> None:
+        messages.append((event, step_name, order))
 
     history = [
         HistoryEntry(
             sequence=1,
             timestamp=datetime.now(timezone.utc),
-            event=HistoryEvent.SKILL_STARTED,
+            event=HistoryEvent.STEP_STARTED,
             status=Status.IN_PROGRESS,
             retry_number=0,
-            skill_name="save_state",
-            skill_execution_order=1,
+            step_name="save_state",
+            step_execution_order=1,
         )
     ]
 
     monkeypatch.setattr(checkpoint_main.logger, "info", fake_info)
     checkpoint_main._log_history(history)
 
-    assert messages == [("skill_started", "save_state", 1)]
+    assert messages == [("step_started", "save_state", 1)]
 
 
 def test_save_transaction_removes_checkpoint_when_persistence_fails(
@@ -47,9 +47,9 @@ def test_save_transaction_removes_checkpoint_when_persistence_fails(
     sample_db_path: Path,
 ) -> None:
     sample_checkpoint_path.write_text("orphaned", encoding="utf-8")
-    save_state = checkpoint_main._create_skills()[0]
-    tx = Transaction(reference="tx", skills=[save_state])
-    tx.append_history(HistoryEvent.SKILL_SUCCEEDED, skill=save_state)
+    save_state = checkpoint_main._create_steps()[0]
+    tx = Transaction(reference="tx", steps=[save_state])
+    tx.append_history(HistoryEvent.STEP_SUCCEEDED, step=save_state)
 
     def fail_save_transaction(tx: Transaction, db_path: str) -> None:
         raise OSError("database unavailable")
@@ -67,7 +67,7 @@ def test_save_transaction_removes_checkpoint_when_persistence_fails(
 
 
 @pytest.mark.parametrize(
-    ("skill_name", "execution_order", "expected"),
+    ("step_name", "execution_order", "expected"),
     [
         (None, None, False),
         ("fail_task", 2, False),
@@ -76,31 +76,31 @@ def test_save_transaction_removes_checkpoint_when_persistence_fails(
     ],
 )
 def test_save_state_checkpoint_gate_requires_exact_success_event(
-    skill_name: str | None,
+    step_name: str | None,
     execution_order: int | None,
     expected: bool,
 ) -> None:
-    if skill_name is None:
+    if step_name is None:
         transaction = Transaction(reference="tx")
     else:
-        skill_class = checkpoint_main.SaveState if skill_name == "save_state" else checkpoint_main.FailTask
-        skill = skill_class(name=skill_name, execution_order=execution_order)
-        transaction = Transaction(reference="tx", skills=[skill])
-        transaction.append_history(HistoryEvent.SKILL_SUCCEEDED, skill=skill)
+        step_class = checkpoint_main.SaveState if step_name == "save_state" else checkpoint_main.FailTask
+        step = step_class(name=step_name, execution_order=execution_order)
+        transaction = Transaction(reference="tx", steps=[step])
+        transaction.append_history(HistoryEvent.STEP_SUCCEEDED, step=step)
 
     assert checkpoint_main._is_save_state_success_checkpoint(transaction) is expected
 
 
 def test_save_state_checkpoint_gate_rejects_later_history_events() -> None:
-    save_state, fail_task = checkpoint_main._create_skills()
-    transaction = Transaction(reference="tx", skills=[save_state, fail_task])
-    transaction.append_history(HistoryEvent.SKILL_SUCCEEDED, skill=save_state)
-    transaction.append_history(HistoryEvent.SKILL_STARTED, skill=fail_task)
+    save_state, fail_task = checkpoint_main._create_steps()
+    transaction = Transaction(reference="tx", steps=[save_state, fail_task])
+    transaction.append_history(HistoryEvent.STEP_SUCCEEDED, step=save_state)
+    transaction.append_history(HistoryEvent.STEP_STARTED, step=fail_task)
 
     assert checkpoint_main._is_save_state_success_checkpoint(transaction) is False
 
 
-@pytest.mark.parametrize("event", (HistoryEvent.SKILL_FAILED, HistoryEvent.TRANSACTION_RESUMED))
+@pytest.mark.parametrize("event", (HistoryEvent.STEP_FAILED, HistoryEvent.TRANSACTION_RESUMED))
 def test_save_transaction_retains_checkpoint_after_later_or_resumed_persistence_failure(
     monkeypatch: pytest.MonkeyPatch,
     sample_checkpoint_path: Path,
@@ -108,8 +108,8 @@ def test_save_transaction_retains_checkpoint_after_later_or_resumed_persistence_
     event: HistoryEvent,
 ) -> None:
     sample_checkpoint_path.write_text("last valid checkpoint", encoding="utf-8")
-    tx = Transaction(reference="tx", skills=checkpoint_main._create_skills())
-    tx.append_history(event, skill=tx.skills[-1] if event is HistoryEvent.SKILL_FAILED else None)
+    tx = Transaction(reference="tx", steps=checkpoint_main._create_steps())
+    tx.append_history(event, step=tx.steps[-1] if event is HistoryEvent.STEP_FAILED else None)
 
     def fail_save_transaction(tx: Transaction, db_path: str) -> None:
         raise OSError("database unavailable")
@@ -199,7 +199,7 @@ def test_main_completes_checkpoint_resume_smoke(
     checkpoint_main.main()
 
     assert sample_checkpoint_path.exists()
-    assert len(list((sample_db_path.parent / "reports").glob("*.report-v1.json"))) == 2
+    assert len(list((sample_db_path.parent / "reports").glob("*.report-v2.json"))) == 2
 
 
 def test_main_happy_path_does_not_resume(
@@ -244,13 +244,13 @@ def test_main_publishes_distinct_failed_and_resumed_report_records(
 
     checkpoint_main.main()
 
-    reports = list((sample_db_path.parent / "reports").glob("*.report-v1.json"))
+    reports = list((sample_db_path.parent / "reports").glob("*.report-v2.json"))
     failed_path = next(path for path in reports if ".failed." in path.name)
     resumed_path = next(path for path in reports if ".resumed." in path.name)
     failed = json.loads(failed_path.read_text(encoding="utf-8"))
     resumed = json.loads(resumed_path.read_text(encoding="utf-8"))
 
-    assert failed["report_format_version"] == resumed["report_format_version"] == 1
+    assert failed["report_format_version"] == resumed["report_format_version"] == 2
     assert failed["complete"] is resumed["complete"] is True
     assert failed["errors"] == resumed["errors"] == []
     assert failed["transaction"]["id"] == resumed["transaction"]["id"]

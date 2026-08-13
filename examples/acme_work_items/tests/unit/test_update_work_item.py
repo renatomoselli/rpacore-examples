@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from rpacore import BusinessException, Status, SystemException
 
-from skills._session import RemoteConflictError, RemoteWorkItem
-from skills.update_work_item import UpdateWorkItem
-from tests.conftest import run_skill
+from steps._session import RemoteConflictError, RemoteWorkItem
+from steps.update_work_item import UpdateWorkItem
+from tests.conftest import run_step
 
 
 class UpdateSession:
@@ -37,8 +37,8 @@ def _state() -> dict[str, object]:
 
 
 def test_update_persists_close_intent(monkeypatch, example_config) -> None:
-    monkeypatch.setattr("skills.update_work_item.require_authenticated_session", lambda ctx: UpdateSession())
-    transaction = run_skill(
+    monkeypatch.setattr("steps.update_work_item.require_authenticated_session", lambda ctx: UpdateSession())
+    transaction = run_step(
         UpdateWorkItem(name="update", execution_order=1),
         state=_state(),
         config=example_config,
@@ -53,44 +53,44 @@ def test_update_persists_close_intent(monkeypatch, example_config) -> None:
 
 def test_update_classifies_concurrency_as_business(monkeypatch, example_config) -> None:
     monkeypatch.setattr(
-        "skills.update_work_item.require_authenticated_session",
+        "steps.update_work_item.require_authenticated_session",
         lambda ctx: UpdateSession(conflict=True),
     )
-    transaction = run_skill(
+    transaction = run_step(
         UpdateWorkItem(name="update", execution_order=1),
         state=_state(),
         config=example_config,
     )
-    exception = transaction.failed_skills()[0].exceptions[-1]
+    exception = transaction.failed_steps()[0].exceptions[-1]
     assert isinstance(exception, BusinessException)
-    assert exception.stop is True
+    assert exception.halts_remaining_steps is True
 
 
 def test_update_rejects_already_closed_without_close_intent(monkeypatch, example_config) -> None:
     monkeypatch.setattr(
-        "skills.update_work_item.require_authenticated_session",
+        "steps.update_work_item.require_authenticated_session",
         lambda ctx: UpdateSession(status="closed"),
     )
-    transaction = run_skill(
+    transaction = run_step(
         UpdateWorkItem(name="update", execution_order=1),
         state=_state(),
         config=example_config,
     )
-    exception = transaction.failed_skills()[0].exceptions[-1]
+    exception = transaction.failed_steps()[0].exceptions[-1]
     assert isinstance(exception, BusinessException)
-    assert exception.stop is True
+    assert exception.halts_remaining_steps is True
 
 
 def test_update_rejects_unexpected_remote_status(monkeypatch, example_config) -> None:
     monkeypatch.setattr(
-        "skills.update_work_item.require_authenticated_session",
+        "steps.update_work_item.require_authenticated_session",
         lambda ctx: UpdateSession(status="pending"),
     )
-    transaction = run_skill(
+    transaction = run_step(
         UpdateWorkItem(name="update", execution_order=1),
         state=_state(),
         config=example_config,
     )
-    exception = transaction.failed_skills()[0].exceptions[-1]
+    exception = transaction.failed_steps()[0].exceptions[-1]
     assert isinstance(exception, SystemException)
     assert "could not be verified" in str(exception)

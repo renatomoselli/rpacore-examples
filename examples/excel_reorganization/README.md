@@ -15,17 +15,17 @@ The example uses current RPA Core APIs:
 - config values are read through `ctx.require_config`
 - downstream state dependencies use `ctx.require_state`
 - generated workbooks are recorded with `ctx.add_artifact`
-- deterministic data and verification failures use `BusinessException(stop=True)`
+- deterministic data and verification failures use `BusinessException(halts_remaining_steps=True)`
 - technical file and workbook write failures use `SystemException`
 
 ## Runtime Boundaries
 
-The workflow keeps runtime handles out of transaction state. Workbook objects and file handles stay local to the skill that owns them. Persisted state contains only paths, rows, grouping dictionaries, expected month keys, expected subtotals, and JSON-safe metadata.
+The workflow keeps runtime handles out of transaction state. Workbook objects and file handles stay local to the step that owns them. Persisted state contains only paths, rows, grouping dictionaries, expected month keys, expected subtotals, and JSON-safe metadata.
 
 `main.py` loads the required project-root configuration, validates the example's
 five config fields as a batch, and runs the transaction through RPA Core's
 strict SQLite checkpoint helper. It still owns failed-output cleanup after a
-returned workflow failure or a loud checkpoint error. Skills own their local
+returned workflow failure or a loud checkpoint error. Steps own their local
 data validation and artifact production.
 
 ## Verification Coverage

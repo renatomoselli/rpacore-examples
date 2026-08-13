@@ -4,7 +4,7 @@ import pytest
 from openpyxl import Workbook
 from rpacore import BusinessException
 
-from skills.verify_output import VerifyOutput
+from steps.verify_output import VerifyOutput
 from tests.conftest import make_context
 
 
@@ -80,7 +80,7 @@ def test_verify_output_rejects_missing_data_rows(tmp_path):
 
     with pytest.raises(BusinessException, match="expected 4") as exc_info:
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_verify_output_rejects_wrong_subtotal(tmp_path):
@@ -99,7 +99,7 @@ def test_verify_output_rejects_wrong_subtotal(tmp_path):
 
     with pytest.raises(BusinessException, match="subtotal") as exc_info:
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_verify_output_rejects_missing_metadata(tmp_path):
@@ -123,7 +123,7 @@ def test_verify_output_rejects_missing_metadata(tmp_path):
 
     with pytest.raises(BusinessException, match="Transaction.metadata missing") as exc_info:
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_verify_output_uses_independent_expected_subtotals(tmp_path):
@@ -142,7 +142,7 @@ def test_verify_output_uses_independent_expected_subtotals(tmp_path):
 
     with pytest.raises(BusinessException, match="subtotal") as exc_info:
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_verify_output_rejects_missing_output_file(tmp_path):
@@ -151,7 +151,7 @@ def test_verify_output_rejects_missing_output_file(tmp_path):
 
     with pytest.raises(BusinessException, match="does not exist") as exc_info:
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_verify_output_rejects_unreadable_output_file(tmp_path):
@@ -161,7 +161,7 @@ def test_verify_output_rejects_unreadable_output_file(tmp_path):
 
     with pytest.raises(BusinessException, match="Cannot read output file") as exc_info:
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_verify_output_rejects_missing_month(tmp_path):
@@ -172,7 +172,7 @@ def test_verify_output_rejects_missing_month(tmp_path):
 
     with pytest.raises(BusinessException, match="Missing months") as exc_info:
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_verify_output_rejects_extra_month(tmp_path):
@@ -186,7 +186,7 @@ def test_verify_output_rejects_extra_month(tmp_path):
 
     with pytest.raises(BusinessException, match="Unexpected months") as exc_info:
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_verify_output_rejects_wrong_header(tmp_path):
@@ -205,7 +205,7 @@ def test_verify_output_rejects_wrong_header(tmp_path):
 
     with pytest.raises(BusinessException, match="incorrect header") as exc_info:
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_verify_output_rejects_missing_subtotal_row(tmp_path):
@@ -224,7 +224,7 @@ def test_verify_output_rejects_missing_subtotal_row(tmp_path):
 
     with pytest.raises(BusinessException, match="missing subtotal") as exc_info:
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_verify_output_rejects_wrong_employee_order(tmp_path):
@@ -243,7 +243,7 @@ def test_verify_output_rejects_wrong_employee_order(tmp_path):
 
     with pytest.raises(BusinessException, match="employee ordering") as exc_info:
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_verify_output_rejects_missing_expected_subtotal(tmp_path):
@@ -262,7 +262,7 @@ def test_verify_output_rejects_missing_expected_subtotal(tmp_path):
 
     with pytest.raises(BusinessException, match="Missing expected subtotal") as exc_info:
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_verify_output_rejects_wrong_metadata_month_count(tmp_path):
@@ -281,7 +281,7 @@ def test_verify_output_rejects_wrong_metadata_month_count(tmp_path):
 
     with pytest.raises(BusinessException, match="month_count") as exc_info:
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True
 
 
 def test_verify_output_rejects_wrong_metadata_output_path(tmp_path):
@@ -300,4 +300,4 @@ def test_verify_output_rejects_wrong_metadata_output_path(tmp_path):
 
     with pytest.raises(BusinessException, match="output_path") as exc_info:
         VerifyOutput(name="verify_output", execution_order=1).execute(ctx)
-    assert exc_info.value.stops_execution is True
+    assert exc_info.value.halts_remaining_steps is True

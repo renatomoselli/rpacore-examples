@@ -5,7 +5,7 @@ import hashlib
 import pytest
 from rpacore import ProcessContext, SystemException, Transaction
 
-from skills._session import (
+from steps._session import (
     BrowserSession,
     RemoteWorkItem,
     compute_identity_hash,

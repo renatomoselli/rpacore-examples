@@ -8,17 +8,17 @@ In long-running or unreliable automation workflows, a failure partway through a
 transaction can waste all previously completed work. RPA Core's
 **checkpoint/resume** feature solves this by persisting transaction state to a
 database after each run. When a transaction fails, `resume_transaction()` loads
-the persisted state, marks already-successful skills as skipped, resets failed
-skills to pending, and lets the engine continue from where it left off.
+the persisted state, marks already-successful steps as skipped, resets failed
+steps to pending, and lets the engine continue from where it left off.
 
-This example uses a two-skill pipeline to demonstrate the pattern:
+This example uses a two-step pipeline to demonstrate the pattern:
 
 The example intentionally retains its explicit `Engine.run()` checkpoints and
-`resume_transaction()` call: recovery sequencing, skill reattachment, and
+`resume_transaction()` call: recovery sequencing, step reattachment, and
 history inspection are the behavior being demonstrated.
 
 1. **SaveState** — Increments a counter, writes a JSON checkpoint file, and
-   records an artifact. This skill always succeeds.
+   records an artifact. This step always succeeds.
 2. **FailTask** — On the first run, raises a `SystemException` to simulate an
    interruption. On resume (when `fail_on_first_run` is toggled to `false`), it
    increments the counter again and marks the transaction as complete.
@@ -29,13 +29,13 @@ history inspection are the behavior being demonstrated.
 checkpoint_resume/
   main.py              # Entry point: runs first pass, resumes if failed
   config.toml          # Config (fail_on_first_run, max_retries, etc.)
-  skills/
+  steps/
     __init__.py
-    save_state.py      # Skill A: always succeeds, writes durable state
-    fail_task.py       # Skill B: fails on first run, succeeds on resume
+    save_state.py      # Step A: always succeeds, writes durable state
+    fail_task.py       # Step B: fails on first run, succeeds on resume
   reports/             # Separate immutable failed and resumed report records
   tests/
-    unit/              # Unit tests for individual skills
+    unit/              # Unit tests for individual steps
     integration/       # Integration test for the full workflow
   rpacore.db           # SQLite database (created at runtime)
   checkpoint.json      # Checkpoint artifact (created by SaveState)
@@ -49,14 +49,14 @@ checkpoint_resume/
 === Starting first run ===
 First run status: FAILED
   transaction_started -  (order None)
-  skill_started - save_state (order 1)
-  skill_succeeded - save_state (order 1)
-  skill_started - fail_task (order 2)
-  skill_failed - fail_task (order 2)
+  step_started - save_state (order 1)
+  step_succeeded - save_state (order 1)
+  step_started - fail_task (order 2)
+  step_failed - fail_task (order 2)
   transaction_completed -  (order None)
 ```
 
-Skill A (save_state) succeeds and its state is persisted. Skill B (fail_task)
+Step A (save_state) succeeds and its state is persisted. Step B (fail_task)
 raises `SystemException`, causing the transaction to fail. The checkpoint
 database now contains the partially-completed transaction.
 
@@ -70,13 +70,13 @@ the failed record is never overwritten.
 Resuming transaction...
 Resume status: SUCCESSFUL
   transaction_started -  (order None)
-  skill_started - save_state (order 1)
-  skill_succeeded - save_state (order 1)
-  skill_started - fail_task (order 2)
-  skill_failed - fail_task (order 2)
+  step_started - save_state (order 1)
+  step_succeeded - save_state (order 1)
+  step_started - fail_task (order 2)
+  step_failed - fail_task (order 2)
   transaction_resumed -  (order None)
-  skill_started - fail_task (order 2)
-  skill_succeeded - fail_task (order 2)
+  step_started - fail_task (order 2)
+  step_succeeded - fail_task (order 2)
   transaction_completed -  (order None)
 ```
 
@@ -119,7 +119,7 @@ This will:
 
 ### Durable State
 
-`ctx.state` is a JSON-safe dict that survives across runs. The `SaveState` skill
+`ctx.state` is a JSON-safe dict that survives across runs. The `SaveState` step
 writes a counter dict to `ctx.state["counter"]`. On resume, this state is
 restored from the database so the counter retains its value.
 
@@ -132,23 +132,23 @@ are updated. If persistence fails immediately after `SaveState` succeeds, the
 new checkpoint is removed; later or resumed persistence failures retain the
 last checkpoint as recovery evidence.
 
-Each failed-and-resumed demonstration creates two immutable JSON report-v1
+Each failed-and-resumed demonstration creates two immutable JSON report-v2
 records in `reports/`. They preserve the original failure, the final outcome,
 canonical retry/failure information, and the full resume history separately.
 
 ### Artifact Recording
 
-Skills can record artifacts via `ctx.add_artifact(name, path, kind, metadata)`.
+Steps can record artifacts via `ctx.add_artifact(name, path, kind, metadata)`.
 Artifacts are file paths and JSON-safe metadata. The checkpoint file is recorded
 as an artifact so it can be tracked in the transaction audit trail.
 
 ### Resume Logic
 
 `resume_transaction()` loads the persisted transaction from the database, matches
-skills by `(name, execution_order)`, and:
+steps by `(name, execution_order)`, and:
 
-- Preserves skills that were `SUCCESSFUL` (they are not re-executed)
-- Resets skills that were `FAILED` to `PENDING` (they are re-executed)
+- Preserves steps that were `SUCCESSFUL` (they are not re-executed)
+- Resets steps that were `FAILED` to `PENDING` (they are re-executed)
 - Appends a `TRANSACTION_RESUMED` history event
 - Sets the transaction status to `PENDING` so it can be re-run
 

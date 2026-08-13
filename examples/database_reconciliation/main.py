@@ -19,11 +19,11 @@ from rpacore import (
     validate_config,
 )
 
-from skills.classify_outcome import ClassifyOutcome
-from skills.load_bank_statement import LoadBankStatement
-from skills.load_internal_records import LoadInternalRecords
-from skills.match_transaction import MatchTransaction
-from skills.write_reconciliation_report import WriteReconciliationReport
+from steps.classify_outcome import ClassifyOutcome
+from steps.load_bank_statement import LoadBankStatement
+from steps.load_internal_records import LoadInternalRecords
+from steps.match_transaction import MatchTransaction
+from steps.write_reconciliation_report import WriteReconciliationReport
 
 logger = get_logger(__name__)
 SETUP_DEFINITION_IDENTITY = "database-reconciliation/setup/v1"
@@ -53,7 +53,7 @@ CONFIG_FIELDS = (
 
 
 def _last_failure_message(tx: Transaction) -> str:
-    failed = tx.failed_skills()
+    failed = tx.failed_steps()
     if not failed:
         return str(tx.status)
     exceptions = getattr(failed[-1], "exceptions", [])
@@ -64,15 +64,15 @@ def _last_failure_message(tx: Transaction) -> str:
 
 def _missing_result_message(payment: dict, payment_tx: Transaction) -> str:
     details = _last_failure_message(payment_tx)
-    failed_skill_names = {skill.name for skill in payment_tx.failed_skills()}
+    failed_step_names = {step.name for step in payment_tx.failed_steps()}
     payment_id = payment.get("payment_id")
 
-    if "match_transaction" in failed_skill_names:
+    if "match_transaction" in failed_step_names:
         return (
             f"Payment {payment_id} matching failed before classification could "
             f"produce a reconciliation result: {details}"
         )
-    if "classify_outcome" in failed_skill_names:
+    if "classify_outcome" in failed_step_names:
         return (
             f"Payment {payment_id} classification failed without producing a "
             f"reconciliation result: {details}"
@@ -122,7 +122,7 @@ def main() -> None:
             "run_id": run_id,
             "transaction_type": "setup",
         },
-        skills=[
+        steps=[
             LoadInternalRecords(name="load_internal_records", execution_order=1),
             LoadBankStatement(name="load_bank_statement", execution_order=2),
         ],
@@ -170,7 +170,7 @@ def main() -> None:
                 "payment_id": payment.get("payment_id"),
                 "reference": payment.get("reference"),
             },
-            skills=[
+            steps=[
                 MatchTransaction(name="match_transaction", execution_order=1),
                 ClassifyOutcome(name="classify_outcome", execution_order=2),
             ],
@@ -210,7 +210,7 @@ def main() -> None:
             "run_id": run_id,
             "transaction_type": "report",
         },
-        skills=[
+        steps=[
             WriteReconciliationReport(name="write_reconciliation_report", execution_order=1),
         ],
     )
