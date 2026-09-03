@@ -20,7 +20,7 @@ examples/<name>/
 ## Conventions (across all examples)
 
 - **Python header:** every `.py` file starts `from __future__ import annotations`
-- **Config keys:** use top-level `transaction_db_path`, not legacy `db_path`. Queue configs use `[queue].db_path` and `[queue].lease_timeout`.
+- **Config keys:** use top-level `transaction_db_path` for transaction persistence. Queue configs use `[queue].db_path` and `[queue].lease_timeout`.
 - **Config paths:** committed examples, docs, configs, and test literals must be portable across machines. Prefer relative config paths resolved from `PROJECT_ROOT = Path(__file__).resolve().parent` with `resolve_config_paths(config, keys, base_dir=PROJECT_ROOT, root=PROJECT_ROOT)`. Do not hardcode local absolute paths such as drive-letter paths, home-directory paths, or user-specific checkout paths. Tests may use `tmp_path` or other generated temporary paths only when validating path handling.
 - **Steps:** subclass `Step`, implement `execute(self, ctx: ProcessContext)`. Read config via `ctx.require_config(key, type, action=self.name)`. Put durable JSON-safe data in `ctx.state`; put runtime handles/clients/pages/files in `ctx.resources`.
 - **Transactions:** defined in `main.py` with explicit `execution_order` on steps. Ordinary single transactions use `execute_transaction(tx, config=config, engine=Engine(max_retries=N), transaction_db_path=...)`; advanced examples retain their explicit Engine, checkpoint, queue, or resource-lifecycle paths where they own those boundaries.

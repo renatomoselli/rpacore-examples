@@ -31,7 +31,7 @@ On POSIX shells, use `.venv/bin/python` instead of `.\.venv\Scripts\python`.
 
 - Keep committed paths portable. Do not hardcode local checkout paths,
   drive-letter paths, home-directory paths, or user-specific machine paths.
-- Use top-level `transaction_db_path`, not legacy `db_path`.
+- Use top-level `transaction_db_path` for transaction persistence.
 - Queue configs use `[queue].db_path` and `[queue].lease_timeout`.
 - Put durable JSON-safe data in `ctx.state`.
 - Put runtime handles, clients, pages, and open files in `ctx.resources`.

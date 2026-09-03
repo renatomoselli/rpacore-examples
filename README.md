@@ -25,9 +25,9 @@ It exists to validate the real consumer workflow:
 
 ## Framework Compatibility
 
-These examples target the unreleased RPA Core `0.3.x` development line. The
-latest published package remains `0.2.x`; clone the examples repository at its
-`v0.2.0` tag when using that published line.
+The default branch targets the RPA Core release range declared by each
+example's `requirements.txt`. For an older framework release, use the examples
+tag that matches that release line.
 
 Each production transaction declares a named `definition_identity` constant.
 That token belongs to the automation definition, not to an individual run or
@@ -39,7 +39,6 @@ Most example folders include their own `requirements.txt`; those files pin the
 compatible RPA Core release and any example-specific libraries. During release
 rehearsal, install the freshly built local wheel from the exact framework commit
 being validated before running the example requirements or validation script.
-After RPA Core is public, use the released package version.
 
 ## Quick Start
 
@@ -49,22 +48,6 @@ environment:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
-
-Install the target RPA Core `0.3.x` package after it is published:
-
-```powershell
-python -m pip install "rpacore>=0.3.0,<0.4.0"
-```
-
-For the current unreleased development line, build and install a local wheel
-from a sibling framework checkout:
-
-```powershell
-cd ..\rpacore
-.venv\Scripts\python.exe -m build
-cd ..\rpacore-examples
-python -m pip install ..\rpacore\dist\rpacore-<version>-py3-none-any.whl
 ```
 
 Run an example from its own directory:

@@ -140,8 +140,7 @@ entrypoint requires the committed `config.toml` beside `main.py`, regardless of
 the caller's working directory. Configured `output_file` and
 `transaction_db_path` values are resolved relative to this example directory
 and must stay inside it. Repository paths are resolved separately and may point
-to external local checkouts. The legacy top-level `db_path` key is rejected;
-use `transaction_db_path`.
+to external local checkouts.
 
 The local Git executable is required. The monitor uses local Git inspection
 commands only; configured remote URLs are recorded but never contacted.

@@ -255,6 +255,9 @@ CLAUDE.md
 .pi/
 .pi
 
+# codegraph code-navigation index
+.codegraph/
+
 # lean-ctx cache
 .lean-ctx/
 
