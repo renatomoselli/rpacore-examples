@@ -63,7 +63,9 @@ def test_reader_documentation_has_no_previous_core_constraint() -> None:
         assert "rpacore[keyring]>=0.2.0,<0.3.0" not in text, readme
 
 
-def test_root_readme_targets_unreleased_v03_truthfully() -> None:
+def test_root_readme_delegates_compatibility_to_example_requirements() -> None:
     text = (REPOSITORY_ROOT / "README.md").read_text(encoding="utf-8")
-    assert f'python -m pip install "{RPACORE_REQUIREMENT}"' in text
-    assert "Install the target RPA Core `0.3.x` package after it is published" in text
+    normalized = " ".join(text.split())
+    assert "release range declared by each example's `requirements.txt`" in normalized
+    assert "after it is published" not in text
+    assert "unreleased" not in text.lower()
